@@ -61,16 +61,20 @@ func (m Mode) String() string {
 }
 
 // Options configure a Boot call. Construct with functional helpers
-// (WithMode, WithMedium, WithCore) so defaults are obvious.
+// (WithMode, WithMedium, WithCore, WithPublicKey, WithTrustedKeysDir) so
+// defaults are obvious.
 //
 //	opts := app.NewOptions(
 //	    app.WithMode(app.ModeDev),
 //	    app.WithMedium(coreio.Local),
 //	)
 type Options struct {
-	Mode   Mode          // enforcement regime (prod | dev)
-	Medium coreio.Medium // storage abstraction — defaults to coreio.Local
-	Core   *core.Core    // optional pre-built Core instance
+	Mode           Mode          // enforcement regime (prod | dev)
+	Medium         coreio.Medium // storage abstraction — defaults to coreio.Local
+	Core           *core.Core    // optional pre-built Core instance
+	PublicKeyHex   string        // explicit hex-encoded ed25519 trust key
+	TrustedKeysDir string        // directory of *.pub keys (default: $DIR_HOME/.core/keys/)
+	DisableKeyLoad bool          // skip auto-loading TrustedKeysDir (test-only escape hatch)
 }
 
 // Option mutates Options during Boot setup.
@@ -100,6 +104,42 @@ func WithCore(c *core.Core) Option {
 	return func(o *Options) { o.Core = c }
 }
 
+// WithPublicKey attaches an explicit hex-encoded ed25519 public key to
+// trust when verifying the manifest signature. Callers that already know
+// which key to trust (CLI `--trust-key`, marketplace index lookup, test
+// fixtures) bypass the filesystem-keyring scan.
+//
+//	app.WithPublicKey("3b6a…")
+//
+// An empty string is a no-op so CLI wiring can pass the flag value
+// unconditionally.
+func WithPublicKey(hexKey string) Option {
+	return func(o *Options) {
+		if hexKey != "" {
+			o.PublicKeyHex = hexKey
+		}
+	}
+}
+
+// WithTrustedKeysDir overrides the trust-key directory Boot scans during
+// Step 2 (Verify). Each *.pub file in the directory holds a single
+// hex-encoded ed25519 public key. Defaults to `$DIR_HOME/.core/keys/` so
+// a user can drop marketplace-issued keys into a well-known place.
+//
+//	app.WithTrustedKeysDir("/tmp/test-keys")
+func WithTrustedKeysDir(dir string) Option {
+	return func(o *Options) { o.TrustedKeysDir = dir }
+}
+
+// WithoutKeyLoad disables the default filesystem keyring scan. Prod mode
+// without an explicit WithPublicKey AND this option set will reject any
+// signed manifest (no trust roots = no trust). Test-only escape hatch.
+//
+//	app.WithoutKeyLoad()
+func WithoutKeyLoad() Option {
+	return func(o *Options) { o.DisableKeyLoad = true }
+}
+
 // NewOptions applies options to a fresh Options struct.
 //
 //	opts := app.NewOptions(app.WithMode(app.ModeDev))
@@ -111,7 +151,23 @@ func NewOptions(opts ...Option) Options {
 	if o.Medium == nil {
 		o.Medium = coreio.Local
 	}
+	if o.TrustedKeysDir == "" {
+		o.TrustedKeysDir = defaultTrustedKeysDir()
+	}
 	return o
+}
+
+// defaultTrustedKeysDir resolves the filesystem location to scan for
+// `*.pub` trust keys. `$DIR_HOME/.core/keys/` matches the dAppServer
+// convention and RFC §6 (marketplace-delivered keys).
+//
+//	dir := defaultTrustedKeysDir() // "/Users/me/.core/keys"
+func defaultTrustedKeysDir() string {
+	home := core.Env("DIR_HOME")
+	if home == "" {
+		return ""
+	}
+	return core.Path(home, ".core", "keys")
 }
 
 // Instance is a booted CoreApp. Holds the manifest, the Core container,
@@ -163,7 +219,11 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 	inst.Root = root
 
 	// Step 2 — Verify
-	if err := verify(&manifest, o.Mode); err != nil {
+	trusted, err := resolveTrustedKeys(o)
+	if err != nil {
+		return nil, coreerr.E("app.Boot", "resolve trusted keys failed", err)
+	}
+	if err := verify(&manifest, o.Mode, trusted); err != nil {
 		return nil, coreerr.E("app.Boot", "verify failed", err)
 	}
 

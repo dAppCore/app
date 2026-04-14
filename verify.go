@@ -7,7 +7,9 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 
+	core "dappco.re/go/core"
 	"dappco.re/go/core/config"
+	coreio "dappco.re/go/core/io"
 	coreerr "dappco.re/go/core/log"
 	"gopkg.in/yaml.v3"
 )
@@ -16,27 +18,26 @@ import (
 // signature covers the rest of the manifest content. Dev mode skips the
 // check and logs a warning instead.
 //
-// The signature scheme matches core/go/scm/manifest.Sign: the `sign` field
-// is cleared, the remaining struct is YAML-marshalled, and the bytes are
-// fed through ed25519.Verify. The public key lives next to the signature
-// (scheme below) or is fetched from the marketplace index.
+// The signature scheme matches core/go/scm/manifest.Sign: the `sign`
+// field is cleared, the remaining struct is YAML-marshalled, and the
+// bytes are fed through ed25519.Verify against any of the supplied
+// trusted keys. A single matching key is sufficient.
 //
-//	if err := verify(&manifest, app.ModeProd); err != nil { ... }
+//	err := verify(&manifest, app.ModeProd, trustedKeys)
 //
-// TODO(config): core/config.ViewManifest does not yet carry a sign_key
-// field or an accompanying marketplace index lookup. This skeleton checks
-// the signature shape (base64 decode, length) but cannot validate against
-// a trusted public key until one of:
+// Rules:
 //
-//  1. config.ViewManifest gains SignKey alongside Sign, OR
-//  2. Boot accepts a WithPublicKey option and the CLI wires it from
-//     ~/.core/keys/ or the marketplace index, OR
-//  3. we depend on core/go-scm/manifest (heavier — Gitea/Forgejo deps).
+//   - ModeDev: never fails (warning state).
 //
-// Until then, prod mode rejects unsigned manifests but accepts any
-// syntactically valid signature. This is the clear "replace me before
-// alpha.1" marker.
-func verify(m *config.ViewManifest, mode Mode) error {
+//   - ModeProd + no Sign: rejected ("unsigned manifest").
+//
+//   - ModeProd + Sign + no trusted keys: rejected (no trust roots = no
+//     trust — the operator must supply a key via WithPublicKey or drop a
+//     `.pub` file into `$DIR_HOME/.core/keys/`).
+//
+//   - ModeProd + Sign + trusted keys: accepts the manifest iff any key
+//     validates the signature.
+func verify(m *config.ViewManifest, mode Mode, trusted []ed25519.PublicKey) error {
 	if m == nil {
 		return coreerr.E("app.verify", "nil manifest", nil)
 	}
@@ -60,19 +61,33 @@ func verify(m *config.ViewManifest, mode Mode) error {
 		return coreerr.E("app.verify", "signature is not an ed25519 signature", nil)
 	}
 
-	// Canonical payload — reuse the same shape core/go-scm uses so
-	// signatures round-trip.
-	if _, err := signableBytes(m); err != nil {
+	msg, err := signableBytes(m)
+	if err != nil {
 		return coreerr.E("app.verify", "canonical marshal failed", err)
 	}
 
-	// TODO(app): fetch the trusted public key (see function doc above)
-	// and call ed25519.Verify(pub, msg, sig). Until the key source is
-	// wired, we accept a well-formed signature shape — prod mode still
-	// rejects unsigned manifests, so the boundary is honoured.
-	_ = ed25519.Verify // keep the import in use post-wiring
+	if len(trusted) == 0 {
+		return coreerr.E(
+			"app.verify",
+			"no trusted keys available — set WithPublicKey or populate $DIR_HOME/.core/keys/",
+			nil,
+		)
+	}
 
-	return nil
+	for _, pub := range trusted {
+		if len(pub) != ed25519.PublicKeySize {
+			continue // skip malformed entries rather than fail the whole boot
+		}
+		if ed25519.Verify(pub, msg, sig) {
+			return nil
+		}
+	}
+
+	return coreerr.E(
+		"app.verify",
+		"signature does not match any trusted key ("+core.Sprint(len(trusted))+" checked)",
+		nil,
+	)
 }
 
 // signableBytes returns the canonical YAML bytes that a signature covers
@@ -87,8 +102,7 @@ func signableBytes(m *config.ViewManifest) ([]byte, error) {
 
 // verifyWithKey runs the full ed25519 verification against an explicitly
 // provided public key. Used by callers (CLI, marketplace, tests) that
-// already know which key to trust — bypasses the TODO above by taking the
-// key as input.
+// already know which key to trust.
 //
 //	pub, _ := hex.DecodeString(indexEntry.SignKey)
 //	err := verifyWithKey(&manifest, pub)
@@ -134,4 +148,88 @@ func parsePublicKey(hexKey string) (ed25519.PublicKey, error) {
 		return nil, coreerr.E("app.parsePublicKey", "wrong ed25519 public key size", nil)
 	}
 	return ed25519.PublicKey(raw), nil
+}
+
+// signManifest is the signer-side counterpart to verify — sign the
+// canonical manifest bytes with the caller's private key and stamp the
+// base64-encoded signature into the manifest.Sign field. Used by tests
+// and by whichever CLI eventually owns `core sign`.
+//
+//	ed25519Priv, _ := ed25519.GenerateKey(nil) // keep the priv secure
+//	_ = signManifest(&manifest, priv)
+func signManifest(m *config.ViewManifest, priv ed25519.PrivateKey) error {
+	if m == nil {
+		return coreerr.E("app.signManifest", "nil manifest", nil)
+	}
+	if len(priv) != ed25519.PrivateKeySize {
+		return coreerr.E("app.signManifest", "invalid private key length", nil)
+	}
+	msg, err := signableBytes(m)
+	if err != nil {
+		return coreerr.E("app.signManifest", "canonical marshal failed", err)
+	}
+	m.Sign = base64.StdEncoding.EncodeToString(ed25519.Sign(priv, msg))
+	return nil
+}
+
+// resolveTrustedKeys gathers every public key the verify step should
+// trust. Sources (in order):
+//
+//  1. `Options.PublicKeyHex` — explicit key passed by the caller.
+//
+//  2. `Options.TrustedKeysDir` — every `*.pub` file in the directory
+//     (one hex-encoded key per file, trimmed).
+//
+// Returns an empty slice (not an error) when no keys resolve — the
+// caller decides what that means given the mode.
+//
+//	trusted, err := resolveTrustedKeys(o)
+//
+// Errors surface malformed keys, not missing directories; a missing
+// directory is treated as "no keys here" so a fresh install still boots
+// dev mode and only prod mode complains.
+func resolveTrustedKeys(o Options) ([]ed25519.PublicKey, error) {
+	var keys []ed25519.PublicKey
+
+	if o.PublicKeyHex != "" {
+		pub, err := parsePublicKey(o.PublicKeyHex)
+		if err != nil {
+			return nil, coreerr.E("app.resolveTrustedKeys", "explicit key decode failed", err)
+		}
+		keys = append(keys, pub)
+	}
+
+	if o.DisableKeyLoad || o.TrustedKeysDir == "" {
+		return keys, nil
+	}
+
+	medium := o.Medium
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if !medium.IsDir(o.TrustedKeysDir) {
+		return keys, nil
+	}
+
+	entries, err := medium.List(o.TrustedKeysDir)
+	if err != nil {
+		return nil, coreerr.E("app.resolveTrustedKeys", "list trusted keys dir failed", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !core.HasSuffix(name, ".pub") {
+			continue
+		}
+		path := core.Path(o.TrustedKeysDir, name)
+		body, err := medium.Read(path)
+		if err != nil {
+			return nil, coreerr.E("app.resolveTrustedKeys", "read key "+path+" failed", err)
+		}
+		pub, err := parsePublicKey(core.Trim(body))
+		if err != nil {
+			return nil, coreerr.E("app.resolveTrustedKeys", "decode key "+path+" failed", err)
+		}
+		keys = append(keys, pub)
+	}
+	return keys, nil
 }
