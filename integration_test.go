@@ -244,6 +244,89 @@ func TestIntegration_Boot_Ugly(t *testing.T) {
 	}
 }
 
+// TestIntegration_CompileSignBoot_Good drives the end-to-end flow the
+// RFC §3 promises: keygen → compile → sign → boot. It mirrors the
+// CLI path (keygen then sign then compile) without going through argv,
+// so it stays hermetic while still proving the artifacts round-trip.
+//
+//  1. Keygen emits app.key + app.pub in a scratch dir.
+//  2. view.yaml on disk is signed in-place with app.Sign.
+//  3. app.Compile produces a CompiledManifest.
+//  4. app.WriteCompiled puts core.json at the project root.
+//  5. app.Boot with ModeProd + the keyring dir reads core.json.
+func TestIntegration_CompileSignBoot_Good(t *testing.T) {
+	projectDir := t.TempDir()
+	keysDir := t.TempDir()
+	medium := coreio.Local
+
+	// 1. Keygen
+	privPath, pubPath, err := app.Keygen(medium, keysDir, "app")
+	if err != nil {
+		t.Fatalf("Keygen: %v", err)
+	}
+	if !medium.Exists(privPath) || !medium.Exists(pubPath) {
+		t.Fatalf("Keygen did not produce both files")
+	}
+
+	// 2. Write an unsigned view.yaml
+	manifest := config.ViewManifest{
+		Code:    "cli-cycle",
+		Name:    "CLI Cycle",
+		Version: "0.1.0",
+		Permissions: config.ViewPermissions{
+			Read: []string{"./data/"},
+		},
+	}
+	body, _ := yaml.Marshal(&manifest)
+	viewPath := core.Path(projectDir, ".core", "view.yaml")
+	if err := medium.EnsureDir(core.PathDir(viewPath)); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(viewPath, string(body)); err != nil {
+		t.Fatalf("Write view.yaml: %v", err)
+	}
+
+	// 3. Sign via the public API.
+	priv, err := app.LoadPrivateKey(medium, privPath)
+	if err != nil {
+		t.Fatalf("LoadPrivateKey: %v", err)
+	}
+	if err := app.Sign(medium, viewPath, priv); err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+
+	// 4. Compile + Write core.json.
+	var signed config.ViewManifest
+	if err := config.LoadManifest(medium, viewPath, &signed); err != nil {
+		t.Fatalf("reload signed manifest: %v", err)
+	}
+	cm, err := app.Compile(&signed, app.CompileOptions{})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if err := app.WriteCompiled(medium, projectDir, cm); err != nil {
+		t.Fatalf("WriteCompiled: %v", err)
+	}
+
+	// 5. Boot from core.json in prod mode using the keyring only.
+	//    This proves the RFC §4.1 "prod reads core.json" path works
+	//    alongside the $DIR_HOME/.core/keys/*.pub trust model.
+	inst, err := app.Boot(context.Background(), projectDir,
+		app.WithMode(app.ModeProd),
+		app.WithMedium(medium),
+		app.WithTrustedKeysDir(keysDir),
+	)
+	if err != nil {
+		t.Fatalf("Boot from core.json: %v", err)
+	}
+	if inst.Manifest.Code != "cli-cycle" {
+		t.Errorf("Boot read wrong identity: %q", inst.Manifest.Code)
+	}
+	if e := inst.Core.Entitled("fs.read"); !e.Allowed {
+		t.Errorf("fs.read should be allowed after compile+sign+boot; reason=%q", e.Reason)
+	}
+}
+
 // TestIntegration_KeyringLoad_Good — an actual keys/ directory scan
 // resolves a dropped `*.pub` file and trusts the signature. This proves
 // the CLI convention ("drop a pubkey in ~/.core/keys/") works with the

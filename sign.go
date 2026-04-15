@@ -1,0 +1,183 @@
+// SPDX-License-Identifier: EUPL-1.2
+
+package app
+
+import (
+	"crypto/ed25519"
+	"encoding/hex"
+
+	core "dappco.re/go/core"
+	"dappco.re/go/core/config"
+	coreio "dappco.re/go/core/io"
+	coreerr "dappco.re/go/core/log"
+	"gopkg.in/yaml.v3"
+)
+
+// DefaultKeyName is the filename convention for the user's default app
+// signing key. Matches RFC §3.2 (`core sign --key ~/.core/keys/app.key`).
+//
+//	priv, _ := app.LoadPrivateKey(coreio.Local, core.Path(homeKeyDir, app.DefaultKeyName))
+const DefaultKeyName = "default.key"
+
+// Sign re-signs a view.yaml manifest on disk and writes the result back
+// to the same path. It reads, signs, re-marshals and overwrites — the
+// canonical operation `core sign` performs in the CLI.
+//
+//	err := app.Sign(coreio.Local, ".core/view.yaml", priv)
+//
+// Rules:
+//
+//   - medium may be nil → falls back to coreio.Local.
+//
+//   - path must point to an existing YAML file; non-existence errors.
+//
+//   - priv must be an ed25519.PrivateKeySize slice (64 bytes). Anything
+//     else is rejected before any filesystem write.
+func Sign(medium coreio.Medium, path string, priv ed25519.PrivateKey) error {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if path == "" {
+		return coreerr.E("app.Sign", "empty manifest path", nil)
+	}
+	if len(priv) != ed25519.PrivateKeySize {
+		return coreerr.E("app.Sign", "invalid private key length", nil)
+	}
+
+	if !medium.Exists(path) {
+		return coreerr.E("app.Sign", "manifest not found at "+path, nil)
+	}
+
+	body, err := medium.Read(path)
+	if err != nil {
+		return coreerr.E("app.Sign", "read "+path+" failed", err)
+	}
+
+	var manifest config.ViewManifest
+	if err := yaml.Unmarshal([]byte(body), &manifest); err != nil {
+		return coreerr.E("app.Sign", "parse "+path+" failed", err)
+	}
+
+	if err := signManifest(&manifest, priv); err != nil {
+		return coreerr.E("app.Sign", "signManifest failed", err)
+	}
+
+	out, err := yaml.Marshal(&manifest)
+	if err != nil {
+		return coreerr.E("app.Sign", "marshal signed manifest failed", err)
+	}
+	if err := medium.Write(path, string(out)); err != nil {
+		return coreerr.E("app.Sign", "write "+path+" failed", err)
+	}
+	return nil
+}
+
+// LoadPrivateKey reads a hex-encoded ed25519 private key from the
+// supplied path. Matches the `.key` counterpart of the `.pub` trust files
+// consumed by resolveTrustedKeys.
+//
+//	priv, err := app.LoadPrivateKey(coreio.Local, "~/.core/keys/app.key")
+//
+// The file may contain trailing whitespace (editors add newlines); it
+// is trimmed before decoding.
+func LoadPrivateKey(medium coreio.Medium, path string) (ed25519.PrivateKey, error) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if path == "" {
+		return nil, coreerr.E("app.LoadPrivateKey", "empty path", nil)
+	}
+	if !medium.Exists(path) {
+		return nil, coreerr.E("app.LoadPrivateKey", "private key not found at "+path, nil)
+	}
+	body, err := medium.Read(path)
+	if err != nil {
+		return nil, coreerr.E("app.LoadPrivateKey", "read "+path+" failed", err)
+	}
+	raw, err := hex.DecodeString(core.Trim(body))
+	if err != nil {
+		return nil, coreerr.E("app.LoadPrivateKey", "decode hex failed", err)
+	}
+	if len(raw) != ed25519.PrivateKeySize {
+		return nil, coreerr.E("app.LoadPrivateKey", "wrong ed25519 private key size", nil)
+	}
+	return ed25519.PrivateKey(raw), nil
+}
+
+// WritePrivateKey persists a private key as hex on disk. Used by
+// `core keygen` bootstrap — the paired public key is emitted by
+// WritePublicKey to the corresponding `.pub` file.
+//
+//	_ = app.WritePrivateKey(coreio.Local, "~/.core/keys/app.key", priv)
+func WritePrivateKey(medium coreio.Medium, path string, priv ed25519.PrivateKey) error {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if path == "" {
+		return coreerr.E("app.WritePrivateKey", "empty path", nil)
+	}
+	if len(priv) != ed25519.PrivateKeySize {
+		return coreerr.E("app.WritePrivateKey", "invalid private key length", nil)
+	}
+	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
+		return coreerr.E("app.WritePrivateKey", "ensure dir failed", err)
+	}
+	if err := medium.Write(path, hex.EncodeToString(priv)); err != nil {
+		return coreerr.E("app.WritePrivateKey", "write failed", err)
+	}
+	return nil
+}
+
+// WritePublicKey persists a public key as hex on disk so
+// resolveTrustedKeys can pick it up in later boots.
+//
+//	_ = app.WritePublicKey(coreio.Local, "~/.core/keys/app.pub", pub)
+func WritePublicKey(medium coreio.Medium, path string, pub ed25519.PublicKey) error {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if path == "" {
+		return coreerr.E("app.WritePublicKey", "empty path", nil)
+	}
+	if len(pub) != ed25519.PublicKeySize {
+		return coreerr.E("app.WritePublicKey", "invalid public key length", nil)
+	}
+	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
+		return coreerr.E("app.WritePublicKey", "ensure dir failed", err)
+	}
+	if err := medium.Write(path, hex.EncodeToString(pub)); err != nil {
+		return coreerr.E("app.WritePublicKey", "write failed", err)
+	}
+	return nil
+}
+
+// Keygen generates a fresh ed25519 keypair and writes both halves to the
+// supplied directory. Returns the absolute paths of the private and
+// public key files. The RFC §3.2 default layout is
+// `~/.core/keys/<name>.key` + `~/.core/keys/<name>.pub`.
+//
+//	priv, pub, err := app.Keygen(coreio.Local, keysDir, "app")
+func Keygen(medium coreio.Medium, dir, name string) (privPath, pubPath string, err error) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if dir == "" {
+		return "", "", coreerr.E("app.Keygen", "empty directory", nil)
+	}
+	if name == "" {
+		name = "default"
+	}
+	pub, priv, keyErr := ed25519.GenerateKey(nil)
+	if keyErr != nil {
+		return "", "", coreerr.E("app.Keygen", "ed25519.GenerateKey failed", keyErr)
+	}
+	privPath = core.Path(dir, name+".key")
+	pubPath = core.Path(dir, name+".pub")
+	if err := WritePrivateKey(medium, privPath, priv); err != nil {
+		return "", "", err
+	}
+	if err := WritePublicKey(medium, pubPath, pub); err != nil {
+		return "", "", err
+	}
+	return privPath, pubPath, nil
+}

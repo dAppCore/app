@@ -210,8 +210,10 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 		medium: o.Medium,
 	}
 
-	// Step 1 — Discover
-	manifest, root, err := discover(o.Medium, start)
+	// Step 1 — Discover. Prod mode prefers core.json (the compiled,
+	// distribution-ready artifact); dev mode always reads .core/view.yaml
+	// so a running app picks up YAML edits on reboot without a recompile.
+	manifest, root, err := discoverCompiled(o.Medium, start, o.Mode)
 	if err != nil {
 		return nil, coreerr.E("app.Boot", "discover failed", err)
 	}

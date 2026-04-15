@@ -53,3 +53,75 @@ func discover(medium coreio.Medium, start string) (config.ViewManifest, string, 
 
 	return manifest, root, nil
 }
+
+// discoverCompiled is the prod-mode counterpart to `discover` — it
+// searches for `core.json` walking upward from start and, if found,
+// hydrates a ViewManifest from the compiled artifact. Falls back to
+// the YAML discover path when no core.json exists on the walk.
+//
+// The RFC §4.1 boot sequence reads core.json in prod mode and
+// .core/view.yaml in dev mode; this helper centralises that preference
+// without leaking compile/runtime shape details into discover.
+//
+//	manifest, root, err := discoverCompiled(coreio.Local, "./", ModeProd)
+func discoverCompiled(medium coreio.Medium, start string, mode Mode) (config.ViewManifest, string, error) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+
+	if mode == ModeDev {
+		// Developers iterate on view.yaml; never read a stale core.json.
+		return discover(medium, start)
+	}
+
+	// Walk upward looking for core.json at the project root. If we hit
+	// a .core/ first, that directory's parent is the natural root.
+	dirs := config.CoreDirs(medium, start)
+	for _, coreDir := range dirs {
+		root := core.PathDir(coreDir)
+		if path := core.Path(root, CompiledFileName); medium.Exists(path) {
+			cm, err := LoadCompiled(medium, root)
+			if err != nil {
+				return config.ViewManifest{}, "", coreerr.E(
+					"app.discoverCompiled",
+					"failed to parse "+path,
+					err,
+				)
+			}
+			return compiledToManifest(cm), root, nil
+		}
+	}
+
+	// No core.json on the walk — fall back to view.yaml so operators
+	// who only have a source tree can still boot.
+	return discover(medium, start)
+}
+
+// compiledToManifest projects a CompiledManifest back into the
+// ViewManifest shape the rest of the boot pipeline already consumes.
+// Slots go from string → any (the YAML-flexible shape) so the layout
+// step re-uses the same validator without special-casing the origin.
+//
+//	view := compiledToManifest(cm)
+func compiledToManifest(cm *CompiledManifest) config.ViewManifest {
+	if cm == nil {
+		return config.ViewManifest{}
+	}
+	var slots map[string]any
+	if len(cm.Slots) > 0 {
+		slots = make(map[string]any, len(cm.Slots))
+		for k, v := range cm.Slots {
+			slots[k] = v
+		}
+	}
+	return config.ViewManifest{
+		Code:        cm.Code,
+		Name:        cm.Name,
+		Version:     cm.Version,
+		Sign:        cm.Sign,
+		Layout:      cm.Layout,
+		Slots:       slots,
+		Modules:     append([]string(nil), cm.Modules...),
+		Permissions: cm.Permissions,
+	}
+}
