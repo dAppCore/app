@@ -213,12 +213,12 @@ func TestPermissions_newCheckerForManifest_Good(t *testing.T) {
 }
 
 // TestPermissions_newCheckerForManifest_Bad — the store gate denies
-// when neither Filesystem nor Config["store"] is set.
+// when `permissions.store: true` is not declared.
 func TestPermissions_newCheckerForManifest_Bad(t *testing.T) {
 	checker := newCheckerForManifest(&config.ViewManifest{}, ModeProd)
 	e := checker("store.get", 1, context.Background())
 	if e.Allowed {
-		t.Error("store.get should be denied without store / filesystem permission")
+		t.Error("store.get should be denied without explicit store permission")
 	}
 }
 
@@ -235,27 +235,23 @@ func TestPermissions_newCheckerForManifest_Ugly(t *testing.T) {
 		t.Error("store.set should be denied when Config[store] is the wrong type")
 	}
 
-	// Filesystem=true still satisfies the gate by the legacy fallback.
+	// Filesystem access does not imply store access.
 	m2 := &config.ViewManifest{
 		Permissions: config.ViewPermissions{Filesystem: true},
 	}
 	checker2 := newCheckerForManifest(m2, ModeProd)
 	e2 := checker2("store.delete", 1, context.Background())
-	if !e2.Allowed {
-		t.Error("Filesystem=true should satisfy the store gate (legacy fallback)")
+	if e2.Allowed {
+		t.Error("Filesystem=true should not satisfy the store gate")
 	}
 }
 
-// TestPermissions_hasManifestStorePermission_Good — bool true and the
-// Filesystem fallback both report declared.
+// TestPermissions_hasManifestStorePermission_Good — explicit
+// `permissions.store: true` reports declared.
 func TestPermissions_hasManifestStorePermission_Good(t *testing.T) {
 	m := &config.ViewManifest{Config: map[string]any{"store": true}}
 	if !hasManifestStorePermission(m) {
 		t.Error("Config[store]=true should report declared")
-	}
-	m2 := &config.ViewManifest{Permissions: config.ViewPermissions{Filesystem: true}}
-	if !hasManifestStorePermission(m2) {
-		t.Error("Filesystem=true should report declared")
 	}
 }
 
@@ -267,6 +263,11 @@ func TestPermissions_hasManifestStorePermission_Bad(t *testing.T) {
 	}
 	if hasManifestStorePermission(&config.ViewManifest{}) {
 		t.Error("empty manifest should not report declared")
+	}
+	if hasManifestStorePermission(&config.ViewManifest{
+		Permissions: config.ViewPermissions{Filesystem: true},
+	}) {
+		t.Error("Filesystem=true should not report declared store access")
 	}
 }
 

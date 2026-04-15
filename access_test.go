@@ -176,20 +176,19 @@ func TestAccess_AccessMode_String_Good(t *testing.T) {
 	}
 }
 
-// TestAccess_CheckAccess_Store — Config["store"]=true and the
-// Filesystem fallback both grant the store gate; everything else is
-// rejected.
+// TestAccess_CheckAccess_Store — only an explicit store declaration
+// grants the store gate; everything else is rejected.
 func TestAccess_CheckAccess_Store(t *testing.T) {
 	declared := &config.ViewManifest{Config: map[string]any{"store": true}}
 	if err := CheckAccess(declared, AccessStore, "prefs:theme"); err != nil {
 		t.Errorf("Config[store]=true should grant store: %v", err)
 	}
 
-	legacy := &config.ViewManifest{
+	filesystemOnly := &config.ViewManifest{
 		Permissions: config.ViewPermissions{Filesystem: true},
 	}
-	if err := CheckAccess(legacy, AccessStore, "prefs:theme"); err != nil {
-		t.Errorf("Filesystem=true should grant store (legacy): %v", err)
+	if err := CheckAccess(filesystemOnly, AccessStore, "prefs:theme"); err == nil {
+		t.Error("Filesystem=true without store should deny store")
 	}
 
 	empty := &config.ViewManifest{}

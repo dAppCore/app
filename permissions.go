@@ -284,15 +284,10 @@ func hasPermission(p config.ViewPermissions, field permissionField) bool {
 	case fieldRun:
 		return len(p.Run) > 0
 	case fieldStore:
-		// ViewPermissions does not yet expose a store boolean. Until
-		// core/config grows one we honour `permissions.store: true`
-		// recorded in the manifest's Config map (the wrap pipeline
-		// stamps the field there for PWAs and any installer can do the
-		// same). The fallthrough check on Filesystem keeps backwards
-		// compat: an app declaring full filesystem access also gets
-		// store access since go-store's SQLite database lives on the
-		// filesystem.
-		return p.Filesystem
+		// ViewPermissions does not yet expose a store boolean. The
+		// manifest-aware closure checks Config["store"] separately, so the
+		// typed slot alone can never satisfy store access.
+		return false
 	case fieldNotification:
 		return p.Notifications
 	case fieldClipboardRead, fieldClipboardWrite:
@@ -319,7 +314,7 @@ func hasPermission(p config.ViewPermissions, field permissionField) bool {
 }
 
 // hasManifestStorePermission inspects the wider ViewManifest for the
-// `permissions.store: true` legacy bool stored under Config["store"].
+// explicit `permissions.store: true` flag stored under Config["store"].
 // Kept separate from hasPermission so the entitlement closure can call
 // it without dragging the manifest into the inner switch.
 //
@@ -327,9 +322,6 @@ func hasPermission(p config.ViewPermissions, field permissionField) bool {
 func hasManifestStorePermission(m *config.ViewManifest) bool {
 	if m == nil {
 		return false
-	}
-	if m.Permissions.Filesystem {
-		return true
 	}
 	if m.Config == nil {
 		return false

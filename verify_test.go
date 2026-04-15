@@ -245,6 +245,50 @@ func TestVerify_signableBytes_Ugly(t *testing.T) {
 	}
 }
 
+// TestVerify_verifyWithKey_RFCCompat_Good confirms the verifier accepts
+// the RFC-facing manifest layout and ignores local install metadata
+// (`config.source`, `config.category`) that the marketplace stamps
+// after the upstream manifest was signed.
+func TestVerify_verifyWithKey_RFCCompat_Good(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+
+	base := &config.ViewManifest{
+		Code:    "compat-signed",
+		Name:    "Compat Signed",
+		Version: "0.1.0",
+		Config: map[string]any{
+			"type":     "pwa",
+			"url":      "https://play.example.com/",
+			"services": []any{"store"},
+			"write":    []any{"./cache/"},
+			"store":    true,
+		},
+	}
+	msg, err := yamlMarshalBytes(base)
+	if err != nil {
+		t.Fatalf("yamlMarshalBytes: %v", err)
+	}
+
+	signed := *base
+	signed.Sign = base64.StdEncoding.EncodeToString(ed25519.Sign(priv, msg))
+	signed.Config = copyConfig(base.Config)
+	signed.Config["source"] = "marketplace:compat-signed"
+	signed.Config["category"] = "media"
+
+	body, err := yamlMarshalBytes(&signed)
+	if err != nil {
+		t.Fatalf("yamlMarshalBytes(signed): %v", err)
+	}
+
+	var round config.ViewManifest
+	if err := UnmarshalViewManifest(body, &round); err != nil {
+		t.Fatalf("UnmarshalViewManifest: %v", err)
+	}
+	if err := verifyWithKey(&round, pub); err != nil {
+		t.Fatalf("verifyWithKey should accept RFC-native manifest with install metadata: %v", err)
+	}
+}
+
 // TestVerify_parsePublicKey_Good — hex-encoded ed25519 key round-trips.
 func TestVerify_parsePublicKey_Good(t *testing.T) {
 	pub, _, _ := ed25519.GenerateKey(nil)

@@ -11,7 +11,6 @@ import (
 	"dappco.re/go/core/config"
 	coreio "dappco.re/go/core/io"
 	coreerr "dappco.re/go/core/log"
-	"gopkg.in/yaml.v3"
 )
 
 // verify is Step 2 of the 7-step boot — confirm the manifest's ed25519
@@ -93,11 +92,22 @@ func verify(m *config.ViewManifest, mode Mode, trusted []ed25519.PublicKey) erro
 // signableBytes returns the canonical YAML bytes that a signature covers
 // (the manifest with sign cleared).
 //
+// The canonical form follows the RFC-facing manifest shape produced by
+// yamlMarshalBytes rather than the raw upstream config.ViewManifest YAML
+// layout. Local install bookkeeping keys (`config.source`,
+// `config.category`) are stripped before marshaling so marketplace
+// installs can stamp provenance metadata without invalidating the
+// developer's signature.
+//
 //	msg, _ := signableBytes(&manifest)
 func signableBytes(m *config.ViewManifest) ([]byte, error) {
+	if m == nil {
+		return nil, coreerr.E("app.signableBytes", "nil manifest", nil)
+	}
 	tmp := *m
 	tmp.Sign = ""
-	return yaml.Marshal(&tmp)
+	tmp.Config = signableConfig(tmp.Config)
+	return yamlMarshalBytes(&tmp)
 }
 
 // verifyWithKey runs the full ed25519 verification against an explicitly
@@ -170,6 +180,23 @@ func signManifest(m *config.ViewManifest, priv ed25519.PrivateKey) error {
 	}
 	m.Sign = base64.StdEncoding.EncodeToString(ed25519.Sign(priv, msg))
 	return nil
+}
+
+// signableConfig returns the subset of Config that participates in the
+// manifest signature. Local provenance keys are excluded because the
+// install/update pipeline mutates them after the upstream manifest is
+// authored and signed.
+func signableConfig(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	out := copyConfig(src)
+	delete(out, "source")
+	delete(out, "category")
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // resolveTrustedKeys gathers every public key the verify step should
