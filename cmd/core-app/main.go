@@ -20,6 +20,12 @@
 //	core-app marketplace search Q # search the local marketplace cache
 //	core-app marketplace install CODE
 //	                              # install a marketplace listing
+//	core-app marketplace update CODE
+//	                              # git pull + re-verify (RFC §6.3)
+//	core-app marketplace remove NAME
+//	                              # remove an installed package
+//	core-app marketplace installed
+//	                              # list installed packages
 //	core-app sdk generate         # generate client SDKs from .core/view.yaml
 //	core-app sdk generate --lang ts --out ./sdk
 //	                              # generate only the TypeScript SDK

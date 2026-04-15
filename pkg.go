@@ -294,12 +294,13 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		return "", coreerr.E("app.PkgUpdate", "no source recorded for "+name, nil)
 	}
 
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	// `wrap:pwa:<url>` is the convention recorded by `core pkg wrap
 	// --pwa` — re-fetch the manifest and rewrite the install in place.
 	if url, ok := stripPrefix(source, "wrap:pwa:"); ok {
-		if ctx == nil {
-			ctx = context.Background()
-		}
 		pwa, err := FetchPWAManifest(ctx, url)
 		if err != nil {
 			return appPath, coreerr.E("app.PkgUpdate", "PWA refetch failed", err)
@@ -323,9 +324,111 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		return appPath, nil
 	}
 
-	// Non-PWA sources (`wrap:web:`, `wrap:electron:`, `marketplace:`)
-	// hand back the install path; the CLI can re-invoke the original
-	// fetch path with the recorded source argument.
+	// `wrap:web:<dir>` — re-wrap the local web directory and reinstall.
+	// The user's source directory may have changed (new index.html etc.)
+	// so we re-run WrapWeb against the recorded path.
+	if dir, ok := stripPrefix(source, "wrap:web:"); ok {
+		if !medium.IsDir(dir) {
+			return appPath, coreerr.E(
+				"app.PkgUpdate",
+				"web source directory missing: "+dir+" (recorded by `pkg wrap --web`)",
+				nil,
+			)
+		}
+		updated, err := WrapWeb(medium, dir, WrapWebOptions{
+			Code:    manifest.Code,
+			Name:    manifest.Name,
+			Version: manifest.Version,
+		})
+		if err != nil {
+			return appPath, coreerr.E("app.PkgUpdate", "web rewrap failed", err)
+		}
+		if _, err := installWrap(medium, updated, PkgInstallOptions{
+			Home:   home,
+			Force:  true,
+			Source: source,
+		}); err != nil {
+			return appPath, err
+		}
+		return appPath, nil
+	}
+
+	// `wrap:electron:<dir|repo>` — for local directories we re-scan the
+	// renderer and rebuild the manifest in place. Repo-based sources
+	// require the user to point at the unpacked directory because the
+	// release-asset download is not idempotent here.
+	if dir, ok := stripPrefix(source, "wrap:electron:"); ok {
+		if !medium.IsDir(dir) {
+			return appPath, coreerr.E(
+				"app.PkgUpdate",
+				"electron source not a directory: "+dir+" (re-extract the release first)",
+				nil,
+			)
+		}
+		pkgPath := core.Path(dir, "package.json")
+		if !medium.Exists(pkgPath) {
+			return appPath, coreerr.E(
+				"app.PkgUpdate",
+				"package.json missing under electron source: "+pkgPath,
+				nil,
+			)
+		}
+		body, err := medium.Read(pkgPath)
+		if err != nil {
+			return appPath, coreerr.E("app.PkgUpdate", "read package.json failed", err)
+		}
+		var pkg ElectronPackageJSON
+		r := core.JSONUnmarshal([]byte(body), &pkg)
+		if !r.OK {
+			cause, _ := r.Value.(error)
+			return appPath, coreerr.E("app.PkgUpdate", "decode package.json failed", cause)
+		}
+		scan, err := ScanElectronRenderer(medium, dir)
+		if err != nil {
+			return appPath, coreerr.E("app.PkgUpdate", "scan renderer failed", err)
+		}
+		updated := WrapElectron(&pkg, scan, WrapElectronOptions{Code: manifest.Code})
+		if updated == nil {
+			return appPath, coreerr.E("app.PkgUpdate", "WrapElectron returned nil", nil)
+		}
+		updated.Version = manifest.Version
+		if updated.Name == "" {
+			updated.Name = manifest.Name
+		}
+		if _, err := installWrap(medium, updated, PkgInstallOptions{
+			Home:   home,
+			Force:  true,
+			Source: source,
+		}); err != nil {
+			return appPath, err
+		}
+		return appPath, nil
+	}
+
+	// `local:<path>` — copy the source tree over the install. Used by
+	// `pkg install <local-dir>` so the operator can iterate without
+	// re-running install manually.
+	if path, ok := stripPrefix(source, "local:"); ok {
+		if !medium.IsDir(path) {
+			return appPath, coreerr.E(
+				"app.PkgUpdate",
+				"local source missing: "+path,
+				nil,
+			)
+		}
+		if _, err := PkgInstallLocal(medium, path, PkgInstallOptions{
+			Home:   home,
+			Force:  true,
+			Source: source,
+		}); err != nil {
+			return appPath, err
+		}
+		return appPath, nil
+	}
+
+	// `marketplace:<code>` and any other remaining sources hand back the
+	// install path; the CLI can dispatch into MarketplaceUpdate which
+	// owns the git pull / re-verify pipeline.
 	return appPath, nil
 }
 

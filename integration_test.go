@@ -28,8 +28,9 @@ import (
 //  4. Modules    — empty (registry is still stubbed; keeps the happy
 //     path honest).
 //  5. Layout     — HLCRF variant with at least one slot → component.
-//  6. Config     — a template file that exists on disk (rendering is
-//     still TODO but the existence check must pass).
+//  6. Config     — a template file that exists on disk; renderTemplate
+//     resolves `{{ .var }}` placeholders against the manifest's
+//     declared vars and writes the rendered file next to the source.
 //  7. Start      — inst.Start must OK and broadcast ActionAppStarted.
 func TestIntegration_Boot_Good(t *testing.T) {
 	dir := t.TempDir()
@@ -142,6 +143,18 @@ func TestIntegration_Boot_Good(t *testing.T) {
 	// GUI actions bypass the gate (no permission keyword in the RFC).
 	if e := inst.Core.Entitled("gui.window.create"); !e.Allowed {
 		t.Errorf("gui.window.create should bypass the gate; reason=%q", e.Reason)
+	}
+
+	// Step 6 sanity — the template should have been rendered next to
+	// the source with the manifest's vars substituted in. The integration
+	// test pins the renderer's behaviour end-to-end so a regression in
+	// applyConfig surfaces here even if the unit tests pass.
+	rendered, rerr := medium.Read(core.Path(dir, "conf", "thumbs.json"))
+	if rerr != nil {
+		t.Fatalf("read rendered template: %v", rerr)
+	}
+	if rendered != `{"size":256,"quality":85}` {
+		t.Errorf("rendered template = %q; want %q", rendered, `{"size":256,"quality":85}`)
 	}
 
 	// Step 7 — Start broadcasts and returns OK. We listen for the

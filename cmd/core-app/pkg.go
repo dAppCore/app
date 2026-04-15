@@ -680,9 +680,12 @@ func runPkgRemove(args []string) int {
 	return 0
 }
 
-// runPkgUpdate handles `pkg update NAME`. Delegates to app.PkgUpdate.
-// Re-fetching / re-wrapping is left to a future iteration — the
-// function currently reports the registered source.
+// runPkgUpdate handles `pkg update NAME`. Auto-dispatches based on the
+// recorded source — marketplace listings go through MarketplaceUpdate
+// (git pull + verify), wrap installs go through PkgUpdate (re-fetch /
+// re-wrap), local installs are re-copied. Mirrors the dispatch logic
+// used by `pkg install` so the user does not need to remember which
+// source type to invoke.
 //
 //	core-app pkg update bitwarden-clients
 func runPkgUpdate(args []string) int {
@@ -695,15 +698,84 @@ func runPkgUpdate(args []string) int {
 		core.Error("pkg update: cannot resolve DIR_HOME")
 		return 1
 	}
+	medium := coreio.Local
+	name := args[0]
+
+	// Inspect the recorded source so we can pick the right update path.
+	// marketplace:<code> goes through MarketplaceUpdate for the git pull
+	// + signature verify; everything else uses PkgUpdate.
+	source := readInstalledSource(medium, home, name)
+	if rest, ok := stripStringPrefix(source, "marketplace:"); ok {
+		root := core.Path(home, ".core", "marketplace")
+		if !medium.IsDir(root) {
+			core.Error("pkg update: marketplace cache missing — run `marketplace fetch` first",
+				"path", root)
+			return 1
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		c := core.New()
+		dest, err := app.MarketplaceUpdate(ctx, c, app.MarketplaceUpdateOptions{
+			Root: root, Home: home, Code: rest,
+		})
+		if err != nil {
+			core.Error("pkg update: marketplace update failed", "name", name, "err", err)
+			return 1
+		}
+		core.Info("updated", "name", name, "dest", dest, "source", source)
+		return 0
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	dest, err := app.PkgUpdate(ctx, coreio.Local, home, args[0])
+	dest, err := app.PkgUpdate(ctx, medium, home, name)
 	if err != nil {
-		core.Error("pkg update: failed", "name", args[0], "err", err)
+		core.Error("pkg update: failed", "name", name, "err", err)
 		return 1
 	}
-	core.Info("update source resolved", "name", args[0], "dest", dest)
+	core.Info("updated", "name", name, "dest", dest)
 	return 0
+}
+
+// readInstalledSource reads the recorded `Config["source"]` field from
+// an installed package's manifest. Returns an empty string when the
+// install has no source recorded so the caller falls through to the
+// default update path.
+//
+//	src := readInstalledSource(coreio.Local, home, "photo-browser")
+func readInstalledSource(medium coreio.Medium, home, name string) string {
+	if medium == nil || home == "" || name == "" {
+		return ""
+	}
+	view := core.Path(home, ".core", app.AppsDirName, name, ".core", "view.yaml")
+	if !medium.Exists(view) {
+		return ""
+	}
+	var manifest config.ViewManifest
+	if err := config.LoadManifest(medium, view, &manifest); err != nil {
+		return ""
+	}
+	if manifest.Config == nil {
+		return ""
+	}
+	if s, ok := manifest.Config["source"].(string); ok {
+		return s
+	}
+	return ""
+}
+
+// stringStripPrefix is the local mirror of the package-private
+// stripPrefix in pkg.go (different package — main here, app there).
+// Returns the substring after `prefix` and a boolean indicating
+// whether the prefix was found.
+//
+//	rest, ok := stripStringPrefix("marketplace:foo", "marketplace:")
+//	// "foo", true
+func stripStringPrefix(s, prefix string) (string, bool) {
+	if !core.HasPrefix(s, prefix) {
+		return "", false
+	}
+	return s[len(prefix):], true
 }
 
 // loadElectronPackageJSON reads the package.json under `dir` and
@@ -798,6 +870,9 @@ func (a pkgWrapArgs) sourceTag() string {
 //
 //	core-app marketplace search photo
 //	core-app marketplace install photo-browser
+//	core-app marketplace update  photo-browser
+//	core-app marketplace remove  photo-browser
+//	core-app marketplace installed
 //	core-app marketplace fetch --url https://forge.lthn.ai/core/marketplace.git
 func runMarketplace(args []string) int {
 	if len(args) == 0 {
@@ -811,6 +886,12 @@ func runMarketplace(args []string) int {
 		return runMarketplaceSearch(rest)
 	case "install":
 		return runPkgInstall(rest) // same path as `pkg install`
+	case "update":
+		return runMarketplaceUpdate(rest)
+	case "remove":
+		return runPkgRemove(rest) // same path as `pkg remove`
+	case "installed":
+		return runMarketplaceInstalled(rest)
 	case "fetch":
 		return runMarketplaceFetch(rest)
 	case "--help", "-h":
@@ -830,7 +911,99 @@ func marketplaceUsage() {
 	core.Println("core-app marketplace <verb> [flags]")
 	core.Println("  search QUERY       search the local marketplace cache")
 	core.Println("  install CODE       install a marketplace listing (same as `pkg install`)")
+	core.Println("  update  CODE       git pull + re-verify the listing's signature (RFC §6.3)")
+	core.Println("  remove  NAME       remove an installed package (same as `pkg remove`)")
+	core.Println("  installed          list installed packages (same as `pkg list`)")
 	core.Println("  fetch --url URL    clone/update the marketplace repo")
+}
+
+// runMarketplaceUpdate dispatches `core-app marketplace update CODE`.
+// Resolves the marketplace cache (`$DIR_HOME/.core/marketplace/`) and
+// delegates to app.MarketplaceUpdate which owns the git pull + verify
+// + rollback pipeline (RFC §6.3).
+//
+//	core-app marketplace update photo-browser
+//	core-app marketplace update --skip-verify photo-browser   # CI-only
+func runMarketplaceUpdate(args []string) int {
+	skipVerify := false
+	code := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--skip-verify":
+			skipVerify = true
+		case "--help", "-h":
+			core.Println("core-app marketplace update [--skip-verify] CODE")
+			core.Println("  CODE          the installed package code (matches `pkg list` NAME)")
+			core.Println("  --skip-verify bypass the post-update signature check (test-only)")
+			return 0
+		default:
+			if core.HasPrefix(args[i], "-") {
+				core.Error("marketplace update: unknown flag", "flag", args[i])
+				return 64
+			}
+			code = args[i]
+		}
+	}
+	if code == "" {
+		core.Error("marketplace update: CODE is required")
+		return 64
+	}
+
+	home := core.Env("DIR_HOME")
+	if home == "" {
+		core.Error("marketplace update: cannot resolve DIR_HOME")
+		return 1
+	}
+	root := core.Path(home, ".core", "marketplace")
+	if !coreio.Local.IsDir(root) {
+		core.Error("marketplace update: marketplace cache missing — run `marketplace fetch` first",
+			"path", root)
+		return 1
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := core.New()
+	dest, err := app.MarketplaceUpdate(ctx, c, app.MarketplaceUpdateOptions{
+		Root:       root,
+		Home:       home,
+		Code:       code,
+		SkipVerify: skipVerify,
+	})
+	if err != nil {
+		core.Error("marketplace update: failed", "code", code, "err", err)
+		return 1
+	}
+	core.Info("updated", "code", code, "dest", dest)
+	return 0
+}
+
+// runMarketplaceInstalled dispatches `core-app marketplace installed`.
+// Equivalent to `core-app pkg list` — prints every installed package as
+// either a tab-separated table or a JSON array.
+//
+//	core-app marketplace installed
+//	core-app marketplace installed --json
+func runMarketplaceInstalled(args []string) int {
+	asJSON := false
+	for _, a := range args {
+		switch a {
+		case "--json":
+			asJSON = true
+		case "--help", "-h":
+			core.Println("core-app marketplace installed [--json]")
+			core.Println("  --json   emit a JSON array of {name, type, version, source, path}")
+			return 0
+		default:
+			core.Error("marketplace installed: unknown flag", "flag", a)
+			return 64
+		}
+	}
+	if asJSON {
+		return runPkgList([]string{"--json"})
+	}
+	return runPkgList(nil)
 }
 
 // runMarketplaceSearch prints `CODE\tTYPE\tVERSION\tDESCRIPTION` rows

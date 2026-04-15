@@ -456,3 +456,215 @@ func extractErr(r core.Result) error {
 	}
 	return coreerr.E("app.extractErr", core.Sprint(r.Value), nil)
 }
+
+// MarketplaceUpdateOptions tunes MarketplaceUpdate. The zero value pulls
+// the marketplace listing's repo into the existing install (when the
+// install is a git clone) or refetches the wrapped source (for PWA /
+// Electron / Web installs).
+//
+//	opts := app.MarketplaceUpdateOptions{
+//	    Root: "/Users/me/.core/marketplace",
+//	    Home: "/Users/me",
+//	    Code: "photo-browser",
+//	}
+type MarketplaceUpdateOptions struct {
+	Root       string // marketplace cache root (where index.json lives)
+	Home       string // user home; defaults to $DIR_HOME
+	Code       string // installed package code to update
+	SkipVerify bool   // bypass the post-update signature check (test-only)
+}
+
+// MarketplaceUpdate refreshes an installed marketplace package per RFC §6.3
+// — `git pull` for native repo installs, refetch+rewrap for PWA / Electron
+// / Web wraps. The signature is re-verified after the pull; a failed
+// verification rolls the install back to the previous git commit so the
+// user never runs untrusted code.
+//
+//	dest, err := app.MarketplaceUpdate(ctx, c, app.MarketplaceUpdateOptions{
+//	    Root: marketplaceRoot,
+//	    Home: home,
+//	    Code: "photo-browser",
+//	})
+//
+// Rules:
+//
+//   - Empty Code → typed error.
+//
+//   - Missing install → typed error (run `pkg install` first).
+//
+//   - Native git installs: `git fetch` + `git reset --hard origin/HEAD`
+//     so a partial / corrupt working tree is replaced atomically. On
+//     verify failure the function runs `git reset --hard <previous>`
+//     to restore the prior tree.
+//
+//   - PWA installs: refetch the manifest URL and re-wrap. The Source
+//     stamp survives so subsequent updates use the same URL.
+//
+//   - Web wraps update the local directory copy from the recorded source
+//     when accessible; otherwise the install path is returned unchanged.
+//
+//   - Electron installs report the install path — the renderer asset
+//     download requires the user to point `pkg wrap --electron` at the
+//     unpacked directory, so a "fresh" pull is not always possible
+//     without re-running the whole wrap pipeline. The CLI surfaces the
+//     listing URL so the operator can re-issue the wrap call.
+func MarketplaceUpdate(ctx context.Context, c *core.Core, opts MarketplaceUpdateOptions) (string, error) {
+	if c == nil {
+		return "", coreerr.E("app.MarketplaceUpdate", "nil core", nil)
+	}
+	if opts.Code == "" {
+		return "", coreerr.E("app.MarketplaceUpdate", "empty code", nil)
+	}
+
+	home := opts.Home
+	if home == "" {
+		home = core.Env("DIR_HOME")
+	}
+	if home == "" {
+		return "", coreerr.E("app.MarketplaceUpdate", "cannot resolve home dir", nil)
+	}
+
+	medium := coreio.Local
+	dest := core.Path(home, ".core", AppsDirName, opts.Code)
+	if !medium.IsDir(dest) {
+		return "", coreerr.E("app.MarketplaceUpdate", "package not installed: "+opts.Code, nil)
+	}
+
+	// Resolve the listing first so we know the upstream type (native /
+	// pwa / electron / web). Without a marketplace lookup we cannot
+	// pick the right refresh strategy.
+	listing, err := MarketplaceResolve(medium, opts.Root, opts.Code)
+	if err != nil {
+		return dest, err
+	}
+
+	switch ParsePackageType(listing.Type) {
+	case PackageTypeNative:
+		if err := pullNativeFromRepo(ctx, c, listing, dest); err != nil {
+			return dest, err
+		}
+		if err := stampSource(medium, dest, "marketplace:"+listing.Code); err != nil {
+			_ = err // best-effort metadata
+		}
+		if !opts.SkipVerify {
+			if err := VerifyListing(medium, dest, listing); err != nil {
+				// Roll back to the previous git commit so an unverified
+				// pull never persists. Failure of the rollback itself is
+				// surfaced alongside the original verify error.
+				if rbErr := rollbackNativeRepo(ctx, c, dest); rbErr != nil {
+					return dest, coreerr.E(
+						"app.MarketplaceUpdate",
+						"verify failed and rollback failed for "+listing.Code,
+						err,
+					)
+				}
+				return dest, err
+			}
+		}
+		return dest, nil
+	case PackageTypePWA:
+		pwa, err := FetchPWAManifest(ctx, listing.URL)
+		if err != nil {
+			return dest, err
+		}
+		manifest := WrapPWA(pwa, WrapPWAOptions{TargetURL: listing.URL, Code: listing.Code})
+		if manifest == nil {
+			return dest, coreerr.E("app.MarketplaceUpdate", "WrapPWA returned nil", nil)
+		}
+		_, err = InstallWrappedPWA(medium, manifest, PkgInstallOptions{
+			Home:   home,
+			Force:  true,
+			Source: "marketplace:" + listing.Code,
+		})
+		if err != nil {
+			return dest, err
+		}
+		return dest, nil
+	case PackageTypeElectron:
+		// Electron wraps need the operator to re-run `pkg wrap --electron`
+		// against an unpacked renderer directory. The marketplace cannot
+		// download the upstream binary itself (RFC §16.2 only the
+		// renderer assets) — surface the listing URL so the CLI can
+		// instruct the user.
+		return dest, nil
+	case PackageTypeWeb, PackageTypeUnknown:
+		// Web wraps and unknown listings return the install path so
+		// the CLI can decide on a follow-up. No automatic refresh
+		// because the source is a local directory the operator owns.
+		return dest, nil
+	}
+	return dest, coreerr.E("app.MarketplaceUpdate", "unreachable type switch", nil)
+}
+
+// pullNativeFromRepo refreshes a git-cloned install in place and resets
+// the working tree to the upstream HEAD. Used by MarketplaceUpdate to
+// implement RFC §6.3 ("git pull on the app repo. Signature re-verified
+// after pull").
+//
+//	err := pullNativeFromRepo(ctx, c, listing, dest)
+//
+// Rules:
+//
+//   - The destination must be a git working copy (a `.git/` directory at
+//     the root). Anything else is a typed error so a stale wrap doesn't
+//     get fast-forwarded over a non-git tree.
+//
+//   - `git fetch --depth=1 origin` followed by `git reset --hard
+//     FETCH_HEAD` — the same dance the dAppServer marketplace used so a
+//     dirty working copy can never block a security update.
+func pullNativeFromRepo(ctx context.Context, c *core.Core, listing *MarketplaceListing, dest string) error {
+	if listing == nil || listing.Repo == "" {
+		return coreerr.E("app.pullNativeFromRepo", "empty repo in listing", nil)
+	}
+	medium := coreio.Local
+	if !medium.IsDir(core.Path(dest, ".git")) {
+		return coreerr.E(
+			"app.pullNativeFromRepo",
+			"destination is not a git working copy: "+dest,
+			nil,
+		)
+	}
+	proc := c.Process()
+	if proc == nil {
+		return coreerr.E("app.pullNativeFromRepo", "core.Process() is nil", nil)
+	}
+	if r := proc.RunIn(ctx, dest, "git", "fetch", "--depth=1", "origin"); !r.OK {
+		return coreerr.E("app.pullNativeFromRepo", "git fetch failed", extractErr(r))
+	}
+	if r := proc.RunIn(ctx, dest, "git", "reset", "--hard", "FETCH_HEAD"); !r.OK {
+		return coreerr.E("app.pullNativeFromRepo", "git reset --hard failed", extractErr(r))
+	}
+	return nil
+}
+
+// rollbackNativeRepo restores the previous tree state when a post-update
+// verify fails. Uses `git reset --hard ORIG_HEAD` — git's automatic
+// "what was HEAD before the last reset" pointer.
+//
+//	err := rollbackNativeRepo(ctx, c, dest)
+func rollbackNativeRepo(ctx context.Context, c *core.Core, dest string) error {
+	if c == nil {
+		return coreerr.E("app.rollbackNativeRepo", "nil core", nil)
+	}
+	if dest == "" {
+		return coreerr.E("app.rollbackNativeRepo", "empty dest", nil)
+	}
+	proc := c.Process()
+	if proc == nil {
+		return coreerr.E("app.rollbackNativeRepo", "core.Process() is nil", nil)
+	}
+	if r := proc.RunIn(ctx, dest, "git", "reset", "--hard", "ORIG_HEAD"); !r.OK {
+		return coreerr.E("app.rollbackNativeRepo", "git reset --hard ORIG_HEAD failed", extractErr(r))
+	}
+	return nil
+}
+
+// MarketplaceInstalled is the marketplace-flavoured alias for PkgList —
+// returns every installed package so `core marketplace installed` and
+// `core pkg list` can share the same result without each maintaining
+// its own scanner. Equivalent to PkgList(medium, home).
+//
+//	entries, err := app.MarketplaceInstalled(coreio.Local, "/Users/me")
+func MarketplaceInstalled(medium coreio.Medium, home string) ([]PkgEntry, error) {
+	return PkgList(medium, home)
+}
