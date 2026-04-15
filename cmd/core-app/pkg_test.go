@@ -408,6 +408,47 @@ func TestPkg_runPkgInstall_TypeOverride(t *testing.T) {
 	t.Fatal("no web-typed install found after --type web override")
 }
 
+// TestPkg_runPkgInstall_TypeOverride_MarketplaceCode_Good confirms that
+// a plain marketplace code stays on the marketplace install path even
+// when `--type` is supplied. The override is only meaningful for local
+// dirs / URLs / repo refs; a code like `play` must not be reinterpreted
+// as `./play` on disk.
+func TestPkg_runPkgInstall_TypeOverride_MarketplaceCode_Good(t *testing.T) {
+	body := `{"name":"Play","short_name":"play","start_url":"/"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("CORE_HOME", home)
+	if core.Env("DIR_HOME") != home {
+		t.Skip("CORE_HOME mid-process override not honoured by core.Env; marketplace override path validated by app wiring")
+	}
+
+	root := core.Path(home, ".core", "marketplace")
+	if err := coreio.Local.EnsureDir(core.Path(root, "apps")); err != nil {
+		t.Fatalf("EnsureDir apps: %v", err)
+	}
+	if err := coreio.Local.Write(core.Path(root, app.MarketplaceIndexFileName),
+		`{"version":1,"categories":["apps"]}`); err != nil {
+		t.Fatalf("Write index.json: %v", err)
+	}
+	if err := coreio.Local.Write(core.Path(root, "apps", app.MarketplaceIndexFileName),
+		`{"version":1,"category":"apps","entries":[{"code":"play","type":"pwa","url":"`+srv.URL+`/manifest.json"}]}`); err != nil {
+		t.Fatalf("Write apps/index.json: %v", err)
+	}
+
+	if rc := runPkg([]string{"install", "--type", "native", "play"}); rc != 0 {
+		t.Fatalf("--type native marketplace code rc = %d; want 0", rc)
+	}
+
+	viewPath := core.Path(home, ".core", app.AppsDirName, "play", ".core", "view.yaml")
+	if !coreio.Local.Exists(viewPath) {
+		t.Fatalf("marketplace override install produced no view.yaml at %s", viewPath)
+	}
+}
+
 // TestPkg_runPkgInstall_Good — auto-detects a PWA URL and installs it
 // without needing a marketplace cache. Validates the
 // ParseInstallSpec → runPkgInstallPWA wiring end-to-end inside the CLI.
@@ -1061,6 +1102,28 @@ func TestPkg_runPkgInstallMarketplace_Ugly(t *testing.T) {
 
 	if rc := runPkgInstallMarketplace(t.Context(), home, "definitely-not-listed"); rc == 0 {
 		t.Error("missing listing should produce non-zero rc")
+	}
+}
+
+// TestPkg_runPkgUpdate_Good — `--help` returns 0 like the rest of the
+// pkg verbs.
+func TestPkg_runPkgUpdate_Good(t *testing.T) {
+	if rc := runPkgUpdate([]string{"--help"}); rc != 0 {
+		t.Errorf("runPkgUpdate --help rc = %d; want 0", rc)
+	}
+}
+
+// TestPkg_runPkgUpdate_Bad rejects missing NAME, unknown flags, and
+// extra positional arguments with EX_USAGE.
+func TestPkg_runPkgUpdate_Bad(t *testing.T) {
+	if rc := runPkgUpdate(nil); rc != 64 {
+		t.Errorf("runPkgUpdate(nil) rc = %d; want 64", rc)
+	}
+	if rc := runPkgUpdate([]string{"--what"}); rc != 64 {
+		t.Errorf("runPkgUpdate unknown flag rc = %d; want 64", rc)
+	}
+	if rc := runPkgUpdate([]string{"one", "two"}); rc != 64 {
+		t.Errorf("runPkgUpdate extra arg rc = %d; want 64", rc)
 	}
 }
 

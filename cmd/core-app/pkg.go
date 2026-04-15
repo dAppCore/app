@@ -777,6 +777,15 @@ func runPkgInstall(args []string) int {
 	spec := app.ParseInstallSpec(src)
 	spec = resolveInstallSpecAgainstMarketplace(home, spec)
 	if override != app.PackageTypeUnknown {
+		// A plain package code (`photo-browser`, `core/play`) is not an
+		// ambiguous filesystem / URL / repo source — the marketplace index
+		// is the only authority that can resolve it. Keep that path even
+		// when the operator supplied `--type`; otherwise `--type native
+		// photo-browser` gets misrouted into a local-path install against a
+		// non-existent "./photo-browser" directory.
+		if spec.Code != "" && spec.Path == "" && spec.URL == "" && spec.Repo == "" {
+			return runPkgInstallMarketplace(ctx, home, spec.Code)
+		}
 		spec.Type = override
 		// When the operator forces a type, dispatch on it directly so a
 		// local path that auto-detects as native can still be re-wrapped
@@ -1237,7 +1246,26 @@ func runPkgRemove(args []string) int {
 //
 //	core-app pkg update bitwarden-clients
 func runPkgUpdate(args []string) int {
-	if len(args) == 0 {
+	name := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--help", "-h":
+			core.Println("core-app pkg update NAME")
+			core.Println("  NAME  the installed package code (matches `pkg list` NAME)")
+			return 0
+		default:
+			if core.HasPrefix(args[i], "-") {
+				core.Error("pkg update: unknown flag", "flag", args[i])
+				return 64
+			}
+			if name != "" {
+				core.Error("pkg update: only one NAME supported", "extra", args[i])
+				return 64
+			}
+			name = args[i]
+		}
+	}
+	if name == "" {
 		core.Error("pkg update: NAME is required")
 		return 64
 	}
@@ -1247,7 +1275,6 @@ func runPkgUpdate(args []string) int {
 		return 1
 	}
 	medium := coreio.Local
-	name := args[0]
 
 	// Inspect the recorded source so we can pick the right update path.
 	// marketplace:<code> goes through MarketplaceUpdate for the git pull
