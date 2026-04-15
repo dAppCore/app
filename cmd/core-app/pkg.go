@@ -738,6 +738,9 @@ func runPkgInstall(args []string) int {
 			if spec.Path != "" {
 				return runPkgInstallLocalAs(home, spec.Path, app.PackageTypePWA)
 			}
+			if spec.Repo != "" {
+				return runPkgInstallRepoPWA(ctx, home, spec.Repo)
+			}
 			if spec.URL == "" {
 				spec.URL = src
 			}
@@ -769,7 +772,7 @@ func runPkgInstall(args []string) int {
 	case app.PackageTypePWA:
 		return runPkgInstallPWA(ctx, home, spec.URL)
 	case app.PackageTypeElectron:
-		return runPkgInstallElectron(ctx, home, spec.Repo)
+		return runPkgInstallRepo(ctx, home, spec.Repo)
 	case app.PackageTypeUnknown:
 		// Local directory — the path was set by ParseInstallSpec.
 		if spec.Path != "" {
@@ -850,7 +853,10 @@ func runPkgInstallLocalAs(home, path string, kind app.PackageType) int {
 			return 1
 		}
 		dest, err := app.InstallWrappedPWA(medium, manifest, app.PkgInstallOptions{
-			Home: home, Force: true, Source: "wrap:pwa:" + manifestPath,
+			Home:        home,
+			Force:       true,
+			Source:      "wrap:pwa:" + manifestPath,
+			AssetSource: path,
 		})
 		if err != nil {
 			core.Error("pkg install local: PWA install failed", "err", err)
@@ -904,6 +910,91 @@ func runPkgInstallLocalAs(home, path string, kind app.PackageType) int {
 	}
 }
 
+// runPkgInstallRepo auto-detects whether a GitHub-style repo is a PWA
+// source tree or an Electron app. PWA repos are wrapped from the source
+// archive; Electron repos continue through the release-asset path.
+func runPkgInstallRepo(ctx context.Context, home, ref string) int {
+	scratch, ok := repoScratchDir(home, ref)
+	if !ok {
+		core.Error("pkg install: cannot parse repo reference", "ref", ref)
+		return 1
+	}
+	root, err := app.FetchRepoSource(ctx, coreio.Local, ref, scratch)
+	if coreio.Local.IsDir(scratch) {
+		defer func() { _ = coreio.Local.DeleteAll(scratch) }()
+	}
+	if err != nil {
+		core.Error("pkg install: repo source fetch failed", "repo", ref, "err", err)
+		return 1
+	}
+
+	switch kind := app.DetectPackageType(coreio.Local, root); kind {
+	case app.PackageTypePWA:
+		return runPkgInstallRepoPWAFromRoot(home, ref, root)
+	case app.PackageTypeElectron:
+		return runPkgInstallElectron(ctx, home, ref)
+	default:
+		core.Error("pkg install: repo type unsupported",
+			"repo", ref,
+			"detected", kind.String(),
+			"hint", "auto-detect supports Electron and PWA repos")
+		return 1
+	}
+}
+
+// runPkgInstallRepoPWA forces the PWA wrap path for a GitHub-style repo
+// reference.
+func runPkgInstallRepoPWA(ctx context.Context, home, ref string) int {
+	scratch, ok := repoScratchDir(home, ref)
+	if !ok {
+		core.Error("pkg install: cannot parse repo reference", "ref", ref)
+		return 1
+	}
+	root, err := app.FetchRepoSource(ctx, coreio.Local, ref, scratch)
+	if coreio.Local.IsDir(scratch) {
+		defer func() { _ = coreio.Local.DeleteAll(scratch) }()
+	}
+	if err != nil {
+		core.Error("pkg install: repo source fetch failed", "repo", ref, "err", err)
+		return 1
+	}
+	return runPkgInstallRepoPWAFromRoot(home, ref, root)
+}
+
+func runPkgInstallRepoPWAFromRoot(home, ref, root string) int {
+	manifestPath := core.Path(root, "manifest.json")
+	body, err := coreio.Local.Read(manifestPath)
+	if err != nil {
+		core.Error("pkg install: read repo manifest.json failed", "path", manifestPath, "err", err)
+		return 1
+	}
+	var pwa app.PWAManifest
+	r := core.JSONUnmarshal([]byte(body), &pwa)
+	if !r.OK {
+		core.Error("pkg install: decode repo manifest.json failed", "path", manifestPath, "err", r.Value)
+		return 1
+	}
+	manifest := app.WrapPWA(&pwa, app.WrapPWAOptions{
+		TargetURL: app.ResolvePWAAppURL(manifestPath, &pwa),
+	})
+	if manifest == nil {
+		core.Error("pkg install: WrapPWA returned nil")
+		return 1
+	}
+	dest, err := app.InstallWrappedPWA(coreio.Local, manifest, app.PkgInstallOptions{
+		Home:        home,
+		Force:       true,
+		Source:      "wrap:pwa:" + ref,
+		AssetSource: root,
+	})
+	if err != nil {
+		core.Error("pkg install: repo PWA install failed", "repo", ref, "err", err)
+		return 1
+	}
+	core.Info("installed", "code", manifest.Code, "type", "pwa", "dest", dest)
+	return 0
+}
+
 // runPkgInstallElectron is the install-side counterpart to
 // runPkgWrapElectron's repo branch — it fetches the latest GitHub
 // release, downloads the renderer asset to a scratch directory and
@@ -942,6 +1033,14 @@ func runPkgInstallElectron(ctx context.Context, home, ref string) int {
 	}
 	core.Info("installed", "code", manifest.Code, "type", "electron", "dest", dest)
 	return 0
+}
+
+func repoScratchDir(home, ref string) (string, bool) {
+	_, _, repo, ok := app.ParseGitHubRepo(ref)
+	if !ok {
+		return "", false
+	}
+	return core.Path(home, ".core", ".wrap", "repo-"+repo), true
 }
 
 // isExtractable reports whether the path's suffix is one of the

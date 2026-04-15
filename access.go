@@ -165,7 +165,7 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if m.Permissions.Network {
 			return nil
 		}
-		if matchExact(m.Permissions.Net, arg) {
+		if matchNet(m.Permissions.Net, arg) {
 			return nil
 		}
 		return coreerr.E(
@@ -355,6 +355,20 @@ func matchPrefix(list []string, arg string) bool {
 func matchExact(list []string, arg string) bool {
 	for _, entry := range list {
 		if entry == arg {
+			return true
+		}
+	}
+	return false
+}
+
+// matchNet mirrors matchExact but honours the RFC §16.2 wildcard form
+// `net: ["*"]` used by wrapped Electron apps with unrestricted
+// networking needs.
+//
+//	matchNet([]string{"*"}, "api.example.com:443") // true
+func matchNet(list []string, arg string) bool {
+	for _, entry := range list {
+		if entry == "*" || entry == arg {
 			return true
 		}
 	}

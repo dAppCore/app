@@ -475,6 +475,9 @@ func resolvePWAStartURL(targetURL, startURL string) string {
 	if startURL == "" {
 		return targetURL
 	}
+	if isLocalSource(targetURL) {
+		return resolveLocalPWAStartPath(targetURL, startURL)
+	}
 
 	ref, err := neturl.Parse(startURL)
 	if err == nil && ref.IsAbs() {
@@ -494,6 +497,24 @@ func resolvePWAStartURL(targetURL, startURL string) string {
 		}
 	}
 	return base.ResolveReference(ref).String()
+}
+
+// resolveLocalPWAStartPath resolves a local manifest path plus a PWA
+// start_url into the local entry file beneath the same source tree.
+//
+//	resolveLocalPWAStartPath("/tmp/app/manifest.json", "/index.html")
+func resolveLocalPWAStartPath(targetURL, startURL string) string {
+	base := targetURL
+	low := core.Lower(base)
+	if core.HasSuffix(low, ".json") || core.HasSuffix(low, ".webmanifest") {
+		base = core.PathDir(base)
+	}
+	startURL = core.TrimPrefix(startURL, "./")
+	startURL = core.TrimPrefix(startURL, "/")
+	if startURL == "" || startURL == "." {
+		return base
+	}
+	return core.Path(base, startURL)
 }
 
 // slugify turns a display name into a kebab-case ASCII slug suitable

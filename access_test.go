@@ -153,6 +153,36 @@ func TestAccess_matchExact_Ugly(t *testing.T) {
 	}
 }
 
+// TestAccess_matchNet_Good — exact entries still match and the RFC
+// wildcard form `net: ["*"]` grants any host:port.
+func TestAccess_matchNet_Good(t *testing.T) {
+	if !matchNet([]string{"api.example.com:443"}, "api.example.com:443") {
+		t.Error("exact host:port should match")
+	}
+	if !matchNet([]string{"*"}, "api.example.com:443") {
+		t.Error("wildcard net permission should match any host")
+	}
+}
+
+// TestAccess_matchNet_Bad — different hosts without a wildcard are
+// still denied.
+func TestAccess_matchNet_Bad(t *testing.T) {
+	if matchNet([]string{"api.example.com:443"}, "api.example.com:444") {
+		t.Error("different port should not match without wildcard")
+	}
+}
+
+// TestAccess_matchNet_Ugly — nil / empty inputs stay false and do not
+// panic.
+func TestAccess_matchNet_Ugly(t *testing.T) {
+	if matchNet(nil, "anything") {
+		t.Error("nil list should not match")
+	}
+	if matchNet([]string{""}, "anything") {
+		t.Error("empty entry should not match")
+	}
+}
+
 // TestAccess_AccessMode_String_Good — enum values round-trip through
 // their lowercase name.
 func TestAccess_AccessMode_String_Good(t *testing.T) {

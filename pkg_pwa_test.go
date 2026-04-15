@@ -287,6 +287,30 @@ func TestPkgPwa_WrapPWA_StartURLResolution_Good(t *testing.T) {
 	}
 }
 
+// TestPkgPwa_WrapPWA_StartURLResolution_Local confirms that local PWA
+// sources resolve `start_url` inside the same source tree rather than
+// treating `/` as the filesystem root.
+func TestPkgPwa_WrapPWA_StartURLResolution_Local(t *testing.T) {
+	src := &app.PWAManifest{
+		Name:     "Local Port App",
+		StartURL: "/next/index.html",
+	}
+	resolved := app.ResolvePWAAppURL("/tmp/local-app/manifest.json", src)
+	if resolved != "/tmp/local-app/next/index.html" {
+		t.Fatalf("ResolvePWAAppURL(local) = %q; want /tmp/local-app/next/index.html", resolved)
+	}
+	m := app.WrapPWA(src, app.WrapPWAOptions{TargetURL: resolved})
+	if m == nil {
+		t.Fatal("WrapPWA returned nil")
+	}
+	if got := m.Config["url"]; got != resolved {
+		t.Errorf("Config[url] = %v; want %q", got, resolved)
+	}
+	if len(m.Permissions.Net) != 0 {
+		t.Errorf("Permissions.Net = %v; want no network declaration for local source", m.Permissions.Net)
+	}
+}
+
 // TestPkgPwa_WritePWAWrap_Good confirms the wrapped manifest lands on
 // disk at `<dest>/.core/view.yaml` and parses back cleanly.
 func TestPkgPwa_WritePWAWrap_Good(t *testing.T) {

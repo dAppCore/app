@@ -710,12 +710,50 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 	// `wrap:pwa:<url>` is the convention recorded by `core pkg wrap
 	// --pwa` — re-fetch the manifest and rewrite the install in place.
 	if url, ok := stripPrefix(source, "wrap:pwa:"); ok {
-		pwa, err := loadPWASource(ctx, medium, url)
-		if err != nil {
-			return appPath, coreerr.E("app.PkgUpdate", "PWA refetch failed", err)
+		var (
+			pwa         *PWAManifest
+			assetSource string
+			targetURL   string
+			err         error
+		)
+		if !core.HasPrefix(url, "http://") && !core.HasPrefix(url, "https://") {
+			_, _, _, isRepo := ParseGitHubRepo(url)
+			if isRepo {
+				scratch := core.Path(home, ".core", ".wrap", "repo-"+slugify(coalesce(manifest.Code, url)))
+				pwa, assetSource, err = LoadRepoPWAManifest(ctx, medium, url, scratch)
+				if medium.IsDir(scratch) {
+					defer func() { _ = medium.DeleteAll(scratch) }()
+				}
+				if err != nil {
+					return appPath, coreerr.E("app.PkgUpdate", "PWA repo refresh failed", err)
+				}
+				targetURL = core.Path(assetSource, "manifest.json")
+			} else {
+				pwa, err = loadPWASource(ctx, medium, url)
+				if err != nil {
+					return appPath, coreerr.E("app.PkgUpdate", "PWA refetch failed", err)
+				}
+				if path, ok := localPWASourcePath(medium, url); ok {
+					assetSource = core.PathDir(path)
+					targetURL = path
+				} else {
+					targetURL = ResolvePWAAppURL(url, pwa)
+				}
+			}
+		} else {
+			pwa, err = loadPWASource(ctx, medium, url)
+			if err != nil {
+				return appPath, coreerr.E("app.PkgUpdate", "PWA refetch failed", err)
+			}
+			if path, ok := localPWASourcePath(medium, url); ok {
+				assetSource = core.PathDir(path)
+				targetURL = path
+			} else {
+				targetURL = ResolvePWAAppURL(url, pwa)
+			}
 		}
 		updated := WrapPWA(pwa, WrapPWAOptions{
-			TargetURL: ResolvePWAAppURL(url, pwa),
+			TargetURL: ResolvePWAAppURL(targetURL, pwa),
 			Code:      manifest.Code,
 			Version:   manifest.Version,
 		})
@@ -723,9 +761,10 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 			return appPath, coreerr.E("app.PkgUpdate", "WrapPWA returned nil", nil)
 		}
 		_, err = installWrap(medium, updated, PkgInstallOptions{
-			Home:   home,
-			Force:  true,
-			Source: source,
+			Home:        home,
+			Force:       true,
+			Source:      source,
+			AssetSource: assetSource,
 		})
 		if err != nil {
 			return appPath, err
@@ -858,8 +897,7 @@ func loadPWASource(ctx context.Context, medium coreio.Medium, source string) (*P
 	if medium == nil {
 		medium = coreio.Local
 	}
-	path := trimLocalPrefix(source)
-	if isLocalSource(source) || medium.Exists(path) {
+	if path, ok := localPWASourcePath(medium, source); ok {
 		body, err := medium.Read(path)
 		if err != nil {
 			return nil, coreerr.E("app.loadPWASource", "read local manifest failed", err)
@@ -873,6 +911,21 @@ func loadPWASource(ctx context.Context, medium coreio.Medium, source string) (*P
 		return &pwa, nil
 	}
 	return FetchPWAManifest(ctx, source)
+}
+
+// localPWASourcePath returns the local manifest.json path for a wrapped
+// PWA source when the source points at the filesystem.
+//
+//	path, ok := localPWASourcePath(coreio.Local, "file:///tmp/app/manifest.json")
+func localPWASourcePath(medium coreio.Medium, source string) (string, bool) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	path := trimLocalPrefix(source)
+	if isLocalSource(source) || medium.Exists(path) {
+		return path, true
+	}
+	return "", false
 }
 
 // installElectronRepoSource wraps the latest renderer asset from a

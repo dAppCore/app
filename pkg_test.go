@@ -310,6 +310,41 @@ func TestPkg_InstallWrappedPWA_Ugly(t *testing.T) {
 	}
 }
 
+// TestPkg_InstallWrappedPWA_AssetsCopied confirms that wrapped local
+// PWAs carry their asset tree into the installed package, not just the
+// generated manifest.
+func TestPkg_InstallWrappedPWA_AssetsCopied(t *testing.T) {
+	home := t.TempDir()
+	srcDir := t.TempDir()
+	medium := coreio.Local
+
+	if err := medium.Write(core.Path(srcDir, "manifest.json"), `{"name":"Play","short_name":"play","start_url":"/index.html"}`); err != nil {
+		t.Fatalf("Write manifest.json: %v", err)
+	}
+	if err := medium.Write(core.Path(srcDir, "index.html"), "<html>play</html>"); err != nil {
+		t.Fatalf("Write index.html: %v", err)
+	}
+
+	manifest := &config.ViewManifest{
+		Code:    "play",
+		Name:    "Play",
+		Version: "0.1.0",
+		Config:  map[string]any{"type": "pwa"},
+	}
+	dest, err := app.InstallWrappedPWA(medium, manifest, app.PkgInstallOptions{
+		Home:        home,
+		Force:       true,
+		Source:      "wrap:pwa:" + core.Path(srcDir, "manifest.json"),
+		AssetSource: srcDir,
+	})
+	if err != nil {
+		t.Fatalf("InstallWrappedPWA with assets: %v", err)
+	}
+	if !medium.Exists(core.Path(dest, "manifest.json")) || !medium.Exists(core.Path(dest, "index.html")) {
+		t.Fatalf("PWA assets were not copied into %s", dest)
+	}
+}
+
 // TestPkg_InstallWrappedElectron_Good installs a wrapped Electron app
 // and confirms the view.yaml lands in the expected place. Mirrors the
 // PWA wrap path so the three install entry points share their
@@ -576,6 +611,9 @@ func TestPkg_PkgUpdate_LocalPWA(t *testing.T) {
 	if err := medium.Write(manifestPath, `{"name":"Local V1","short_name":"local-v","start_url":"/"}`); err != nil {
 		t.Fatalf("Write manifest.json: %v", err)
 	}
+	if err := medium.Write(core.Path(srcDir, "index.html"), "<html>v1</html>"); err != nil {
+		t.Fatalf("Write index.html: %v", err)
+	}
 	writeInstalled(t, medium, home, "local-v", &config.ViewManifest{
 		Code:    "local-v",
 		Name:    "Local V0",
@@ -588,6 +626,9 @@ func TestPkg_PkgUpdate_LocalPWA(t *testing.T) {
 	if err := medium.Write(manifestPath, `{"name":"Local V2","short_name":"local-v","start_url":"/next"}`); err != nil {
 		t.Fatalf("Rewrite manifest.json: %v", err)
 	}
+	if err := medium.Write(core.Path(srcDir, "index.html"), "<html>v2</html>"); err != nil {
+		t.Fatalf("Rewrite index.html: %v", err)
+	}
 	if _, err := app.PkgUpdate(context.Background(), medium, home, "local-v"); err != nil {
 		t.Fatalf("PkgUpdate (local PWA): %v", err)
 	}
@@ -599,6 +640,9 @@ func TestPkg_PkgUpdate_LocalPWA(t *testing.T) {
 	}
 	if round.Name != "Local V2" {
 		t.Errorf("after local PkgUpdate Name = %q; want Local V2", round.Name)
+	}
+	if !medium.Exists(core.Path(home, ".core", app.AppsDirName, "local-v", "index.html")) {
+		t.Fatal("PkgUpdate (local PWA) did not copy the asset tree into the install")
 	}
 }
 

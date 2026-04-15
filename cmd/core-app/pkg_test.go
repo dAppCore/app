@@ -373,6 +373,9 @@ func TestPkg_runPkgInstallLocal_Good(t *testing.T) {
 	if err := medium.Write(core.Path(src, "manifest.json"), manifest); err != nil {
 		t.Fatalf("write manifest.json: %v", err)
 	}
+	if err := medium.Write(core.Path(src, "index.html"), "<html>local play</html>"); err != nil {
+		t.Fatalf("write index.html: %v", err)
+	}
 
 	rc := runPkgInstallLocal(home, src)
 	if rc != 0 {
@@ -381,6 +384,9 @@ func TestPkg_runPkgInstallLocal_Good(t *testing.T) {
 	viewPath := core.Path(home, ".core", app.AppsDirName, "localplay", ".core", "view.yaml")
 	if !medium.Exists(viewPath) {
 		t.Errorf("local PWA install produced no view.yaml at %s", viewPath)
+	}
+	if !medium.Exists(core.Path(home, ".core", app.AppsDirName, "localplay", "index.html")) {
+		t.Fatalf("local PWA install did not copy index.html into the install tree")
 	}
 }
 
