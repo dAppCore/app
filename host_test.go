@@ -4,6 +4,8 @@ package app
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/hex"
 	"testing"
 
 	core "dappco.re/go/core"
@@ -40,6 +42,40 @@ func newHostTestFixture(t *testing.T, code string) string {
 	return home
 }
 
+// newSignedHostTestFixture writes a signed installed plugin and returns
+// the host home, the install root, the public key hex and the private
+// key used to sign the manifest.
+func newSignedHostTestFixture(t *testing.T, code, name string) (string, string, string, ed25519.PrivateKey) {
+	t.Helper()
+	home := t.TempDir()
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	manifest := config.ViewManifest{
+		Code:    code,
+		Name:    name,
+		Version: "0.1.0",
+		Layout:  "C",
+	}
+	if err := SignManifest(&manifest, priv); err != nil {
+		t.Fatalf("SignManifest: %v", err)
+	}
+	body, err := yamlMarshal(&manifest)
+	if err != nil {
+		t.Fatalf("yamlMarshal: %v", err)
+	}
+	root := core.Path(home, ".core", AppsDirName, code)
+	dest := core.Path(root, ".core", "view.yaml")
+	if err := coreio.Local.EnsureDir(core.PathDir(dest)); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := coreio.Local.Write(dest, body); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	return home, root, hex.EncodeToString(pub), priv
+}
+
 // TestHost_Launch_Good — a fresh host launches an installed plugin
 // by code and registers it under Running().
 func TestHost_Launch_Good(t *testing.T) {
@@ -61,6 +97,25 @@ func TestHost_Launch_Good(t *testing.T) {
 	}
 }
 
+// TestHost_Launch_ProdVerify_Good — prod hosts verify the plugin
+// manifest against the configured trust key before PluginBoot.
+func TestHost_Launch_ProdVerify_Good(t *testing.T) {
+	home, _, pubHex, _ := newSignedHostTestFixture(t, "signed-host", "Signed Host")
+	h := NewHost(HostOptions{
+		Home:           home,
+		Mode:           ModeProd,
+		PublicKeyHex:   pubHex,
+		DisableKeyLoad: true,
+	})
+	inst, err := h.Launch(context.Background(), "signed-host", LaunchOptions{})
+	if err != nil {
+		t.Fatalf("Launch(prod verify): %v", err)
+	}
+	if inst == nil || inst.Manifest.Code != "signed-host" {
+		t.Fatalf("Launch returned wrong instance: %#v", inst)
+	}
+}
+
 // TestHost_Launch_Bad — re-launching the same code without a prior
 // Stop returns a typed error so a confused UI can't clobber the
 // existing Instance.
@@ -75,12 +130,106 @@ func TestHost_Launch_Bad(t *testing.T) {
 	}
 }
 
+// TestHost_Launch_ProdVerify_Bad — a prod host refuses to launch a
+// signed plugin when no trust root is configured.
+func TestHost_Launch_ProdVerify_Bad(t *testing.T) {
+	home, _, _, _ := newSignedHostTestFixture(t, "untrusted-host", "Untrusted Host")
+	h := NewHost(HostOptions{
+		Home:           home,
+		Mode:           ModeProd,
+		DisableKeyLoad: true,
+	})
+	if _, err := h.Launch(context.Background(), "untrusted-host", LaunchOptions{}); err == nil {
+		t.Fatal("prod Launch without trust root should fail")
+	}
+}
+
 // TestHost_Launch_Ugly — empty code is rejected up front so the host
 // never registers an entry under the empty string.
 func TestHost_Launch_Ugly(t *testing.T) {
 	h := NewHost(HostOptions{Home: t.TempDir(), Mode: ModeDev})
 	if _, err := h.Launch(context.Background(), "", LaunchOptions{}); err == nil {
 		t.Error("empty code should produce a typed error")
+	}
+}
+
+// TestHost_Launch_StartOverride_Good — LaunchOptions.Start is honoured
+// even when the caller did not also supply a parsed manifest.
+func TestHost_Launch_StartOverride_Good(t *testing.T) {
+	project := t.TempDir()
+	manifest := config.ViewManifest{
+		Code:    "override-plugin",
+		Name:    "Override Plugin",
+		Version: "0.1.0",
+		Layout:  "C",
+	}
+	body, err := yamlMarshal(&manifest)
+	if err != nil {
+		t.Fatalf("yamlMarshal: %v", err)
+	}
+	path := core.Path(project, ".core", "view.yaml")
+	if err := coreio.Local.EnsureDir(core.PathDir(path)); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := coreio.Local.Write(path, body); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	h := NewHost(HostOptions{Home: t.TempDir(), Mode: ModeDev})
+	inst, err := h.Launch(context.Background(), "override-plugin", LaunchOptions{
+		Start: project,
+	})
+	if err != nil {
+		t.Fatalf("Launch(Start override): %v", err)
+	}
+	if inst.Root != project {
+		t.Errorf("Root = %q; want %q", inst.Root, project)
+	}
+}
+
+// TestHost_Launch_ProdPrefersCompiled_Good — prod hosts use the signed
+// core.json artifact when present, even if view.yaml has changed since
+// the last compile.
+func TestHost_Launch_ProdPrefersCompiled_Good(t *testing.T) {
+	home, root, pubHex, priv := newSignedHostTestFixture(t, "compiled-host", "Compiled Name")
+
+	var manifest config.ViewManifest
+	viewPath := core.Path(root, ".core", "view.yaml")
+	if err := LoadViewManifest(coreio.Local, viewPath, &manifest); err != nil {
+		t.Fatalf("LoadViewManifest: %v", err)
+	}
+	cm, err := Compile(&manifest, CompileOptions{})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if err := WriteCompiled(coreio.Local, root, cm); err != nil {
+		t.Fatalf("WriteCompiled: %v", err)
+	}
+
+	manifest.Name = "Source Name"
+	if err := SignManifest(&manifest, priv); err != nil {
+		t.Fatalf("SignManifest(view): %v", err)
+	}
+	body, err := yamlMarshal(&manifest)
+	if err != nil {
+		t.Fatalf("yamlMarshal(view): %v", err)
+	}
+	if err := coreio.Local.Write(viewPath, body); err != nil {
+		t.Fatalf("Write(view): %v", err)
+	}
+
+	h := NewHost(HostOptions{
+		Home:           home,
+		Mode:           ModeProd,
+		PublicKeyHex:   pubHex,
+		DisableKeyLoad: true,
+	})
+	inst, err := h.Launch(context.Background(), "compiled-host", LaunchOptions{})
+	if err != nil {
+		t.Fatalf("Launch(prod compiled): %v", err)
+	}
+	if inst.Manifest.Name != "Compiled Name" {
+		t.Errorf("Manifest.Name = %q; want %q", inst.Manifest.Name, "Compiled Name")
 	}
 }
 

@@ -43,6 +43,19 @@ type HostOptions struct {
 	// coreio.Local so production hosts pick up the real filesystem; tests
 	// hand in a MockMedium to exercise the host without touching disk.
 	Medium coreio.Medium
+	// PublicKeyHex is an optional explicit hex-encoded ed25519 trust key
+	// used when verifying plugin manifests in prod mode. Mirrors Boot's
+	// WithPublicKey option for hosts that already know the marketplace /
+	// vendor key they want to trust.
+	PublicKeyHex string
+	// TrustedKeysDir overrides the directory scanned for `*.pub` trust
+	// roots when verifying plugin manifests in prod mode. Empty falls
+	// back to `$DIR_HOME/.core/keys/`, matching Boot.
+	TrustedKeysDir string
+	// DisableKeyLoad skips the `TrustedKeysDir` scan. Test-only escape
+	// hatch so a host can prove the explicit-key path without reading a
+	// real keyring from disk.
+	DisableKeyLoad bool
 }
 
 // Host runs multiple plugin Instances and dispatches Actions between
@@ -73,6 +86,9 @@ func NewHost(opts HostOptions) *Host {
 	if opts.Medium == nil {
 		opts.Medium = coreio.Local
 	}
+	if opts.TrustedKeysDir == "" {
+		opts.TrustedKeysDir = defaultTrustedKeysDir()
+	}
 	// Defensive copy so the caller can mutate their registry after
 	// NewHost without the host noticing.
 	if len(opts.Services) > 0 {
@@ -98,9 +114,10 @@ type LaunchOptions struct {
 	// already has a parsed ViewManifest (CoreGUI plugin drawer) and
 	// wants to skip the disk discovery step.
 	Manifest *config.ViewManifest
-	// Start overrides the app's project root. Defaults to
-	// `<host.Home>/.core/apps/<code>/`. Handy for a host that runs
-	// plugins from a non-default apps tree.
+	// Start overrides the app's project root. When Manifest is nil,
+	// Launch discovers the plugin from this directory instead of the
+	// installed-apps tree. Defaults to `<host.Home>/.core/apps/<code>/`.
+	// Handy for a host that runs plugins from a non-default apps tree.
 	Start string
 	// Services overrides the host's service registry for this Launch.
 	// Useful for a conclave (RFC §11.4) that wants to expose a narrower
@@ -151,20 +168,38 @@ func (h *Host) Launch(ctx context.Context, code string, opts LaunchOptions) (*In
 	}
 
 	var manifest config.ViewManifest
-	var projectRoot string
+	projectRoot := opts.Start
 	if opts.Manifest != nil {
 		manifest = *opts.Manifest
-		projectRoot = opts.Start
 	} else {
-		m, dir, err := DiscoverInstalledManifest(h.opts.Medium, h.opts.Home, code)
+		if projectRoot == "" {
+			dir, err := DiscoverInstalled(h.opts.Medium, h.opts.Home, code)
+			if err != nil {
+				return nil, coreerr.E("app.Host.Launch", "discover failed for "+code, err)
+			}
+			projectRoot = dir
+		}
+		m, _, err := discoverCompiled(h.opts.Medium, projectRoot, mode)
 		if err != nil {
 			return nil, coreerr.E("app.Host.Launch", "discover failed for "+code, err)
 		}
 		manifest = m
-		projectRoot = dir
 	}
 	if projectRoot == "" {
 		return nil, coreerr.E("app.Host.Launch", "cannot resolve project root for "+code, nil)
+	}
+	trusted, err := resolveTrustedKeys(Options{
+		Mode:           mode,
+		Medium:         h.opts.Medium,
+		PublicKeyHex:   h.opts.PublicKeyHex,
+		TrustedKeysDir: h.opts.TrustedKeysDir,
+		DisableKeyLoad: h.opts.DisableKeyLoad,
+	})
+	if err != nil {
+		return nil, coreerr.E("app.Host.Launch", "resolve trusted keys failed for "+code, err)
+	}
+	if err := verify(&manifest, mode, trusted); err != nil {
+		return nil, coreerr.E("app.Host.Launch", "verify failed for "+code, err)
 	}
 
 	// Resolve the plugin's service surface — the manifest's declared
