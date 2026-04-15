@@ -421,8 +421,8 @@ func TestSdk_RenderPython_Ugly(t *testing.T) {
 // operationIDOf's camelCase output (fs.read → fs_read, not fsRead).
 func TestSdk_pythonFnName_Good(t *testing.T) {
 	cases := map[string]string{
-		"fs.read":            "fs_read",
-		"gui.dialog.confirm": "gui_dialog_confirm",
+		"fs.read":                  "fs_read",
+		"gui.dialog.confirm":       "gui_dialog_confirm",
 		"process.stdout.subscribe": "process_stdout_subscribe",
 	}
 	for in, want := range cases {

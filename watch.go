@@ -398,4 +398,3 @@ func (inst *Instance) WatchManifest(ctx context.Context, reload func(config.View
 	})
 	return inst.Watch(ctx, WatchOptions{Medium: medium})
 }
-

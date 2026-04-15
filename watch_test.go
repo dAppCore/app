@@ -454,12 +454,12 @@ func TestWatch_ResolveWatchPaths_Ugly(t *testing.T) {
 	inst := &Instance{Root: "/tmp/app"}
 
 	paths := resolveWatchPaths(inst, []string{
-		"/etc/passwd",             // absolute outside → dropped
-		"/tmp/app/conf/alt.yaml",  // absolute inside → kept
-		"../escape.yaml",          // traversal → dropped
-		"./conf/ok.yaml",          // relative → kept (joins to /tmp/app/conf/ok.yaml)
-		"./conf/ok.yaml",          // duplicate relative → dropped
-		"/tmp/app/conf/ok2.yaml",  // absolute inside → kept
+		"/etc/passwd",            // absolute outside → dropped
+		"/tmp/app/conf/alt.yaml", // absolute inside → kept
+		"../escape.yaml",         // traversal → dropped
+		"./conf/ok.yaml",         // relative → kept (joins to /tmp/app/conf/ok.yaml)
+		"./conf/ok.yaml",         // duplicate relative → dropped
+		"/tmp/app/conf/ok2.yaml", // absolute inside → kept
 	})
 	if len(paths) != 3 {
 		t.Fatalf("expected 3 resolved paths, got %d: %v", len(paths), paths)
