@@ -167,22 +167,68 @@ func pkgEntryFromManifest(medium coreio.Medium, viewPath, appPath string) (PkgEn
 //
 //   - Missing packages return a typed error — the CLI can print a
 //     friendly "not installed" message instead of silently succeeding.
+//
+// Equivalent to PkgRemoveWith with a zero PkgRemoveOptions; callers that
+// want to delete the workspace data tree at the same time should use
+// PkgRemoveWith with Purge=true.
 func PkgRemove(medium coreio.Medium, home, name string) error {
+	return PkgRemoveWith(medium, home, name, PkgRemoveOptions{})
+}
+
+// PkgRemoveOptions tunes PkgRemoveWith. A zero value mirrors the
+// historical PkgRemove behaviour (install tree only). Purge also wipes
+// `$DIR_HOME/.core/data/<name>/` so a fresh reinstall starts clean.
+//
+//	err := app.PkgRemoveWith(coreio.Local, home, "bitwarden-clients", app.PkgRemoveOptions{Purge: true})
+type PkgRemoveOptions struct {
+	// Purge removes the workspace data tree
+	// (`$DIR_HOME/.core/data/<name>/`) alongside the install tree.
+	// Matches `core pkg remove --purge` and the workspace.Wipe
+	// convention referenced by RFC §16.3.
+	Purge bool
+}
+
+// PkgRemoveWith is the options-aware entry point for `core pkg remove`.
+// Same validation as PkgRemove but also honours the Purge flag so a CLI
+// invocation can drop the persisted data tree in one call instead of
+// running a manual workspace Wipe afterwards.
+//
+//	err := app.PkgRemoveWith(coreio.Local, home, "bitwarden-clients",
+//	    app.PkgRemoveOptions{Purge: true})
+//
+// Rules:
+//
+//   - Missing install tree (and missing workspace when Purge) → typed
+//     error so the CLI can differentiate "not installed" from a real
+//     failure.
+//
+//   - Purge failures surface the workspace error directly so the caller
+//     can tell the install tree removal succeeded before the data tree
+//     cleanup hit a problem.
+func PkgRemoveWith(medium coreio.Medium, home, name string, opts PkgRemoveOptions) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
 	if home == "" {
-		return coreerr.E("app.PkgRemove", "empty home directory", nil)
+		return coreerr.E("app.PkgRemoveWith", "empty home directory", nil)
 	}
 	if name == "" || core.Contains(name, "/") || core.Contains(name, "\\") {
-		return coreerr.E("app.PkgRemove", "invalid package name: "+name, nil)
+		return coreerr.E("app.PkgRemoveWith", "invalid package name: "+name, nil)
 	}
 	appPath := core.Path(home, ".core", AppsDirName, name)
 	if !medium.IsDir(appPath) {
-		return coreerr.E("app.PkgRemove", "package not installed: "+name, nil)
+		return coreerr.E("app.PkgRemoveWith", "package not installed: "+name, nil)
 	}
 	if err := medium.DeleteAll(appPath); err != nil {
-		return coreerr.E("app.PkgRemove", "delete failed: "+appPath, err)
+		return coreerr.E("app.PkgRemoveWith", "delete failed: "+appPath, err)
+	}
+	if opts.Purge {
+		dataPath := core.Path(home, ".core", DataDirName, name)
+		if medium.IsDir(dataPath) {
+			if err := medium.DeleteAll(dataPath); err != nil {
+				return coreerr.E("app.PkgRemoveWith", "purge data tree failed: "+dataPath, err)
+			}
+		}
 	}
 	return nil
 }

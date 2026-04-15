@@ -38,8 +38,8 @@ func runSDK(args []string) int {
 //	sdkUsage()
 func sdkUsage() {
 	core.Println("core-app sdk <verb> [flags]")
-	core.Println("  generate [--lang ts|go|php|openapi] [--out DIR] [--all] [project]")
-	core.Println("           emit client SDKs from .core/view.yaml; default emits all four")
+	core.Println("  generate [--lang ts|go|php|python|openapi] [--out DIR] [--all] [project]")
+	core.Println("           emit client SDKs from .core/view.yaml; default emits all five")
 }
 
 // sdkGenerateArgs captures the flags the `sdk generate` subverb
@@ -86,7 +86,7 @@ func runSDKGenerate(args []string) int {
 			opts.Includes = true
 		case "--help", "-h":
 			core.Println("core-app sdk generate [--lang LANG] [--out DIR] [--all] [project]")
-			core.Println("  --lang   one of openapi, ts, go, php (repeat for multiple)")
+			core.Println("  --lang   one of openapi, ts, go, php, python (repeat for multiple)")
 			core.Println("  --out    output directory (default: <project>/.core/sdk/)")
 			core.Println("  --all    include every primitive Action regardless of permission")
 			core.Println("  project  directory holding .core/view.yaml (default: ./)")

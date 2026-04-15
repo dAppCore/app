@@ -20,7 +20,7 @@ func TestSdk_runSDK_Good(t *testing.T) {
 	}
 	for _, lang := range []app.SDKLanguage{
 		app.SDKLanguageOpenAPI, app.SDKLanguageTypeScript,
-		app.SDKLanguageGo, app.SDKLanguagePHP,
+		app.SDKLanguageGo, app.SDKLanguagePHP, app.SDKLanguagePython,
 	} {
 		dirSDK := core.Path(dir, ".core", "sdk", lang.String())
 		if !coreio.Local.IsDir(dirSDK) {

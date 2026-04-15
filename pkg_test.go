@@ -162,6 +162,76 @@ func TestPkg_PkgRemove_Bad(t *testing.T) {
 	}
 }
 
+// TestPkg_PkgRemoveWith_Purge_Good — Purge=true removes both the
+// install tree and the workspace data tree so a reinstall starts
+// clean. Matches the `pkg remove --purge` affordance referenced in
+// RFC §16.3 and the workspace.Wipe contract.
+func TestPkg_PkgRemoveWith_Purge_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	writeInstalled(t, medium, home, "purge-me", &config.ViewManifest{
+		Code: "purge-me", Name: "X", Version: "0.1.0",
+	})
+	// Seed the workspace data tree so the purge path has something to
+	// delete — OpenWorkspace creates the layout subdirs lazily.
+	if _, err := app.OpenWorkspace(medium, home, "purge-me"); err != nil {
+		t.Fatalf("OpenWorkspace: %v", err)
+	}
+	dataPath := core.Path(home, ".core", app.DataDirName, "purge-me")
+	if !medium.IsDir(dataPath) {
+		t.Fatalf("workspace data tree missing at %s", dataPath)
+	}
+	if err := app.PkgRemoveWith(medium, home, "purge-me", app.PkgRemoveOptions{
+		Purge: true,
+	}); err != nil {
+		t.Fatalf("PkgRemoveWith(Purge=true): %v", err)
+	}
+	if medium.IsDir(core.Path(home, ".core", app.AppsDirName, "purge-me")) {
+		t.Errorf("install tree survived purge")
+	}
+	if medium.IsDir(dataPath) {
+		t.Errorf("workspace data tree survived purge: %s", dataPath)
+	}
+}
+
+// TestPkg_PkgRemoveWith_Purge_NoData_Good — Purge=true against a
+// package with no workspace data tree is a silent success (the user
+// never booted the app so no data was written).
+func TestPkg_PkgRemoveWith_Purge_NoData_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	writeInstalled(t, medium, home, "no-data", &config.ViewManifest{
+		Code: "no-data", Name: "X", Version: "0.1.0",
+	})
+	if err := app.PkgRemoveWith(medium, home, "no-data", app.PkgRemoveOptions{
+		Purge: true,
+	}); err != nil {
+		t.Fatalf("PkgRemoveWith(Purge=true, no data): %v", err)
+	}
+	if medium.IsDir(core.Path(home, ".core", app.AppsDirName, "no-data")) {
+		t.Errorf("install tree survived purge")
+	}
+}
+
+// TestPkg_PkgRemoveWith_Bad — the options-aware entry point shares the
+// validation surface with PkgRemove; every rejection case still fires.
+func TestPkg_PkgRemoveWith_Bad(t *testing.T) {
+	if err := app.PkgRemoveWith(coreio.Local, "", "x", app.PkgRemoveOptions{}); err == nil {
+		t.Error("empty home produced no error")
+	}
+	if err := app.PkgRemoveWith(coreio.Local, t.TempDir(), "", app.PkgRemoveOptions{}); err == nil {
+		t.Error("empty name produced no error")
+	}
+	if err := app.PkgRemoveWith(coreio.Local, t.TempDir(), "x/y", app.PkgRemoveOptions{}); err == nil {
+		t.Error("name with slash produced no error")
+	}
+	if err := app.PkgRemoveWith(coreio.Local, t.TempDir(), "missing", app.PkgRemoveOptions{
+		Purge: true,
+	}); err == nil {
+		t.Error("missing package with Purge=true produced no error")
+	}
+}
+
 // TestPkg_InstallWrappedPWA_Good installs a wrapped PWA and confirms
 // the view.yaml lands in the expected place with the source stamp.
 func TestPkg_InstallWrappedPWA_Good(t *testing.T) {

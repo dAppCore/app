@@ -61,7 +61,7 @@ func pkgUsage() {
 	core.Println("  wrap --electron REPO|DIR      wrap an Electron app as a CoreApp")
 	core.Println("  wrap --web DIR                wrap a local web directory")
 	core.Println("  install CODE                  install a marketplace listing")
-	core.Println("  remove  NAME                  remove an installed package")
+	core.Println("  remove [--purge] NAME         remove an installed package (purge wipes data)")
 	core.Println("  update  NAME                  re-fetch and re-wrap")
 }
 
@@ -853,11 +853,36 @@ func runPkgInstallMarketplace(ctx context.Context, home, code string) int {
 	return 0
 }
 
-// runPkgRemove handles `pkg remove NAME`. Delegates to app.PkgRemove.
+// runPkgRemove handles `pkg remove NAME [--purge]`. Delegates to
+// app.PkgRemoveWith so the same code path covers install-tree-only
+// removal and full purge (workspace data tree included).
 //
 //	core-app pkg remove bitwarden-clients
+//	core-app pkg remove --purge bitwarden-clients
 func runPkgRemove(args []string) int {
-	if len(args) == 0 {
+	purge := false
+	name := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--purge":
+			purge = true
+		case "--help", "-h":
+			core.Println("core-app pkg remove [--purge] NAME")
+			core.Println("  --purge  also wipe the workspace data tree at ~/.core/data/NAME/")
+			return 0
+		default:
+			if core.HasPrefix(args[i], "-") {
+				core.Error("pkg remove: unknown flag", "flag", args[i])
+				return 64
+			}
+			if name != "" {
+				core.Error("pkg remove: only one NAME supported", "extra", args[i])
+				return 64
+			}
+			name = args[i]
+		}
+	}
+	if name == "" {
 		core.Error("pkg remove: NAME is required")
 		return 64
 	}
@@ -866,11 +891,17 @@ func runPkgRemove(args []string) int {
 		core.Error("pkg remove: cannot resolve DIR_HOME")
 		return 1
 	}
-	if err := app.PkgRemove(coreio.Local, home, args[0]); err != nil {
-		core.Error("pkg remove: failed", "name", args[0], "err", err)
+	if err := app.PkgRemoveWith(coreio.Local, home, name, app.PkgRemoveOptions{
+		Purge: purge,
+	}); err != nil {
+		core.Error("pkg remove: failed", "name", name, "err", err)
 		return 1
 	}
-	core.Info("removed", "name", args[0])
+	if purge {
+		core.Info("removed and purged", "name", name)
+	} else {
+		core.Info("removed", "name", name)
+	}
 	return 0
 }
 

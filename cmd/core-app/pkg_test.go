@@ -835,3 +835,32 @@ func TestPkg_runPkgInstallMarketplace_Ugly(t *testing.T) {
 		t.Error("missing listing should produce non-zero rc")
 	}
 }
+
+// TestPkg_runPkgRemove_Flags_Good — the CLI surface accepts both
+// `pkg remove NAME` and `pkg remove --purge NAME` without rejecting
+// either. --help returns 0 so callers can discover the flag.
+func TestPkg_runPkgRemove_Flags_Good(t *testing.T) {
+	if rc := runPkgRemove([]string{"--help"}); rc != 0 {
+		t.Errorf("runPkgRemove --help rc = %d; want 0", rc)
+	}
+	if rc := runPkgRemove([]string{"-h"}); rc != 0 {
+		t.Errorf("runPkgRemove -h rc = %d; want 0", rc)
+	}
+}
+
+// TestPkg_runPkgRemove_Flags_Bad — rejects unknown flags, missing
+// NAME, and double NAME before touching the filesystem.
+func TestPkg_runPkgRemove_Flags_Bad(t *testing.T) {
+	if rc := runPkgRemove(nil); rc != 64 {
+		t.Errorf("runPkgRemove(nil) rc = %d; want 64", rc)
+	}
+	if rc := runPkgRemove([]string{"--purge"}); rc != 64 {
+		t.Errorf("runPkgRemove(--purge alone) rc = %d; want 64", rc)
+	}
+	if rc := runPkgRemove([]string{"--unknown", "x"}); rc != 64 {
+		t.Errorf("runPkgRemove(unknown flag) rc = %d; want 64", rc)
+	}
+	if rc := runPkgRemove([]string{"a", "b"}); rc != 64 {
+		t.Errorf("runPkgRemove(two names) rc = %d; want 64", rc)
+	}
+}

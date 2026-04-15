@@ -22,6 +22,8 @@ func TestSdk_ParseSDKLanguage_Good(t *testing.T) {
 		"go":         SDKLanguageGo,
 		"golang":     SDKLanguageGo,
 		"php":        SDKLanguagePHP,
+		"python":     SDKLanguagePython,
+		"py":         SDKLanguagePython,
 	}
 	for in, want := range cases {
 		got, ok := ParseSDKLanguage(in)
@@ -62,6 +64,7 @@ func TestSdk_String_Good(t *testing.T) {
 		SDKLanguageTypeScript: "ts",
 		SDKLanguageGo:         "go",
 		SDKLanguagePHP:        "php",
+		SDKLanguagePython:     "python",
 	}
 	for in, want := range cases {
 		if got := in.String(); got != want {
@@ -79,11 +82,11 @@ func TestSdk_String_Bad(t *testing.T) {
 }
 
 // TestSdk_String_Ugly — ParseSDKLanguage of String() round-trips for the
-// canonical four values, which is the contract callers rely on.
+// canonical five values, which is the contract callers rely on.
 func TestSdk_String_Ugly(t *testing.T) {
 	for _, lang := range []SDKLanguage{
 		SDKLanguageOpenAPI, SDKLanguageTypeScript,
-		SDKLanguageGo, SDKLanguagePHP,
+		SDKLanguageGo, SDKLanguagePHP, SDKLanguagePython,
 	} {
 		got, ok := ParseSDKLanguage(lang.String())
 		if !ok || got != lang {
@@ -349,6 +352,94 @@ func TestSdk_RenderPHP_Ugly(t *testing.T) {
 	}
 }
 
+// TestSdk_RenderPython_Good — the Python module carries the Protocol,
+// the SDK class, and one snake_case method per Action. Matches RFC §8's
+// "Client SDKs (TS, Python, Go, PHP)" pipeline output.
+func TestSdk_RenderPython_Good(t *testing.T) {
+	m := &config.ViewManifest{Code: "test", Version: "0.1.0"}
+	actions := []SDKAction{
+		{Name: "fs.read", Permission: "read", Description: "Read file"},
+		{Name: "gui.dialog.confirm"},
+	}
+	out := RenderPython(m, actions)
+	for _, want := range []string{
+		"class CoreClient(Protocol):",
+		"class SDK:",
+		"def fs_read(",
+		"def gui_dialog_confirm(",
+		`self._client.action("fs.read"`,
+		"Permission: read",
+	} {
+		if !core.Contains(out, want) {
+			t.Errorf("missing %q in output:\n%s", want, out)
+		}
+	}
+}
+
+// TestSdk_RenderPython_Bad — empty action list still emits a usable
+// module (Protocol + SDK stub) so the output imports cleanly even when
+// the manifest declares no permissions.
+func TestSdk_RenderPython_Bad(t *testing.T) {
+	m := &config.ViewManifest{Code: "x", Version: "0.1.0"}
+	out := RenderPython(m, nil)
+	for _, want := range []string{
+		"class CoreClient(Protocol):",
+		"class SDK:",
+	} {
+		if !core.Contains(out, want) {
+			t.Errorf("missing %q in stub output:\n%s", want, out)
+		}
+	}
+}
+
+// TestSdk_RenderPython_Ugly — header carries the EUPL marker and the
+// manifest identity so the generated file is self-describing; the
+// `from __future__ import annotations` line keeps 3.8+ compat.
+func TestSdk_RenderPython_Ugly(t *testing.T) {
+	m := &config.ViewManifest{Code: "round-trip", Version: "9.8.7"}
+	out := RenderPython(m, nil)
+	for _, want := range []string{
+		"# SPDX-License-Identifier: EUPL-1.2",
+		"# CoreApp: round-trip v9.8.7",
+		"from __future__ import annotations",
+	} {
+		if !core.Contains(out, want) {
+			t.Errorf("missing %q in header: %s", want, out)
+		}
+	}
+}
+
+// TestSdk_pythonFnName_Good — canonical snake_case derivation mirrors
+// operationIDOf's camelCase output (fs.read → fs_read, not fsRead).
+func TestSdk_pythonFnName_Good(t *testing.T) {
+	cases := map[string]string{
+		"fs.read":            "fs_read",
+		"gui.dialog.confirm": "gui_dialog_confirm",
+		"process.stdout.subscribe": "process_stdout_subscribe",
+	}
+	for in, want := range cases {
+		if got := pythonFnName(in); got != want {
+			t.Errorf("pythonFnName(%q) = %q; want %q", in, got, want)
+		}
+	}
+}
+
+// TestSdk_pythonFnName_Bad — empty input returns an empty string rather
+// than "_" so the caller can detect the miss.
+func TestSdk_pythonFnName_Bad(t *testing.T) {
+	if got := pythonFnName(""); got != "" {
+		t.Errorf("pythonFnName('') = %q; want empty string", got)
+	}
+}
+
+// TestSdk_pythonFnName_Ugly — hyphens and spaces are normalised to
+// underscores so exotic action names still produce valid identifiers.
+func TestSdk_pythonFnName_Ugly(t *testing.T) {
+	if got := pythonFnName("Weird-Action Name"); got != "weird_action_name" {
+		t.Errorf("pythonFnName('Weird-Action Name') = %q; want 'weird_action_name'", got)
+	}
+}
+
 // TestSdk_SDKGenerate_Good — a default SDKGenerate run writes one file
 // per language under `<root>/.core/sdk/<lang>/`.
 func TestSdk_SDKGenerate_Good(t *testing.T) {
@@ -369,6 +460,7 @@ func TestSdk_SDKGenerate_Good(t *testing.T) {
 		SDKLanguageTypeScript: "index.ts",
 		SDKLanguageGo:         "sdk.go",
 		SDKLanguagePHP:        "Sdk.php",
+		SDKLanguagePython:     "sdk.py",
 	} {
 		path := core.Path(dir, ".core", "sdk", lang.String(), file)
 		if !coreio.Local.Exists(path) {
