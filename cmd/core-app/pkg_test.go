@@ -845,6 +845,53 @@ func TestPkg_applyWrapSignature_Ugly(t *testing.T) {
 	}
 }
 
+// TestPkg_runPkgWrap_SignPath_Good — `pkg wrap --sign PATH` still
+// signs with the explicit private key after the RFC-compatible bare
+// `--sign` alias was added.
+func TestPkg_runPkgWrap_SignPath_Good(t *testing.T) {
+	src := t.TempDir()
+	dest := t.TempDir()
+	medium := coreio.Local
+	if err := medium.Write(core.Path(src, "index.html"), "<html/>"); err != nil {
+		t.Fatalf("Write index.html: %v", err)
+	}
+	keyDir := t.TempDir()
+	keyPath, _, err := app.Keygen(medium, keyDir, "wrap-explicit")
+	if err != nil {
+		t.Fatalf("Keygen: %v", err)
+	}
+
+	rc := runPkg([]string{"wrap", "--web", src, "--dest", dest, "--sign", keyPath})
+	if rc != 0 {
+		t.Fatalf("runPkg wrap --sign PATH rc = %d; want 0", rc)
+	}
+
+	var round config.ViewManifest
+	if err := app.LoadViewManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+		t.Fatalf("LoadViewManifest: %v", err)
+	}
+	if round.Sign == "" {
+		t.Fatal("wrapped manifest was not signed by explicit --sign PATH")
+	}
+}
+
+// TestPkg_runPkgWrap_SignAlias_Ugly — bare `--sign` is accepted as the
+// default-key form and must not consume the following flag as though it
+// were a key path.
+func TestPkg_runPkgWrap_SignAlias_Ugly(t *testing.T) {
+	body := `{"name":"Play","short_name":"play","start_url":"/"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	dest := t.TempDir()
+	rc := runPkg([]string{"wrap", "--pwa", srv.URL + "/manifest.json", "--sign", "--dest", dest})
+	if rc == 64 {
+		t.Fatalf("bare --sign was parsed as argv misuse; want accepted default-key semantics (rc=%d)", rc)
+	}
+}
+
 // TestPkg_isRepoSpec_Good — known scheme / host prefixes flag the
 // source as a remote repo so the wrap pipeline can dispatch into the
 // release-fetch path. Covers github / gitlab / bitbucket / git@ /

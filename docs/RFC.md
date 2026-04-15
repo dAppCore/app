@@ -267,6 +267,8 @@ Files in `~/.core/data/` encrypted via Sigil framework:
 - SHA-256 workspace IDs (file names reveal nothing)
 - Decryption requires workspace key (derived from user password)
 
+**Implementation:** Enchantrix — <https://forge.lthn.ai/Snider/Enchantrix>. Core imports Enchantrix for the Sigil primitives (encrypt/decrypt, Pre-Obfuscation, workspace-key derivation). CoreApp wires it into the storage layer, nothing is re-implemented in `dappco.re/go/*`.
+
 From dAppServer: `~/Lethean/data/{lthnHash/QuasiSalt}/{lthnHash}` → you couldn't even see what the filenames meant until you decrypted the enclave.
 
 ---

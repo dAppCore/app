@@ -107,6 +107,20 @@ func TestMain_runCompile_Ugly(t *testing.T) {
 	}
 }
 
+// TestMain_runCompile_SignAlias_Ugly — the RFC-facing `--sign` alias is
+// accepted as "use the default key" even when no key is currently
+// installed. The exact success/failure depends on the host keyring, but
+// it must not be rejected as argv misuse.
+func TestMain_runCompile_SignAlias_Ugly(t *testing.T) {
+	dir := writeViewManifest(t, "compile-sign-alias", "Compile Sign Alias", "0.1.0")
+	if rc := runCompile([]string{"--sign", "--verify", dir}); rc == 64 {
+		t.Fatalf("runCompile --sign returned EX_USAGE=64; want parser acceptance (rc=%d)", rc)
+	}
+	if rc := runCompile([]string{"--sign-default", dir}); rc == 64 {
+		t.Fatalf("runCompile --sign-default returned EX_USAGE=64; want parser acceptance (rc=%d)", rc)
+	}
+}
+
 // TestMain_runCompile_Verify_Good — `--verify` passes through a
 // well-formed manifest to the regular compile path.
 func TestMain_runCompile_Verify_Good(t *testing.T) {

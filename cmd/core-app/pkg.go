@@ -324,7 +324,7 @@ type pkgWrapArgs struct {
 	Version       string
 	Dest          string // optional — defaults to $DIR_HOME/.core/apps/<code>/
 	Install       bool   // true → persist under DIR_HOME; false → dump to Dest only
-	Sign          string // path to a private .key file (optional)
+	Sign          string // explicit path to a private .key file (optional)
 	UseDefaultKey bool   // sign with $DIR_HOME/.core/keys/default.key
 	AssetSource   string // optional local dir copied into the wrapped app root
 }
@@ -390,16 +390,22 @@ func runPkgWrap(args []string) int {
 		case "--no-install":
 			opts.Install = false
 		case "--sign":
-			if i+1 >= len(args) {
-				core.Error("--sign requires a path")
-				return 64
+			// RFC §16.2 example: `pkg wrap ... --sign` means "sign with
+			// the default key". For backwards compatibility we also accept
+			// `--sign PATH` as the explicit-key form.
+			if i+1 < len(args) && !core.HasPrefix(args[i+1], "-") {
+				i++
+				opts.Sign = args[i]
+			} else {
+				opts.UseDefaultKey = true
 			}
-			i++
-			opts.Sign = args[i]
 		case "--sign-default":
 			opts.UseDefaultKey = true
 		case "--help", "-h":
-			core.Println("core-app pkg wrap [--pwa URL | --electron DIR|REPO | --web DIR] [--code S] [--dest D] [--sign K | --sign-default]")
+			core.Println("core-app pkg wrap [--pwa URL | --electron DIR|REPO | --web DIR] [--code S] [--dest D] [--sign [K] | --sign-default]")
+			core.Println("  --sign            sign with the default key when no path follows")
+			core.Println("  --sign PATH       sign with an explicit private key")
+			core.Println("  --sign-default    explicit alias for default-key signing")
 			return 0
 		default:
 			core.Error("pkg wrap: unknown flag", "flag", args[i])
@@ -1361,7 +1367,8 @@ func signManifestFile(keyPath string, manifest *config.ViewManifest) error {
 }
 
 // signManifestDefault loads `$DIR_HOME/.core/keys/default.key` and
-// applies the signature to `manifest`. Used by `pkg wrap --sign-default`.
+// applies the signature to `manifest`. Used by `pkg wrap --sign`
+// (without a following path) and `pkg wrap --sign-default`.
 //
 //	err := signManifestDefault(manifest)
 func signManifestDefault(manifest *config.ViewManifest) error {
@@ -1375,9 +1382,10 @@ func signManifestDefault(manifest *config.ViewManifest) error {
 	return app.SignManifest(manifest, priv)
 }
 
-// applyWrapSignature is the shared body that handles both `--sign KEY`
-// and `--sign-default`. Returns a non-nil error when the manifest could
-// not be signed; the caller maps this to the relevant CLI error.
+// applyWrapSignature is the shared body that handles `--sign KEY`,
+// bare `--sign`, and `--sign-default`. Returns a non-nil error when the
+// manifest could not be signed; the caller maps this to the relevant
+// CLI error.
 //
 //	if err := applyWrapSignature(opts, manifest); err != nil { ... }
 func applyWrapSignature(opts pkgWrapArgs, manifest *config.ViewManifest) error {

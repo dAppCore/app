@@ -296,8 +296,9 @@ type compileArgs struct {
 //	core-app compile
 //	core-app compile ./photo-browser
 //	core-app compile --verify                # lint the manifest before compile
+//	core-app compile --sign                  # sign with the default key first
 //	core-app compile --key ~/.core/keys/app.key
-//	core-app compile --default              # use $DIR_HOME/.core/keys/default.key
+//	core-app compile --default              # legacy alias for --sign
 func runCompile(args []string) int {
 	opts := compileArgs{Start: "./"}
 	for i := 0; i < len(args); i++ {
@@ -309,14 +310,15 @@ func runCompile(args []string) int {
 			}
 			i++
 			opts.Key = args[i]
-		case "--default":
+		case "--default", "--sign", "--sign-default":
 			opts.UseDefaultKey = true
 		case "--verify":
 			opts.Verify = true
 		case "--help", "-h":
-			core.Println("core-app compile [--key PATH | --default] [--verify] [project-dir]")
+			core.Println("core-app compile [--key PATH | --sign | --default] [--verify] [project-dir]")
 			core.Println("  --key      hex-encoded ed25519 private key (re-sign before compile)")
-			core.Println("  --default  re-sign with $DIR_HOME/.core/keys/default.key")
+			core.Println("  --sign     re-sign with $DIR_HOME/.core/keys/default.key")
+			core.Println("  --default  legacy alias for --sign")
 			core.Println("  --verify   run ValidateManifest before Compile (RFC §2 rules)")
 			core.Println("  project    project root holding .core/view.yaml (default: ./)")
 			return 0
