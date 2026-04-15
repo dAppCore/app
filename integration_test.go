@@ -443,6 +443,94 @@ func TestIntegration_Compile_Preserves_Config(t *testing.T) {
 	}
 }
 
+// TestIntegration_BootStartStop_Lifecycle — end-to-end exercise of the
+// Startable/Stoppable lifecycle (RFC §11.5). A test service registered
+// before Boot must see OnStartup fire during Start, and OnShutdown fire
+// during Stop. Without this loop a real CoreApp would never get a
+// chance to open / close its database, drain its goroutines or flush
+// its pending writes.
+func TestIntegration_BootStartStop_Lifecycle(t *testing.T) {
+	projectDir := t.TempDir()
+	medium := coreio.Local
+
+	pub, priv, _ := ed25519.GenerateKey(nil)
+
+	manifest := config.ViewManifest{
+		Code:    "lifecycle-end-to-end",
+		Name:    "Lifecycle End to End",
+		Version: "0.1.0",
+	}
+	if err := app.SignManifestForTest(&manifest, priv); err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	body, _ := yaml.Marshal(&manifest)
+	viewPath := core.Path(projectDir, ".core", "view.yaml")
+	if err := medium.EnsureDir(core.PathDir(viewPath)); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(viewPath, string(body)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	probe := &integrationLifecycleProbe{}
+	c := core.New(core.WithService(func(c *core.Core) core.Result {
+		return core.Result{Value: probe, OK: true}
+	}))
+
+	ctx := context.Background()
+	inst, err := app.Boot(ctx, projectDir,
+		app.WithMode(app.ModeProd),
+		app.WithMedium(medium),
+		app.WithCore(c),
+		app.WithPublicKey(hex.EncodeToString(pub)),
+		app.WithoutKeyLoad(),
+		app.WithWorkspaceHome(t.TempDir()),
+	)
+	if err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+
+	if probe.startCalls != 0 {
+		t.Errorf("OnStartup fired during Boot; want only at Start. got=%d", probe.startCalls)
+	}
+
+	if r := inst.Start(ctx); !r.OK {
+		t.Fatalf("Start.OK=false; Value=%v", r.Value)
+	}
+	if probe.startCalls != 1 {
+		t.Errorf("OnStartup calls = %d; want 1", probe.startCalls)
+	}
+	if probe.stopCalls != 0 {
+		t.Errorf("OnShutdown fired during Start; want only at Stop. got=%d", probe.stopCalls)
+	}
+
+	if r := inst.Stop(ctx); !r.OK {
+		t.Fatalf("Stop.OK=false; Value=%v", r.Value)
+	}
+	if probe.stopCalls != 1 {
+		t.Errorf("OnShutdown calls = %d; want 1", probe.stopCalls)
+	}
+}
+
+// integrationLifecycleProbe is a Startable+Stoppable used by
+// TestIntegration_BootStartStop_Lifecycle to count callbacks.
+type integrationLifecycleProbe struct {
+	startCalls int
+	stopCalls  int
+}
+
+// OnStartup is the Startable hook for the integration probe.
+func (p *integrationLifecycleProbe) OnStartup(_ context.Context) core.Result {
+	p.startCalls++
+	return core.Result{OK: true}
+}
+
+// OnShutdown is the Stoppable hook for the integration probe.
+func (p *integrationLifecycleProbe) OnShutdown(_ context.Context) core.Result {
+	p.stopCalls++
+	return core.Result{OK: true}
+}
+
 // TestIntegration_KeyringLoad_Good — an actual keys/ directory scan
 // resolves a dropped `*.pub` file and trusts the signature. This proves
 // the CLI convention ("drop a pubkey in ~/.core/keys/") works with the

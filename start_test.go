@@ -8,6 +8,7 @@ import (
 
 	core "dappco.re/go/core"
 	"dappco.re/go/core/config"
+	coreerr "dappco.re/go/core/log"
 )
 
 // TestStart_start_Good — a ready Instance broadcasts ActionAppStarted
@@ -173,5 +174,235 @@ func TestStart_ActionAppStopping_Ugly(t *testing.T) {
 	var msg core.Message = ActionAppStopping{Code: "x"}
 	if _, ok := msg.(ActionAppStopping); !ok {
 		t.Error("ActionAppStopping should satisfy core.Message")
+	}
+}
+
+// lifecycleProbe is a tiny test service that records whether OnStartup
+// and OnShutdown were called. Implements both core.Startable and
+// core.Stoppable so RegisterService auto-discovery wires both halves.
+type lifecycleProbe struct {
+	startCalls int
+	stopCalls  int
+}
+
+// OnStartup is the Startable hook — called by c.ServiceStartup.
+func (p *lifecycleProbe) OnStartup(_ context.Context) core.Result {
+	p.startCalls++
+	return core.Result{OK: true}
+}
+
+// OnShutdown is the Stoppable hook — called by c.ServiceShutdown.
+func (p *lifecycleProbe) OnShutdown(_ context.Context) core.Result {
+	p.stopCalls++
+	return core.Result{OK: true}
+}
+
+// TestStart_start_Lifecycle_Good — start() drives the Core lifecycle so
+// every Startable service gets OnStartup before ActionAppStarted is
+// broadcast (RFC §11.5).
+func TestStart_start_Lifecycle_Good(t *testing.T) {
+	probe := &lifecycleProbe{}
+	c := core.New(core.WithService(func(c *core.Core) core.Result {
+		return core.Result{Value: probe, OK: true}
+	}))
+
+	inst := &Instance{
+		Core: c,
+		Mode: ModeProd,
+		Manifest: config.ViewManifest{
+			Code: "lifecycle", Name: "Lifecycle", Version: "0.1.0",
+		},
+	}
+	if r := start(context.Background(), inst); !r.OK {
+		t.Fatalf("start.OK = false; Value=%v", r.Value)
+	}
+	if probe.startCalls != 1 {
+		t.Errorf("OnStartup calls = %d; want 1", probe.startCalls)
+	}
+	if !inst.started {
+		t.Error("inst.started should be true after a successful start")
+	}
+}
+
+// TestStart_start_Lifecycle_Bad — start() returns the lifecycle error so
+// the caller never sees ActionAppStarted when a Startable refuses to
+// boot. The probe's stop counter must stay zero — ServiceShutdown isn't
+// invoked from start().
+func TestStart_start_Lifecycle_Bad(t *testing.T) {
+	failing := &failingStartProbe{}
+	saw := false
+	c := core.New(core.WithService(func(c *core.Core) core.Result {
+		return core.Result{Value: failing, OK: true}
+	}))
+	c.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
+		if _, ok := msg.(ActionAppStarted); ok {
+			saw = true
+		}
+		return core.Result{OK: true}
+	})
+
+	inst := &Instance{
+		Core: c,
+		Mode: ModeProd,
+		Manifest: config.ViewManifest{
+			Code: "boom", Name: "Boom", Version: "0.0.1",
+		},
+	}
+	r := start(context.Background(), inst)
+	if r.OK {
+		t.Fatal("start should fail when a Startable returns !OK")
+	}
+	if saw {
+		t.Error("ActionAppStarted should not broadcast when lifecycle fails")
+	}
+	if inst.started {
+		t.Error("inst.started must stay false after a failed lifecycle")
+	}
+}
+
+// failingStartProbe is a Startable whose OnStartup returns !OK so the
+// Lifecycle_Bad test can prove start() surfaces the failure.
+type failingStartProbe struct{}
+
+// OnStartup deliberately fails to exercise the start() error path.
+func (failingStartProbe) OnStartup(_ context.Context) core.Result {
+	return core.Result{Value: coreerr.E("test", "startup refused", nil), OK: false}
+}
+
+// TestStart_start_Lifecycle_Ugly — calling start() twice runs OnStartup
+// only once. Re-entrant Start must be safe so a host that re-launches
+// the entry action does not stack up duplicate lifecycle calls.
+func TestStart_start_Lifecycle_Ugly(t *testing.T) {
+	probe := &lifecycleProbe{}
+	c := core.New(core.WithService(func(c *core.Core) core.Result {
+		return core.Result{Value: probe, OK: true}
+	}))
+
+	inst := &Instance{
+		Core: c,
+		Mode: ModeProd,
+		Manifest: config.ViewManifest{
+			Code: "twice", Name: "Twice", Version: "0.1.0",
+		},
+	}
+	for i := 0; i < 2; i++ {
+		if r := start(context.Background(), inst); !r.OK {
+			t.Fatalf("start[%d] failed: %v", i, r.Value)
+		}
+	}
+	if probe.startCalls != 1 {
+		t.Errorf("OnStartup called %d times; want 1 (idempotent)", probe.startCalls)
+	}
+}
+
+// TestStart_stop_Lifecycle_Good — Instance.Stop drives ServiceShutdown
+// so every Stoppable service gets OnShutdown after the broadcast (RFC
+// §11.5). Asserts the order: broadcast first, lifecycle second, so
+// subscribers can flush state while their owning services are still
+// alive.
+func TestStart_stop_Lifecycle_Good(t *testing.T) {
+	probe := &lifecycleProbe{}
+	c := core.New(core.WithService(func(c *core.Core) core.Result {
+		return core.Result{Value: probe, OK: true}
+	}))
+
+	var order []string
+	c.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
+		if _, ok := msg.(ActionAppStopping); ok {
+			order = append(order, "broadcast")
+		}
+		return core.Result{OK: true}
+	})
+
+	inst := &Instance{
+		Core: c,
+		Mode: ModeProd,
+		Manifest: config.ViewManifest{
+			Code: "lifecycle-stop", Name: "Lifecycle Stop", Version: "0.1.0",
+		},
+	}
+	// Drive a real start so inst.started is true and the stop path
+	// engages the lifecycle.
+	if r := start(context.Background(), inst); !r.OK {
+		t.Fatalf("start failed: %v", r.Value)
+	}
+	if r := inst.Stop(context.Background()); !r.OK {
+		t.Fatalf("Stop.OK = false; Value=%v", r.Value)
+	}
+	if probe.stopCalls != 1 {
+		t.Errorf("OnShutdown calls = %d; want 1", probe.stopCalls)
+	}
+	if inst.started {
+		t.Error("inst.started should reset to false after Stop")
+	}
+	// Broadcast must precede the lifecycle so subscribers see the
+	// stopping signal while the service registry is still wired in.
+	if len(order) != 1 || order[0] != "broadcast" {
+		t.Errorf("expected broadcast in order log, got %v", order)
+	}
+}
+
+// TestStart_stop_Lifecycle_Bad — Instance.Stop returns the lifecycle
+// error so the host knows a Stoppable refused to clean up. The
+// broadcast still goes out so subscribers can record the attempt.
+func TestStart_stop_Lifecycle_Bad(t *testing.T) {
+	failing := &failingStopProbe{}
+	c := core.New(core.WithService(func(c *core.Core) core.Result {
+		return core.Result{Value: failing, OK: true}
+	}))
+	saw := false
+	c.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
+		if _, ok := msg.(ActionAppStopping); ok {
+			saw = true
+		}
+		return core.Result{OK: true}
+	})
+
+	inst := &Instance{
+		Core:    c,
+		Mode:    ModeProd,
+		started: true, // bypass the start gate so Stop runs the lifecycle
+		Manifest: config.ViewManifest{
+			Code: "stop-fail", Name: "Stop Fail", Version: "0.1.0",
+		},
+	}
+	r := inst.Stop(context.Background())
+	if r.OK {
+		t.Fatal("Stop should fail when a Stoppable returns !OK")
+	}
+	if !saw {
+		t.Error("ActionAppStopping should still broadcast on lifecycle failure")
+	}
+}
+
+// failingStopProbe is a Stoppable whose OnShutdown returns !OK so the
+// Stop_Bad test can prove the lifecycle error surfaces.
+type failingStopProbe struct{}
+
+// OnShutdown deliberately fails to exercise the stop() error path.
+func (failingStopProbe) OnShutdown(_ context.Context) core.Result {
+	return core.Result{Value: coreerr.E("test", "shutdown refused", nil), OK: false}
+}
+
+// TestStart_stop_Lifecycle_Ugly — Stop on an Instance that was never
+// Started skips ServiceShutdown so a Stoppable never sees a phantom
+// OnShutdown without a paired OnStartup.
+func TestStart_stop_Lifecycle_Ugly(t *testing.T) {
+	probe := &lifecycleProbe{}
+	c := core.New(core.WithService(func(c *core.Core) core.Result {
+		return core.Result{Value: probe, OK: true}
+	}))
+	inst := &Instance{
+		Core: c,
+		Mode: ModeProd,
+		Manifest: config.ViewManifest{
+			Code: "never-started", Name: "Never Started", Version: "0.1.0",
+		},
+	}
+	if r := inst.Stop(context.Background()); !r.OK {
+		t.Fatalf("Stop.OK = false; Value=%v", r.Value)
+	}
+	if probe.stopCalls != 0 {
+		t.Errorf("OnShutdown should not run when Start was never called; got %d", probe.stopCalls)
 	}
 }

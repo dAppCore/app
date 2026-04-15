@@ -210,6 +210,7 @@ type Instance struct {
 	Mode      Mode                // regime used during Boot
 	Workspace *Workspace          // per-app data tree (~/.core/data/<code>/)
 	medium    coreio.Medium       // retained for Start + post-boot reads
+	started   bool                // RFC §11.5 — toggled by start/stop so the lifecycle does not run twice
 }
 
 // Boot runs the 7-step boot sequence against the project rooted at `start`.
@@ -314,10 +315,12 @@ func (inst *Instance) Start(ctx context.Context) core.Result {
 	return start(ctx, inst)
 }
 
-// Stop is the symmetric tear-down for Start — broadcasts ActionAppStopping
-// so subscribers (core/gui windows, core-agent fleet bus) can flush state
-// before the host calls c.Shutdown(). Hosts that orchestrate plugin
-// lifecycles (RFC §11.5) call inst.Stop on idle, restart, or shutdown.
+// Stop is the symmetric tear-down for Start — broadcasts
+// ActionAppStopping so subscribers (core/gui windows, core-agent fleet
+// bus) can flush state and then drives `c.ServiceShutdown(ctx)` so
+// every registered `Stoppable` runs OnStop in registration order. Hosts
+// that orchestrate plugin lifecycles (RFC §11.5) call inst.Stop on
+// idle, restart, or shutdown.
 //
 //	r := inst.Stop(ctx)
 //	if !r.OK { core.Error("stop failed", "err", r.Value) }
@@ -330,6 +333,11 @@ func (inst *Instance) Start(ctx context.Context) core.Result {
 //     veto a shutdown should respond via a separate Query handler (Core
 //     IPC supports both). The bus does not block on listeners.
 //
+//   - When Start was never called the lifecycle is skipped — calling
+//     ServiceShutdown without ServiceStartup is harmless on the Core
+//     side, but skipping keeps Stop semantics symmetric and avoids
+//     surprising Stoppable callbacks that never paired with an OnStart.
+//
 //   - Stop does NOT close the workspace — the host owns the data tree
 //     beyond the app's lifetime so it can recover state on the next
 //     boot.
@@ -337,11 +345,5 @@ func (inst *Instance) Stop(ctx context.Context) core.Result {
 	if inst == nil || inst.Core == nil {
 		return core.Result{Value: coreerr.E("app.Instance.Stop", "nil instance", nil), OK: false}
 	}
-	inst.Core.ACTION(ActionAppStopping{
-		Code:    inst.Manifest.Code,
-		Name:    inst.Manifest.Name,
-		Version: inst.Manifest.Version,
-		Mode:    inst.Mode.String(),
-	})
-	return core.Result{OK: true}
+	return stop(ctx, inst)
 }
