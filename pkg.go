@@ -657,6 +657,9 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 	if err := stageWrappedAssets(medium, dest, opts.AssetSource); err != nil {
 		return dest, coreerr.E("app.installWrap", "materialise wrap failed", err)
 	}
+	if err := materializeWrappedRuntimeAssets(medium, dest, manifest); err != nil {
+		return dest, coreerr.E("app.installWrap", "materialise runtime assets failed", err)
+	}
 	if err := bindWrappedAssetHash(medium, dest, manifest); err != nil {
 		return dest, coreerr.E("app.installWrap", "bind asset hash failed", err)
 	}
@@ -709,6 +712,9 @@ func WriteWrappedAppWithOptions(medium coreio.Medium, dest string, manifest *con
 	}
 	if err := stageWrappedAssets(medium, dest, opts.AssetSource); err != nil {
 		return err
+	}
+	if err := materializeWrappedRuntimeAssets(medium, dest, manifest); err != nil {
+		return coreerr.E("app.WriteWrappedAppWithOptions", "materialise runtime assets failed", err)
 	}
 	if err := bindWrappedAssetHash(medium, dest, manifest); err != nil {
 		return coreerr.E("app.WriteWrappedAppWithOptions", "bind asset hash failed", err)

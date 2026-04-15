@@ -207,6 +207,7 @@ func newCheckerForManifest(m *config.ViewManifest, mode Mode) core.EntitlementCh
 	dialogOpenDeclared := manifestHasGUIGate(m, "gui.dialog.open")
 	dialogSaveDeclared := manifestHasGUIGate(m, "gui.dialog.save")
 	browserOpenDeclared := manifestHasGUIGate(m, "gui.browser.open")
+	locationDeclared := hasManifestLocationPermission(m)
 	code := m.Code
 	// Dev-mode dedup — a single Warn per (code, action) so a 500ms
 	// hot-reload loop polling the same handler does not produce one
@@ -244,6 +245,9 @@ func newCheckerForManifest(m *config.ViewManifest, mode Mode) core.EntitlementCh
 			// Backwards-compat: older manifests that treated browser-open
 			// as part of the broader `net` capability still pass.
 			declared = browserOpenDeclared || hasPermission(p, fieldNet)
+		}
+		if !declared && gate.field == fieldLocation {
+			declared = locationDeclared
 		}
 		if declared {
 			return core.Entitlement{Allowed: true, Unlimited: true}

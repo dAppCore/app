@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"dappco.re/go/app"
@@ -236,6 +237,128 @@ func TestPkgPwa_WrapPWA_Services_Bad(t *testing.T) {
 	}
 }
 
+func TestPkgPwa_WrapPWA_RuntimeConfig_Good(t *testing.T) {
+	src := &app.PWAManifest{
+		Name:     "Offline Play",
+		StartURL: "https://play.example.com/app",
+	}
+	m := app.WrapPWA(src, app.WrapPWAOptions{TargetURL: "https://play.example.com/app"})
+	if m == nil {
+		t.Fatal("WrapPWA returned nil")
+	}
+
+	pwaCfg, ok := m.Config["pwa"].(map[string]any)
+	if !ok {
+		t.Fatalf("Config[pwa] = %T; want map[string]any", m.Config["pwa"])
+	}
+	serviceWorker, ok := pwaCfg["service_worker"].(map[string]any)
+	if !ok {
+		t.Fatalf("pwa.service_worker = %T; want map[string]any", pwaCfg["service_worker"])
+	}
+	if serviceWorker["path"] != "./core-sw.js" {
+		t.Errorf("service_worker.path = %v; want ./core-sw.js", serviceWorker["path"])
+	}
+
+	storeMirror, ok := pwaCfg["store_mirror"].(map[string]any)
+	if !ok {
+		t.Fatalf("pwa.store_mirror = %T; want map[string]any", pwaCfg["store_mirror"])
+	}
+	if storeMirror["driver"] != "indexeddb" {
+		t.Errorf("store_mirror.driver = %v; want indexeddb", storeMirror["driver"])
+	}
+
+	syncCfg, ok := pwaCfg["sync"].(map[string]any)
+	if !ok {
+		t.Fatalf("pwa.sync = %T; want map[string]any", pwaCfg["sync"])
+	}
+	if syncCfg["strategy"] != "last-write-wins" {
+		t.Errorf("sync.strategy = %v; want last-write-wins", syncCfg["strategy"])
+	}
+
+	installPrompt, ok := pwaCfg["install_prompt"].(map[string]any)
+	if !ok {
+		t.Fatalf("pwa.install_prompt = %T; want map[string]any", pwaCfg["install_prompt"])
+	}
+	if installPrompt["enabled"] != true {
+		t.Errorf("install_prompt.enabled = %v; want true", installPrompt["enabled"])
+	}
+}
+
+// TestPkgPwa_WrapPWA_PermissionGates_Good confirms wrapped PWAs keep the
+// RFC-native action-level permission keys when written back to
+// `.core/view.yaml`.
+func TestPkgPwa_WrapPWA_PermissionGates_Good(t *testing.T) {
+	src := &app.PWAManifest{
+		Name:     "Sensors",
+		StartURL: "https://sensors.example.com/",
+		Permissions: []string{
+			"notifications",
+			"clipboard-read",
+			"clipboard-write",
+			"camera",
+			"microphone",
+			"geolocation",
+		},
+	}
+	m := app.WrapPWA(src, app.WrapPWAOptions{})
+	if m == nil {
+		t.Fatal("WrapPWA returned nil")
+	}
+
+	guiGates, ok := m.Config["gui_gates"].(map[string]any)
+	if !ok {
+		t.Fatalf("Config[gui_gates] = %T; want map[string]any", m.Config["gui_gates"])
+	}
+	for _, key := range []string{
+		"gui.notification.send",
+		"gui.clipboard.read",
+		"gui.clipboard.write",
+	} {
+		if guiGates[key] != true {
+			t.Errorf("Config[gui_gates][%q] = %v; want true", key, guiGates[key])
+		}
+	}
+
+	deviceGates, ok := m.Config["device_gates"].(map[string]any)
+	if !ok {
+		t.Fatalf("Config[device_gates] = %T; want map[string]any", m.Config["device_gates"])
+	}
+	for _, key := range []string{
+		"device.camera",
+		"device.microphone",
+		"device.location",
+	} {
+		if deviceGates[key] != true {
+			t.Errorf("Config[device_gates][%q] = %v; want true", key, deviceGates[key])
+		}
+	}
+
+	dir := t.TempDir()
+	if err := app.WritePWAWrap(coreio.Local, dir, m); err != nil {
+		t.Fatalf("WritePWAWrap: %v", err)
+	}
+	body, err := coreio.Local.Read(core.Path(dir, ".core", "view.yaml"))
+	if err != nil {
+		t.Fatalf("Read view.yaml: %v", err)
+	}
+	out := body
+	for _, want := range []string{
+		"gui.notification.send: true",
+		"gui.clipboard.read: true",
+		"gui.clipboard.write: true",
+		"device.camera: true",
+		"device.microphone: true",
+		"device.location: true",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("wrapped PWA YAML missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "- device.location") {
+		t.Errorf("wrapped PWA YAML should not leak device.location through permissions.run:\n%s", out)
+	}
+}
+
 // TestPkgPwa_WrapPWA_Ugly handles the edge cases: target URL override,
 // explicit code override, and unusual characters in the name.
 func TestPkgPwa_WrapPWA_Ugly(t *testing.T) {
@@ -338,6 +461,76 @@ func TestPkgPwa_WritePWAWrap_Good(t *testing.T) {
 	}
 	if round.Code != manifest.Code {
 		t.Errorf("round-trip Code = %q; want %q", round.Code, manifest.Code)
+	}
+}
+
+func TestPkgPwa_WritePWAWrap_RuntimeAssets_Good(t *testing.T) {
+	dir := t.TempDir()
+	manifest := app.WrapPWA(&app.PWAManifest{
+		Name:     "Offline Ready",
+		StartURL: "https://play.example.com/",
+	}, app.WrapPWAOptions{})
+	if manifest == nil {
+		t.Fatal("WrapPWA returned nil")
+	}
+
+	if err := app.WritePWAWrap(coreio.Local, dir, manifest); err != nil {
+		t.Fatalf("WritePWAWrap: %v", err)
+	}
+	for _, tc := range []struct {
+		path  string
+		parts []string
+	}{
+		{path: core.Path(dir, "core-sw.js"), parts: []string{"core.json", "components"}},
+		{path: core.Path(dir, "core-pwa.js"), parts: []string{"beforeinstallprompt", "indexedDB", "last-write-wins"}},
+	} {
+		body, err := coreio.Local.Read(tc.path)
+		if err != nil {
+			t.Fatalf("Read %s: %v", tc.path, err)
+		}
+		for _, part := range tc.parts {
+			if !strings.Contains(body, part) {
+				t.Errorf("%s missing %q", tc.path, part)
+			}
+		}
+	}
+}
+
+func TestPkgPwa_WriteWrappedAppWithOptions_InjectsBootstrap_Good(t *testing.T) {
+	srcDir := t.TempDir()
+	if err := coreio.Local.Write(core.Path(srcDir, "index.html"), "<html><head><title>X</title></head><body>Hello</body></html>"); err != nil {
+		t.Fatalf("Write index.html: %v", err)
+	}
+
+	manifest := app.WrapPWA(&app.PWAManifest{
+		Name:     "Injected",
+		StartURL: "https://play.example.com/index.html",
+	}, app.WrapPWAOptions{})
+	if manifest == nil {
+		t.Fatal("WrapPWA returned nil")
+	}
+
+	dest := t.TempDir()
+	if err := app.WriteWrappedAppWithOptions(coreio.Local, dest, manifest, app.WriteWrappedOptions{
+		AssetSource: srcDir,
+	}); err != nil {
+		t.Fatalf("WriteWrappedAppWithOptions: %v", err)
+	}
+
+	body, err := coreio.Local.Read(core.Path(dest, "index.html"))
+	if err != nil {
+		t.Fatalf("Read injected index.html: %v", err)
+	}
+	if !strings.Contains(body, `data-core-pwa`) {
+		t.Errorf("index.html missing bootstrap injection:\n%s", body)
+	}
+
+	var round config.ViewManifest
+	if err := app.LoadViewManifest(coreio.Local, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+		t.Fatalf("LoadViewManifest: %v", err)
+	}
+	if hash, _ := round.Config["asset_hash"].(string); hash == "" {
+		t.Fatal("asset_hash missing from wrapped PWA written through the shared writer")
 	}
 }
 

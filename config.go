@@ -326,7 +326,8 @@ func stringOf(v any) string {
 func isReservedConfigKey(name string) bool {
 	switch name {
 	case "services", "source", "type", "url", "display",
-		"short_name", "theme", "locale", "icon", "shim", "gui_gates",
+		"short_name", "theme", "locale", "icon", "shim", "pwa", "gui_gates",
+		"device_gates",
 		"ipc_channels", "main", "entry",
 		"write", "store", "window_mode", manifestAssetHashKey,
 		"isolation", "write_paths",

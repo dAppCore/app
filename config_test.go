@@ -229,7 +229,7 @@ func TestConfig_destinationOf_Ugly(t *testing.T) {
 func TestConfig_isReservedConfigKey_Good(t *testing.T) {
 	for _, name := range []string{
 		"services", "source", "type", "url", "display",
-		"short_name", "theme", "locale", "icon", "shim",
+		"short_name", "theme", "locale", "icon", "shim", "pwa",
 		"gui_gates", "ipc_channels", "main", "entry", manifestAssetHashKey,
 	} {
 		if !isReservedConfigKey(name) {
@@ -266,6 +266,7 @@ func TestConfig_applyConfig_ReservedKeys(t *testing.T) {
 			"store":              true,
 			manifestAssetHashKey: "abc123",
 			"window_mode":        "window",
+			"pwa":                map[string]any{"service_worker": map[string]any{"enabled": true}},
 		},
 	}
 	if err := applyConfig(c, m, coreio.Local, t.TempDir()); err != nil {

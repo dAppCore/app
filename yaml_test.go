@@ -200,6 +200,44 @@ permissions:
 	}
 }
 
+// TestYaml_UnmarshalViewManifest_Good_DeviceGates confirms the
+// RFC-native device permission keys hydrate into the internal runtime
+// shape without losing their narrower action-level intent.
+func TestYaml_UnmarshalViewManifest_Good_DeviceGates(t *testing.T) {
+	body := []byte(`
+code: device-compat
+name: Device Compat
+version: 0.1.0
+permissions:
+  device.camera: true
+  device.microphone: true
+  device.location: true
+`)
+
+	var out config.ViewManifest
+	if err := UnmarshalViewManifest(body, &out); err != nil {
+		t.Fatalf("UnmarshalViewManifest failed: %v", err)
+	}
+	if !out.Permissions.Camera {
+		t.Error("Permissions.Camera should be true when device.camera is declared")
+	}
+	if !out.Permissions.Microphone {
+		t.Error("Permissions.Microphone should be true when device.microphone is declared")
+	}
+	if !hasManifestLocationPermission(&out) {
+		t.Error("device.location should hydrate into the runtime location gate")
+	}
+	if !manifestHasDeviceGate(&out, "device.camera") {
+		t.Error("device.camera gate marker missing after unmarshal")
+	}
+	if !manifestHasDeviceGate(&out, "device.microphone") {
+		t.Error("device.microphone gate marker missing after unmarshal")
+	}
+	if !manifestHasDeviceGate(&out, "device.location") {
+		t.Error("device.location gate marker missing after unmarshal")
+	}
+}
+
 // TestYaml_LoadViewManifest_Good_RFCCompat — disk-backed loads route
 // through the same compatibility path as the in-memory decoder.
 func TestYaml_LoadViewManifest_Good_RFCCompat(t *testing.T) {
@@ -262,6 +300,55 @@ func TestYaml_yamlMarshalBytes_Good_RFCCompat(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("yaml output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestYaml_yamlMarshalBytes_Good_DeviceGates confirms the canonical YAML
+// form preserves the RFC-native device permission keys and does not leak
+// the compatibility-only `device.location` run entry back into `run:`.
+func TestYaml_yamlMarshalBytes_Good_DeviceGates(t *testing.T) {
+	in := &config.ViewManifest{
+		Code:    "device-marshal",
+		Name:    "Device Marshal",
+		Version: "0.1.0",
+		Permissions: config.ViewPermissions{
+			Run:        []string{"ffmpeg", "device.location"},
+			Camera:     true,
+			Microphone: true,
+		},
+		Config: map[string]any{
+			"device_gates": map[string]any{
+				"device.camera":     true,
+				"device.microphone": true,
+				"device.location":   true,
+			},
+		},
+	}
+
+	body, err := yamlMarshalBytes(in)
+	if err != nil {
+		t.Fatalf("yamlMarshalBytes failed: %v", err)
+	}
+	out := string(body)
+
+	for _, want := range []string{
+		"device.camera: true",
+		"device.microphone: true",
+		"device.location: true",
+		"- ffmpeg",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("yaml output missing %q:\n%s", want, out)
+		}
+	}
+	for _, forbidden := range []string{
+		"- device.location",
+		"\n    camera: true",
+		"\n    microphone: true",
+	} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("yaml output should suppress %q when an RFC-native device gate exists:\n%s", forbidden, out)
 		}
 	}
 }

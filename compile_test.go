@@ -448,6 +448,61 @@ func TestCompile_WriteCompiled_CompatibilityFields_Good(t *testing.T) {
 	}
 }
 
+// TestCompile_WriteCompiled_CompatibilityFields_DeviceGates confirms
+// the compiled core.json permission object preserves the RFC-native
+// device permission keys and does not re-emit the compatibility-only
+// `device.location` run entry.
+func TestCompile_WriteCompiled_CompatibilityFields_DeviceGates(t *testing.T) {
+	dir := t.TempDir()
+	m := &config.ViewManifest{
+		Code:    "device-compat",
+		Name:    "Device Compat",
+		Version: "0.1.0",
+		Permissions: config.ViewPermissions{
+			Run:        []string{"ffmpeg", "device.location"},
+			Camera:     true,
+			Microphone: true,
+		},
+		Config: map[string]any{
+			"device_gates": map[string]any{
+				"device.camera":     true,
+				"device.microphone": true,
+				"device.location":   true,
+			},
+		},
+	}
+	cm, err := Compile(m, CompileOptions{})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if err := WriteCompiled(coreio.Local, dir, cm); err != nil {
+		t.Fatalf("WriteCompiled: %v", err)
+	}
+
+	body, err := coreio.Local.Read(core.Path(dir, CompiledFileName))
+	if err != nil {
+		t.Fatalf("Read core.json: %v", err)
+	}
+	var raw map[string]any
+	if r := core.JSONUnmarshal([]byte(body), &raw); !r.OK {
+		t.Fatalf("Decode core.json: %v", r.Value)
+	}
+
+	perms, ok := raw["permissions"].(map[string]any)
+	if !ok {
+		t.Fatalf("permissions = %T; want object", raw["permissions"])
+	}
+	for _, key := range []string{"device.camera", "device.microphone", "device.location"} {
+		if perms[key] != true {
+			t.Errorf("permissions[%q] = %v; want true", key, perms[key])
+		}
+	}
+	runList, ok := perms["run"].([]any)
+	if !ok || len(runList) != 1 || runList[0] != "ffmpeg" {
+		t.Errorf("permissions.run = %v; want [ffmpeg]", perms["run"])
+	}
+}
+
 // TestCompile_LoadCompiled_CompatibilityFields_Good confirms
 // LoadCompiled accepts the RFC-facing core.json shape and folds the
 // compatibility fields back into the in-memory Config / Permissions

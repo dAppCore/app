@@ -116,6 +116,9 @@ func PluginBoot(ctx context.Context, opts PluginOptions) (*Instance, error) {
 	if err := applyConfigWithMode(c, &inst.Manifest, medium, opts.ProjectRoot, opts.Mode); err != nil {
 		return nil, coreerr.E("app.PluginBoot", "config template failed", err)
 	}
+	if err := registerRuntimeActions(inst); err != nil {
+		return nil, coreerr.E("app.PluginBoot", "runtime action registration failed", err)
+	}
 
 	return inst, nil
 }

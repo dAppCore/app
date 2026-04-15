@@ -209,17 +209,20 @@ func WrapPWA(src *PWAManifest, opts WrapPWAOptions) *config.ViewManifest {
 	// permission gate accepts store.* actions without ViewPermissions
 	// growing a typed Store bool.
 	services := []any{"store"}
-	m.Config = map[string]any{
-		"type":       PackageTypePWA.String(),
-		"url":        url,
-		"display":    src.Display,
-		"short_name": src.ShortName,
-		"store":      true,
+	cfg := m.Config
+	if cfg == nil {
+		cfg = map[string]any{}
 	}
+	cfg["type"] = PackageTypePWA.String()
+	cfg["url"] = url
+	cfg["display"] = src.Display
+	cfg["short_name"] = src.ShortName
+	cfg["store"] = true
+	cfg["pwa"] = defaultPWARuntimeConfig(m)
 	if m.Permissions.Notifications {
 		services = append(services, "notification")
 	}
-	m.Config["services"] = services
+	cfg["services"] = services
 
 	// RFC §16.1 — map PWA `display` to a CoreApp window mode so the host
 	// (CoreGUI) knows whether to chrome the window, hide it, or render it
@@ -232,21 +235,22 @@ func WrapPWA(src *PWAManifest, opts WrapPWAOptions) *config.ViewManifest {
 	//   minimal-ui → window  (small chrome — treated like standalone)
 	//   browser    → tab     (open in the user's browser)
 	if mode := pwaWindowMode(src.Display); mode != "" {
-		m.Config["window_mode"] = mode
+		cfg["window_mode"] = mode
 	}
 
 	if src.ThemeColor != "" || src.BackgroundColor != "" {
-		m.Config["theme"] = map[string]any{
+		cfg["theme"] = map[string]any{
 			"primary":    src.ThemeColor,
 			"background": src.BackgroundColor,
 		}
 	}
 	if src.Lang != "" {
-		m.Config["locale"] = src.Lang
+		cfg["locale"] = src.Lang
 	}
 	if icon := largestIcon(src.Icons); icon != "" {
-		m.Config["icon"] = icon
+		cfg["icon"] = icon
 	}
+	m.Config = cfg
 
 	return m
 }
@@ -333,6 +337,9 @@ func WritePWAWrap(medium coreio.Medium, dest string, manifest *config.ViewManife
 	if medium == nil {
 		medium = coreio.Local
 	}
+	if err := materializeWrappedRuntimeAssets(medium, dest, manifest); err != nil {
+		return coreerr.E("app.WritePWAWrap", "materialise runtime assets failed", err)
+	}
 	body, err := yamlMarshalBytes(manifest)
 	if err != nil {
 		return coreerr.E("app.WritePWAWrap", "marshal failed", err)
@@ -366,17 +373,26 @@ func applyPWAPermissionMapping(m *config.ViewManifest, perms []string) {
 		switch p {
 		case "notifications":
 			m.Permissions.Notifications = true
+			mergeManifestGUIGate(m, "gui.notification.send")
 		case "clipboard-read", "clipboard-write":
 			m.Permissions.Clipboard = true
+			if p == "clipboard-read" {
+				mergeManifestGUIGate(m, "gui.clipboard.read")
+			} else {
+				mergeManifestGUIGate(m, "gui.clipboard.write")
+			}
 		case "camera":
 			m.Permissions.Camera = true
+			mergeManifestDeviceGate(m, "device.camera")
 		case "microphone":
 			m.Permissions.Microphone = true
+			mergeManifestDeviceGate(m, "device.microphone")
 		case "geolocation":
-			// ViewPermissions has no location slot yet — record in Run
-			// so the field survives the round-trip and the access gate
-			// can surface a precise denial reason.
-			m.Permissions.Run = append(m.Permissions.Run, "device.location")
+			// ViewPermissions has no location slot yet — record the
+			// RFC-native key and mirror it into the legacy Run list so the
+			// runtime gate accepts both persisted and in-memory forms.
+			appendUniqueString(&m.Permissions.Run, "device.location")
+			mergeManifestDeviceGate(m, "device.location")
 		case "storage", "persistent-storage":
 			// Local storage is available by default in PWAs under
 			// CoreGUI (ts RFC §5). No-op for now; when ViewPermissions

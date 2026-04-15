@@ -10,6 +10,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	manifestConfigKeyGUIGates    = "gui_gates"
+	manifestConfigKeyDeviceGates = "device_gates"
+)
+
 // yamlMarshalBytes is a thin wrapper over gopkg.in/yaml.v3 Marshal so
 // every packaging file shares one entry point. Keeps the encoder swap
 // cheap — change this one function and every wrap/install path
@@ -219,14 +224,17 @@ func mergeManifestPermissionExtras(dst *config.ViewManifest, raw any) {
 		case "location", "device.location":
 			if truthy(value) {
 				appendUniqueString(&dst.Permissions.Run, "device.location")
+				mergeManifestDeviceGate(dst, "device.location")
 			}
 		case "device.camera":
 			if truthy(value) {
 				dst.Permissions.Camera = true
+				mergeManifestDeviceGate(dst, key)
 			}
 		case "device.microphone":
 			if truthy(value) {
 				dst.Permissions.Microphone = true
+				mergeManifestDeviceGate(dst, key)
 			}
 		default:
 			if !truthy(value) || !core.HasPrefix(key, "gui.") {
@@ -251,11 +259,19 @@ func ensureManifestConfig(m *config.ViewManifest) map[string]any {
 }
 
 func mergeManifestGUIGate(m *config.ViewManifest, gate string) {
+	mergeManifestNamedGate(m, manifestConfigKeyGUIGates, gate)
+}
+
+func mergeManifestDeviceGate(m *config.ViewManifest, gate string) {
+	mergeManifestNamedGate(m, manifestConfigKeyDeviceGates, gate)
+}
+
+func mergeManifestNamedGate(m *config.ViewManifest, key, gate string) {
 	if m == nil || gate == "" {
 		return
 	}
 	cfg := ensureManifestConfig(m)
-	switch cur := cfg["gui_gates"].(type) {
+	switch cur := cfg[key].(type) {
 	case map[string]any:
 		cur[gate] = true
 	case map[string]bool:
@@ -264,9 +280,9 @@ func mergeManifestGUIGate(m *config.ViewManifest, gate string) {
 			next[k] = v
 		}
 		next[gate] = true
-		cfg["gui_gates"] = next
+		cfg[key] = next
 	default:
-		cfg["gui_gates"] = map[string]any{gate: true}
+		cfg[key] = map[string]any{gate: true}
 	}
 }
 
@@ -302,6 +318,7 @@ func manifestPermissionsForYAML(m *config.ViewManifest) map[string]any {
 	}
 	perms := map[string]any{}
 	guiGates := manifestGUIGates(m)
+	deviceGates := manifestDeviceGates(m)
 	if m.Permissions.Clipboard &&
 		!truthy(guiGates["gui.clipboard.read"]) &&
 		!truthy(guiGates["gui.clipboard.write"]) {
@@ -317,10 +334,18 @@ func manifestPermissionsForYAML(m *config.ViewManifest) map[string]any {
 		perms["notifications"] = true
 	}
 	if m.Permissions.Camera {
-		perms["camera"] = true
+		if truthy(deviceGates["device.camera"]) {
+			perms["device.camera"] = true
+		} else {
+			perms["camera"] = true
+		}
 	}
 	if m.Permissions.Microphone {
-		perms["microphone"] = true
+		if truthy(deviceGates["device.microphone"]) {
+			perms["device.microphone"] = true
+		} else {
+			perms["microphone"] = true
+		}
 	}
 	if len(m.Permissions.Read) > 0 {
 		perms["read"] = append([]string(nil), m.Permissions.Read...)
@@ -329,7 +354,23 @@ func manifestPermissionsForYAML(m *config.ViewManifest) map[string]any {
 		perms["net"] = append([]string(nil), m.Permissions.Net...)
 	}
 	if len(m.Permissions.Run) > 0 {
-		perms["run"] = append([]string(nil), m.Permissions.Run...)
+		run := make([]string, 0, len(m.Permissions.Run))
+		locationDeclared := false
+		for _, entry := range m.Permissions.Run {
+			if entry == "device.location" {
+				locationDeclared = true
+				continue
+			}
+			run = append(run, entry)
+		}
+		if len(run) > 0 {
+			perms["run"] = run
+		}
+		if locationDeclared || truthy(deviceGates["device.location"]) {
+			perms["device.location"] = true
+		}
+	} else if truthy(deviceGates["device.location"]) {
+		perms["device.location"] = true
 	}
 	if v, ok := manifestConfigValue(m, "write"); ok {
 		perms["write"] = v
@@ -361,6 +402,8 @@ func manifestConfigForYAML(m *config.ViewManifest) map[string]any {
 	}
 	delete(out, "write")
 	delete(out, "store")
+	delete(out, manifestConfigKeyGUIGates)
+	delete(out, manifestConfigKeyDeviceGates)
 	if len(out) == 0 {
 		return nil
 	}
@@ -379,10 +422,18 @@ func manifestConfigValue(m *config.ViewManifest, key string) (any, bool) {
 }
 
 func manifestGUIGates(m *config.ViewManifest) map[string]any {
+	return manifestNamedGates(m, manifestConfigKeyGUIGates)
+}
+
+func manifestDeviceGates(m *config.ViewManifest) map[string]any {
+	return manifestNamedGates(m, manifestConfigKeyDeviceGates)
+}
+
+func manifestNamedGates(m *config.ViewManifest, key string) map[string]any {
 	if m == nil || m.Config == nil {
 		return nil
 	}
-	switch raw := m.Config["gui_gates"].(type) {
+	switch raw := m.Config[key].(type) {
 	case map[string]any:
 		out := map[string]any{}
 		for key, value := range raw {
@@ -415,4 +466,26 @@ func manifestHasGUIGate(m *config.ViewManifest, gate string) bool {
 		return false
 	}
 	return truthy(manifestGUIGates(m)[gate])
+}
+
+func manifestHasDeviceGate(m *config.ViewManifest, gate string) bool {
+	if gate == "" {
+		return false
+	}
+	return truthy(manifestDeviceGates(m)[gate])
+}
+
+func hasManifestLocationPermission(m *config.ViewManifest) bool {
+	if manifestHasDeviceGate(m, "device.location") {
+		return true
+	}
+	if m == nil {
+		return false
+	}
+	for _, entry := range m.Permissions.Run {
+		if entry == "device.location" {
+			return true
+		}
+	}
+	return false
 }

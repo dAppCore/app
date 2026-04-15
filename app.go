@@ -212,6 +212,7 @@ type Instance struct {
 	Layout    *LayoutSpec         // resolved HLCRF layout (nil = headless CLI app)
 	medium    coreio.Medium       // retained for Start + post-boot reads
 	started   bool                // RFC §11.5 — toggled by start/stop so the lifecycle does not run twice
+	runtime   *runtimeBindings    // default action handlers + workspace-backed runtime state
 }
 
 // Boot runs the 7-step boot sequence against the project rooted at `start`.
@@ -301,6 +302,9 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 			_ = wsErr
 		}
 		inst.Workspace = ws
+	}
+	if err := registerRuntimeActions(inst); err != nil {
+		return nil, coreerr.E("app.Boot", "runtime action registration failed", err)
 	}
 
 	// Note: Step 7 (Start) is the caller's explicit trigger — Boot returns

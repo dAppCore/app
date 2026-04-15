@@ -237,15 +237,12 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 			nil,
 		)
 	case AccessLocation:
-		// Location lives in the Run-list as `device.location` until
-		// ViewPermissions grows a typed slot. matchExact mirrors the
-		// AccessRun gate so the convention stays consistent.
-		if matchExact(m.Permissions.Run, "device.location") {
+		if hasManifestLocationPermission(m) {
 			return nil
 		}
 		return coreerr.E(
 			"app.CheckAccess",
-			"location access not declared (add 'device.location' to permissions.run in view.yaml)",
+			"location access not declared (set permissions.device.location: true in view.yaml)",
 			nil,
 		)
 	default:

@@ -575,21 +575,9 @@ func manifestDeclaresPermission(m *config.ViewManifest, name string) bool {
 	case "device.microphone":
 		return m.Permissions.Microphone
 	case "location":
-		// `device.location` lives in the Run-list until ViewPermissions
-		// grows a typed slot — mirror the entitlement gate.
-		for _, entry := range m.Permissions.Run {
-			if entry == "device.location" {
-				return true
-			}
-		}
-		return false
+		return hasManifestLocationPermission(m)
 	case "device.location":
-		for _, entry := range m.Permissions.Run {
-			if entry == "device.location" {
-				return true
-			}
-		}
-		return false
+		return hasManifestLocationPermission(m)
 	}
 	return false
 }

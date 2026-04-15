@@ -17,14 +17,17 @@ import (
 const manifestAssetHashKey = "asset_hash"
 
 // bindWrappedAssetHash records a deterministic hash of the staged asset
-// tree into the manifest before signing. RFC §16.2 requires wrapped
-// Electron installs to bind the renderer assets to the manifest
-// signature so tampering with the copied tree is detectable at boot.
+// tree into the manifest before signing. Wrapped Electron and PWA
+// installs both materialise runtime assets alongside the generated
+// manifest, so the final on-disk tree must be covered by the
+// signature-bound hash.
 func bindWrappedAssetHash(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
 	if manifest == nil {
 		return coreerr.E("app.bindWrappedAssetHash", "nil manifest", nil)
 	}
-	if packageTypeFromManifest(manifest) != PackageTypeElectron {
+	switch packageTypeFromManifest(manifest) {
+	case PackageTypeElectron, PackageTypePWA:
+	default:
 		setManifestAssetHash(manifest, "")
 		return nil
 	}

@@ -117,6 +117,9 @@ func stop(ctx context.Context, inst *Instance) core.Result {
 		Version: inst.Manifest.Version,
 		Mode:    inst.Mode.String(),
 	})
+	if inst.runtime != nil {
+		inst.runtime.shutdown()
+	}
 
 	// Skip the lifecycle when Start was never called — calling
 	// ServiceShutdown on a Core that never had ServiceStartup is fine,
