@@ -294,7 +294,7 @@ func TestPkg_runPkgInstall_TypeOverride(t *testing.T) {
 			continue
 		}
 		var round config.ViewManifest
-		if err := config.LoadManifest(medium, view, &round); err != nil {
+		if err := app.LoadViewManifest(medium, view, &round); err != nil {
 			continue
 		}
 		if t2, _ := round.Config["type"].(string); t2 == "web" {
@@ -398,7 +398,7 @@ func TestPkg_runPkgInstallLocal_Ugly(t *testing.T) {
 			continue
 		}
 		var round config.ViewManifest
-		if err := config.LoadManifest(medium, viewPath, &round); err != nil {
+		if err := app.LoadViewManifest(medium, viewPath, &round); err != nil {
 			continue
 		}
 		if t2, _ := round.Config["type"].(string); t2 == "web" {
@@ -786,7 +786,7 @@ func TestPkg_runPkgInstallPWA_Good(t *testing.T) {
 		t.Fatalf("view.yaml missing at %s", view)
 	}
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, view, &round); err != nil {
+	if err := app.LoadViewManifest(medium, view, &round); err != nil {
 		t.Fatalf("LoadManifest: %v", err)
 	}
 	src, _ := round.Config["source"].(string)

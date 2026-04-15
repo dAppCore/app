@@ -130,6 +130,30 @@ func TestSdk_SelectActions_Good(t *testing.T) {
 	}
 }
 
+// TestSdk_SelectActions_WriteList_Good — manifests using the RFC-native
+// `permissions.write` compatibility slot (stored in Config["write"] by
+// the loader) should expose fs.write in generated SDKs even when the
+// legacy Filesystem bool is false.
+func TestSdk_SelectActions_WriteList_Good(t *testing.T) {
+	m := &config.ViewManifest{
+		Config: map[string]any{
+			"write": []any{"./data/"},
+		},
+	}
+	actions := SelectActions(DefaultSDKActions(), m, false)
+
+	hasWrite := false
+	for _, a := range actions {
+		if a.Name == "fs.write" {
+			hasWrite = true
+			break
+		}
+	}
+	if !hasWrite {
+		t.Error("fs.write should be included when Config[write] is declared")
+	}
+}
+
 // TestSdk_SelectActions_Bad — nil manifest with includeAll=false still
 // returns the unfiltered list (the function treats nil as "I cannot
 // filter, hand everything back").

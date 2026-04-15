@@ -53,7 +53,7 @@ func VerifyListing(medium coreio.Medium, dest string, listing *MarketplaceListin
 	}
 
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, manifestPath, &manifest); err != nil {
+	if err := LoadViewManifest(medium, manifestPath, &manifest); err != nil {
 		return coreerr.E(
 			"app.VerifyListing",
 			"parse installed manifest for "+listing.Code+" failed",

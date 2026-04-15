@@ -338,7 +338,7 @@ func runCompile(args []string) int {
 	}
 
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, path, &manifest); err != nil {
+	if err := app.LoadViewManifest(medium, path, &manifest); err != nil {
 		core.Error("compile: parse failed", "path", path, "err", err)
 		return 1
 	}
@@ -381,7 +381,7 @@ func runCompile(args []string) int {
 			return 1
 		}
 		// Re-read so the compiled manifest carries the fresh Sign.
-		if err := config.LoadManifest(medium, path, &manifest); err != nil {
+		if err := app.LoadViewManifest(medium, path, &manifest); err != nil {
 			core.Error("compile: reload after sign failed", "err", err)
 			return 1
 		}
@@ -609,7 +609,7 @@ func runValidate(args []string) int {
 		return 1
 	}
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, path, &manifest); err != nil {
+	if err := app.LoadViewManifest(medium, path, &manifest); err != nil {
 		core.Error("validate: parse failed", "path", path, "err", err)
 		return 1
 	}

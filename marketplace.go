@@ -682,7 +682,7 @@ func stampCategory(medium coreio.Medium, dest, category string) error {
 		return nil
 	}
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, path, &manifest); err != nil {
+	if err := LoadViewManifest(medium, path, &manifest); err != nil {
 		return err
 	}
 	if manifest.Config == nil {
@@ -708,7 +708,7 @@ func stampSource(medium coreio.Medium, dest, source string) error {
 		return nil
 	}
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, path, &manifest); err != nil {
+	if err := LoadViewManifest(medium, path, &manifest); err != nil {
 		return err
 	}
 	if manifest.Config == nil {

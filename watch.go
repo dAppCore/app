@@ -387,7 +387,7 @@ func (inst *Instance) WatchManifest(ctx context.Context, reload func(config.View
 			return core.Result{OK: true}
 		}
 		var manifest config.ViewManifest
-		if err := config.LoadManifest(medium, path, &manifest); err != nil {
+		if err := LoadViewManifest(medium, path, &manifest); err != nil {
 			core.Error("app.WatchManifest: parse failed", "path", path, "err", err)
 			return core.Result{OK: true}
 		}

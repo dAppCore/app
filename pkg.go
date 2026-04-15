@@ -9,7 +9,6 @@ import (
 	"dappco.re/go/core/config"
 	coreio "dappco.re/go/core/io"
 	coreerr "dappco.re/go/core/log"
-	"gopkg.in/yaml.v3"
 )
 
 // AppsDirName is the component that follows `$DIR_HOME/.core/` for the
@@ -200,7 +199,7 @@ func InstalledApps(medium coreio.Medium, home string) ([]InstalledApp, error) {
 			continue
 		}
 		var manifest config.ViewManifest
-		if err := config.LoadManifest(medium, viewPath, &manifest); err != nil {
+		if err := LoadViewManifest(medium, viewPath, &manifest); err != nil {
 			// Skip unreadable installs so one bad manifest does not
 			// hide the rest of the tree — matches PkgList's policy.
 			continue
@@ -225,7 +224,7 @@ func InstalledApps(medium coreio.Medium, home string) ([]InstalledApp, error) {
 //	pe, err := pkgEntryFromManifest(medium, viewPath, appPath)
 func pkgEntryFromManifest(medium coreio.Medium, viewPath, appPath string) (PkgEntry, error) {
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, viewPath, &manifest); err != nil {
+	if err := LoadViewManifest(medium, viewPath, &manifest); err != nil {
 		return PkgEntry{}, err
 	}
 	entry := PkgEntry{
@@ -334,7 +333,7 @@ func PkgInfo(medium coreio.Medium, home, name string) (*PkgDetails, error) {
 	}
 
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, viewPath, &manifest); err != nil {
+	if err := LoadViewManifest(medium, viewPath, &manifest); err != nil {
 		return nil, coreerr.E("app.PkgInfo", "parse manifest failed", err)
 	}
 
@@ -651,7 +650,7 @@ func WriteWrappedApp(medium coreio.Medium, dest string, manifest *config.ViewMan
 	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
 		return coreerr.E("app.WriteWrappedApp", "ensure dir failed", err)
 	}
-	body, err := yaml.Marshal(manifest)
+	body, err := yamlMarshalBytes(manifest)
 	if err != nil {
 		return coreerr.E("app.WriteWrappedApp", "marshal failed", err)
 	}
@@ -690,7 +689,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 	}
 
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, viewPath, &manifest); err != nil {
+	if err := LoadViewManifest(medium, viewPath, &manifest); err != nil {
 		return "", coreerr.E("app.PkgUpdate", "parse manifest failed", err)
 	}
 
@@ -1059,7 +1058,7 @@ func PkgInstallLocal(medium coreio.Medium, src string, opts PkgInstallOptions) (
 	}
 
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, manifestPath, &manifest); err != nil {
+	if err := LoadViewManifest(medium, manifestPath, &manifest); err != nil {
 		return "", coreerr.E("app.PkgInstallLocal", "parse source manifest failed", err)
 	}
 	if manifest.Code == "" {

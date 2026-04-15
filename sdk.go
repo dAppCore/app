@@ -540,7 +540,7 @@ func manifestDeclaresPermission(m *config.ViewManifest, name string) bool {
 	case "read":
 		return len(m.Permissions.Read) > 0 || m.Permissions.Filesystem
 	case "write":
-		return m.Permissions.Filesystem
+		return m.Permissions.Filesystem || len(manifestWriteList(m)) > 0
 	case "net":
 		return len(m.Permissions.Net) > 0 || m.Permissions.Network
 	case "run":

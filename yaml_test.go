@@ -3,9 +3,11 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
 	"dappco.re/go/core/config"
+	coreio "dappco.re/go/core/io"
 )
 
 // TestYaml_yamlMarshalBytes_Good — marshalling a populated ViewManifest
@@ -146,5 +148,120 @@ func TestYaml_yamlUnmarshalImpl_Ugly(t *testing.T) {
 	}
 	if out.Code != "" {
 		t.Errorf("empty input mutated Code=%q", out.Code)
+	}
+}
+
+// TestYaml_UnmarshalViewManifest_Good_RFCCompat — RFC-native fields the
+// upstream config schema does not type directly still hydrate into the
+// runtime shape core/app consumes.
+func TestYaml_UnmarshalViewManifest_Good_RFCCompat(t *testing.T) {
+	body := []byte(`
+code: compat
+name: Compat
+version: 0.1.0
+services:
+  - io
+  - store
+type: pwa
+url: https://play.example.com
+permissions:
+  net:
+    - "*"
+  write:
+    - ./cache/
+  store: true
+  gui.clipboard.write: true
+`)
+
+	var out config.ViewManifest
+	if err := UnmarshalViewManifest(body, &out); err != nil {
+		t.Fatalf("UnmarshalViewManifest failed: %v", err)
+	}
+	if out.Config["type"] != "pwa" {
+		t.Errorf("Config[type] = %v; want pwa", out.Config["type"])
+	}
+	if out.Config["url"] != "https://play.example.com" {
+		t.Errorf("Config[url] = %v; want target URL", out.Config["url"])
+	}
+	if out.Config["store"] != true {
+		t.Errorf("Config[store] = %v; want true", out.Config["store"])
+	}
+	if _, ok := out.Config["write"].([]any); !ok {
+		t.Fatalf("Config[write] = %T; want []any", out.Config["write"])
+	}
+	if services, ok := out.Config["services"].([]any); !ok || len(services) != 2 {
+		t.Fatalf("Config[services] = %v; want [io store]", out.Config["services"])
+	}
+	if !out.Permissions.Network {
+		t.Error("Permissions.Network should be true when permissions.net contains '*'")
+	}
+	if !out.Permissions.Clipboard {
+		t.Error("Permissions.Clipboard should be true when gui.clipboard.write is declared")
+	}
+}
+
+// TestYaml_LoadViewManifest_Good_RFCCompat — disk-backed loads route
+// through the same compatibility path as the in-memory decoder.
+func TestYaml_LoadViewManifest_Good_RFCCompat(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/view.yaml"
+	body := `code: disk-compat
+name: Disk Compat
+version: 0.1.0
+services: [store]
+permissions:
+  write: ["./tmp/"]
+`
+	if err := coreio.Local.Write(path, body); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	var out config.ViewManifest
+	if err := LoadViewManifest(coreio.Local, path, &out); err != nil {
+		t.Fatalf("LoadViewManifest failed: %v", err)
+	}
+	if out.Config == nil {
+		t.Fatal("Config is nil; want compatibility fields merged in")
+	}
+	if _, ok := out.Config["write"].([]any); !ok {
+		t.Fatalf("Config[write] = %T; want []any", out.Config["write"])
+	}
+}
+
+// TestYaml_yamlMarshalBytes_Good_RFCCompat — manifest compatibility
+// fields are written back in RFC-native positions, not left stranded
+// under config-only compatibility slots.
+func TestYaml_yamlMarshalBytes_Good_RFCCompat(t *testing.T) {
+	in := &config.ViewManifest{
+		Code:    "marshal-compat",
+		Name:    "Marshal Compat",
+		Version: "0.1.0",
+		Config: map[string]any{
+			"services": []any{"store"},
+			"type":     "pwa",
+			"url":      "https://play.example.com",
+			"write":    []any{"./cache/"},
+			"store":    true,
+			"source":   "wrap:pwa:https://play.example.com",
+		},
+	}
+
+	body, err := yamlMarshalBytes(in)
+	if err != nil {
+		t.Fatalf("yamlMarshalBytes failed: %v", err)
+	}
+	out := string(body)
+	for _, want := range []string{
+		"services:",
+		"type: pwa",
+		"url: https://play.example.com",
+		"write:",
+		"store: true",
+		"config:",
+		"source: wrap:pwa:https://play.example.com",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("yaml output missing %q:\n%s", want, out)
+		}
 	}
 }

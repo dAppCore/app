@@ -1137,7 +1137,7 @@ func readInstalledSource(medium coreio.Medium, home, name string) string {
 		return ""
 	}
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, view, &manifest); err != nil {
+	if err := app.LoadViewManifest(medium, view, &manifest); err != nil {
 		return ""
 	}
 	if manifest.Config == nil {

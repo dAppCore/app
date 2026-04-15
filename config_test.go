@@ -259,9 +259,12 @@ func TestConfig_applyConfig_ReservedKeys(t *testing.T) {
 	c := core.New()
 	m := &config.ViewManifest{
 		Config: map[string]any{
-			"services": []any{"io", "store"},
-			"source":   "wrap:pwa:https://app.example.com",
-			"type":     "pwa",
+			"services":    []any{"io", "store"},
+			"source":      "wrap:pwa:https://app.example.com",
+			"type":        "pwa",
+			"write":       []any{"./cache/"},
+			"store":       true,
+			"window_mode": "window",
 		},
 	}
 	if err := applyConfig(c, m, coreio.Local, t.TempDir()); err != nil {

@@ -9,7 +9,6 @@ import (
 	"dappco.re/go/core/config"
 	coreio "dappco.re/go/core/io"
 	coreerr "dappco.re/go/core/log"
-	"gopkg.in/yaml.v3"
 )
 
 // ElectronPackageJSON is the subset of an Electron app's package.json we
@@ -519,7 +518,7 @@ func WriteElectronWrap(medium coreio.Medium, dest string, manifest *config.ViewM
 	if medium == nil {
 		medium = coreio.Local
 	}
-	body, err := yaml.Marshal(manifest)
+	body, err := yamlMarshalBytes(manifest)
 	if err != nil {
 		return coreerr.E("app.WriteElectronWrap", "marshal failed", err)
 	}

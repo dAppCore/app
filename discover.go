@@ -39,7 +39,7 @@ func discover(medium coreio.Medium, start string) (config.ViewManifest, string, 
 	}
 
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, path, &manifest); err != nil {
+	if err := LoadViewManifest(medium, path, &manifest); err != nil {
 		return config.ViewManifest{}, "", coreerr.E(
 			"app.discover",
 			"failed to parse "+path,

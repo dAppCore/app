@@ -328,6 +328,7 @@ func isReservedConfigKey(name string) bool {
 	case "services", "source", "type", "url", "display",
 		"short_name", "theme", "locale", "icon", "shim", "gui_gates",
 		"ipc_channels", "main", "entry",
+		"write", "store", "window_mode",
 		"isolation", "write_paths",
 		"category":
 		return true

@@ -10,7 +10,6 @@ import (
 	"dappco.re/go/core/config"
 	coreio "dappco.re/go/core/io"
 	coreerr "dappco.re/go/core/log"
-	"gopkg.in/yaml.v3"
 )
 
 // DefaultKeyName is the filename convention for the user's default app
@@ -48,13 +47,8 @@ func Sign(medium coreio.Medium, path string, priv ed25519.PrivateKey) error {
 		return coreerr.E("app.Sign", "manifest not found at "+path, nil)
 	}
 
-	body, err := medium.Read(path)
-	if err != nil {
-		return coreerr.E("app.Sign", "read "+path+" failed", err)
-	}
-
 	var manifest config.ViewManifest
-	if err := yaml.Unmarshal([]byte(body), &manifest); err != nil {
+	if err := LoadViewManifest(medium, path, &manifest); err != nil {
 		return coreerr.E("app.Sign", "parse "+path+" failed", err)
 	}
 
@@ -62,7 +56,7 @@ func Sign(medium coreio.Medium, path string, priv ed25519.PrivateKey) error {
 		return coreerr.E("app.Sign", "signManifest failed", err)
 	}
 
-	out, err := yaml.Marshal(&manifest)
+	out, err := yamlMarshalBytes(&manifest)
 	if err != nil {
 		return coreerr.E("app.Sign", "marshal signed manifest failed", err)
 	}

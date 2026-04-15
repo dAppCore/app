@@ -7,7 +7,6 @@ import (
 	"dappco.re/go/core/config"
 	coreio "dappco.re/go/core/io"
 	coreerr "dappco.re/go/core/log"
-	"gopkg.in/yaml.v3"
 )
 
 // WrapWebOptions tunes the plain-web wrap. Web wrapping is the
@@ -103,7 +102,7 @@ func WriteWebWrap(medium coreio.Medium, dest string, manifest *config.ViewManife
 	if medium == nil {
 		medium = coreio.Local
 	}
-	body, err := yaml.Marshal(manifest)
+	body, err := yamlMarshalBytes(manifest)
 	if err != nil {
 		return coreerr.E("app.WriteWebWrap", "marshal failed", err)
 	}

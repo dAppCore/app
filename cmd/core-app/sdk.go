@@ -185,7 +185,7 @@ func runSDKGenerate(args []string) int {
 	}
 
 	var manifest config.ViewManifest
-	if err := config.LoadManifest(medium, manifestPath, &manifest); err != nil {
+	if err := app.LoadViewManifest(medium, manifestPath, &manifest); err != nil {
 		core.Error("sdk generate: parse manifest failed", "path", manifestPath, "err", err)
 		return 1
 	}

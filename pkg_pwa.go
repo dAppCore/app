@@ -12,7 +12,6 @@ import (
 	"dappco.re/go/core/config"
 	coreio "dappco.re/go/core/io"
 	coreerr "dappco.re/go/core/log"
-	"gopkg.in/yaml.v3"
 )
 
 // PWAIcon is one entry in a PWA manifest's icons array. The wrapper
@@ -286,7 +285,7 @@ func WritePWAWrap(medium coreio.Medium, dest string, manifest *config.ViewManife
 	if medium == nil {
 		medium = coreio.Local
 	}
-	body, err := yaml.Marshal(manifest)
+	body, err := yamlMarshalBytes(manifest)
 	if err != nil {
 		return coreerr.E("app.WritePWAWrap", "marshal failed", err)
 	}
