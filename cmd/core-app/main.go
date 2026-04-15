@@ -6,6 +6,7 @@
 //	core-app                     # boot the CoreApp in the current directory
 //	core-app ./photo-browser     # boot a specific directory
 //	core-app --dev ./            # dev mode (no signature, warnings only)
+//	core-app --dev --watch ./    # dev mode with hot reload (RFC §4.2)
 //	core-app compile             # compile .core/view.yaml → core.json
 //	core-app sign --key app.key  # sign .core/view.yaml in place
 //	core-app keygen --dir ~/.core/keys --name app
@@ -40,6 +41,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"dappco.re/go/app"
 	core "dappco.re/go/core"
@@ -81,16 +84,22 @@ func main() {
 //
 //	core-app run photo-browser
 //	core-app run --dev photo-browser
+//	core-app run --dev --watch photo-browser
 func runInstalled(args []string) int {
 	mode := app.ModeProd
 	code := ""
+	watch := false
 	for _, a := range args {
 		switch a {
 		case "--dev":
 			mode = app.ModeDev
+		case "--watch":
+			watch = true
+			mode = app.ModeDev // watch implies dev (prod refuses it)
 		case "--help", "-h":
-			core.Println("core-app run [--dev] CODE")
-			core.Println("  CODE   the installed package code (under ~/.core/apps/CODE/)")
+			core.Println("core-app run [--dev] [--watch] CODE")
+			core.Println("  CODE     the installed package code (under ~/.core/apps/CODE/)")
+			core.Println("  --watch  hot-reload on .core/view.yaml changes (RFC §4.2)")
 			return 0
 		default:
 			if core.HasPrefix(a, "-") {
@@ -109,16 +118,16 @@ func runInstalled(args []string) int {
 		core.Error("run: discover failed", "code", code, "err", err)
 		return 1
 	}
-	runBootFromMode(mode, dir)
+	runBootFromMode(mode, dir, watch)
 	return 0
 }
 
 // runBootFromMode is a small helper that drives runBoot from a
-// pre-resolved (mode, start) pair. Keeps the Boot wiring in one place
-// even when the caller already knows the directory.
+// pre-resolved (mode, start, watch) tuple. Keeps the Boot wiring in
+// one place even when the caller already knows the directory.
 //
-//	runBootFromMode(app.ModeDev, "/Users/me/.core/apps/photo-browser")
-func runBootFromMode(mode app.Mode, start string) {
+//	runBootFromMode(app.ModeDev, "/Users/me/.core/apps/photo-browser", true)
+func runBootFromMode(mode app.Mode, start string, watch bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -137,6 +146,9 @@ func runBootFromMode(mode app.Mode, start string) {
 	if r := inst.Start(ctx); !r.OK {
 		core.Error("start failed", "err", r.Value)
 		os.Exit(2)
+	}
+	if watch {
+		waitForReload(ctx, inst)
 	}
 }
 
@@ -145,7 +157,7 @@ func runBootFromMode(mode app.Mode, start string) {
 //
 //	runBoot(os.Args[1:])
 func runBoot(args []string) {
-	mode, start := parseArgs(args)
+	mode, start, watch := parseArgs(args)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -168,29 +180,77 @@ func runBoot(args []string) {
 		core.Error("start failed", "err", r.Value)
 		os.Exit(2)
 	}
+
+	if watch {
+		waitForReload(ctx, inst)
+	}
+}
+
+// waitForReload installs the dev-mode file watcher (RFC §4.2 — "hot
+// reload on file changes"), logs every detected change and blocks on
+// SIGINT / SIGTERM so the developer can iterate without the binary
+// exiting. Only invoked from `--watch` flows — prod mode refuses and
+// plain dev boots exit immediately after Start() so a CI pipeline
+// doesn't stall.
+//
+//	waitForReload(ctx, inst)
+func waitForReload(ctx context.Context, inst *app.Instance) {
+	// Subscribe before starting the watcher so the first cycle's
+	// broadcast lands on our handler instead of vanishing.
+	inst.Core.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
+		if evt, ok := msg.(app.ActionManifestChanged); ok {
+			core.Info("manifest change",
+				"kind", evt.Kind,
+				"path", evt.Path,
+				"code", evt.Code,
+				"version", evt.Version,
+			)
+		}
+		return core.Result{OK: true}
+	})
+	stopWatch := inst.Watch(ctx, app.WatchOptions{})
+	defer stopWatch()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+	core.Info("watching for changes — press Ctrl-C to stop")
+	select {
+	case <-ctx.Done():
+	case <-sigCh:
+	}
+	if r := inst.Stop(ctx); !r.OK {
+		core.Error("stop failed", "err", r.Value)
+	}
 }
 
 // parseArgs is a deliberately small argv parser — no cobra, no pflag.
 // Supported forms:
 //
-//	core-app                # mode=prod, start="./"
-//	core-app ./path         # mode=prod, start="./path"
-//	core-app --dev          # mode=dev,  start="./"
-//	core-app --dev ./path   # mode=dev,  start="./path"
+//	core-app                        # mode=prod, start="./"
+//	core-app ./path                 # mode=prod, start="./path"
+//	core-app --dev                  # mode=dev,  start="./"
+//	core-app --dev ./path           # mode=dev,  start="./path"
+//	core-app --dev --watch ./path   # mode=dev + hot-reload (RFC §4.2)
+//	core-app --watch ./path         # --watch implies --dev
 //
 // Anything else prints usage and exits 64 (EX_USAGE).
-func parseArgs(args []string) (app.Mode, string) {
-	mode := app.ModeProd
-	start := "./"
+func parseArgs(args []string) (mode app.Mode, start string, watch bool) {
+	mode = app.ModeProd
+	start = "./"
 
 	for _, a := range args {
 		switch a {
 		case "--dev":
 			mode = app.ModeDev
+		case "--watch":
+			watch = true
+			mode = app.ModeDev // --watch implies --dev (prod refuses it)
 		case "--help", "-h":
-			core.Println("core-app [--dev] [path]")
-			core.Println("  --dev   skip signature verification, warn on permission misses")
-			core.Println("  path    directory holding .core/view.yaml (default: ./)")
+			core.Println("core-app [--dev] [--watch] [path]")
+			core.Println("  --dev    skip signature verification, warn on permission misses")
+			core.Println("  --watch  poll .core/view.yaml and broadcast ActionManifestChanged on edits")
+			core.Println("  path     directory holding .core/view.yaml (default: ./)")
 			core.Println("")
 			core.Println("Subcommands:")
 			core.Println("  compile      compile .core/view.yaml → core.json")
@@ -209,7 +269,7 @@ func parseArgs(args []string) (app.Mode, string) {
 			start = a
 		}
 	}
-	return mode, start
+	return mode, start, watch
 }
 
 // compileArgs captures the flags understood by the `compile` subcommand.

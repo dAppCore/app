@@ -18,36 +18,57 @@ import (
 // and the current directory. This is the "run me in a CoreApp dir"
 // behaviour.
 func TestMain_parseArgs_Good(t *testing.T) {
-	mode, start := parseArgs(nil)
+	mode, start, watch := parseArgs(nil)
 	if mode != app.ModeProd {
 		t.Errorf("mode = %v; want %v", mode, app.ModeProd)
 	}
 	if start != "./" {
 		t.Errorf("start = %q; want %q", start, "./")
 	}
+	if watch {
+		t.Error("watch should default to false")
+	}
 }
 
 // TestMain_parseArgs_Bad — a positional arg becomes start, regardless
 // of whether it exists. The Boot step surfaces the missing manifest.
 func TestMain_parseArgs_Bad(t *testing.T) {
-	mode, start := parseArgs([]string{"./never-there"})
+	mode, start, watch := parseArgs([]string{"./never-there"})
 	if mode != app.ModeProd {
 		t.Errorf("mode = %v; want %v", mode, app.ModeProd)
 	}
 	if start != "./never-there" {
 		t.Errorf("start = %q; want %q", start, "./never-there")
 	}
+	if watch {
+		t.Error("watch should stay false without --watch")
+	}
 }
 
 // TestMain_parseArgs_Ugly — --dev flag lifts mode, and a trailing
-// path still wins as start.
+// path still wins as start. --watch implies --dev.
 func TestMain_parseArgs_Ugly(t *testing.T) {
-	mode, start := parseArgs([]string{"--dev", "./photo-browser"})
+	mode, start, watch := parseArgs([]string{"--dev", "./photo-browser"})
 	if mode != app.ModeDev {
 		t.Errorf("mode = %v; want %v", mode, app.ModeDev)
 	}
 	if start != "./photo-browser" {
 		t.Errorf("start = %q; want %q", start, "./photo-browser")
+	}
+	if watch {
+		t.Error("--dev alone should not enable watch")
+	}
+
+	// --watch implies --dev (even without explicit --dev flag)
+	mode, start, watch = parseArgs([]string{"--watch", "./app"})
+	if mode != app.ModeDev {
+		t.Errorf("--watch implies --dev: got mode %v", mode)
+	}
+	if start != "./app" {
+		t.Errorf("start = %q; want ./app", start)
+	}
+	if !watch {
+		t.Error("--watch should set watch=true")
 	}
 }
 
