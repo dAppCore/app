@@ -13,3 +13,12 @@ import "gopkg.in/yaml.v3"
 func yamlMarshalBytes(v any) ([]byte, error) {
 	return yaml.Marshal(v)
 }
+
+// yamlUnmarshalImpl is the matching wrapper for yaml.Unmarshal so the
+// encoder swap stays mechanical. Used by marketplace_verify.go and any
+// other path that needs to round-trip a manifest body in memory.
+//
+//	_ = yamlUnmarshalImpl(body, &manifest)
+func yamlUnmarshalImpl(body []byte, dst any) error {
+	return yaml.Unmarshal(body, dst)
+}

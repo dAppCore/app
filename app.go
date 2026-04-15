@@ -75,6 +75,8 @@ type Options struct {
 	PublicKeyHex   string        // explicit hex-encoded ed25519 trust key
 	TrustedKeysDir string        // directory of *.pub keys (default: $DIR_HOME/.core/keys/)
 	DisableKeyLoad bool          // skip auto-loading TrustedKeysDir (test-only escape hatch)
+	WorkspaceHome  string        // override $DIR_HOME for the per-app data tree
+	SkipWorkspace  bool          // skip the per-app data tree (test-only escape hatch)
 }
 
 // Option mutates Options during Boot setup.
@@ -140,6 +142,30 @@ func WithoutKeyLoad() Option {
 	return func(o *Options) { o.DisableKeyLoad = true }
 }
 
+// WithWorkspaceHome overrides the directory under which the per-app
+// data tree (`<home>/.core/data/<code>/`) is created. Defaults to
+// `$DIR_HOME` when empty so production paths follow the dAppServer
+// convention without explicit wiring.
+//
+//	app.WithWorkspaceHome(t.TempDir())
+func WithWorkspaceHome(home string) Option {
+	return func(o *Options) {
+		if home != "" {
+			o.WorkspaceHome = home
+		}
+	}
+}
+
+// WithoutWorkspace skips the workspace bootstrap step. Hosts that
+// already provisioned the data tree (CoreGUI multi-plugin runs) or
+// tests asserting against the boot pipeline use this to avoid touching
+// the filesystem.
+//
+//	app.WithoutWorkspace()
+func WithoutWorkspace() Option {
+	return func(o *Options) { o.SkipWorkspace = true }
+}
+
 // NewOptions applies options to a fresh Options struct.
 //
 //	opts := app.NewOptions(app.WithMode(app.ModeDev))
@@ -178,11 +204,12 @@ func defaultTrustedKeysDir() string {
 //	if err != nil { return err }
 //	_ = inst.Start(ctx)
 type Instance struct {
-	Manifest config.ViewManifest // parsed .core/view.yaml
-	Core     *core.Core          // DI container (passed-in or constructed)
-	Root     string              // absolute project root (directory of .core/)
-	Mode     Mode                // regime used during Boot
-	medium   coreio.Medium       // retained for Start + post-boot reads
+	Manifest  config.ViewManifest // parsed .core/view.yaml
+	Core      *core.Core          // DI container (passed-in or constructed)
+	Root      string              // absolute project root (directory of .core/)
+	Mode      Mode                // regime used during Boot
+	Workspace *Workspace          // per-app data tree (~/.core/data/<code>/)
+	medium    coreio.Medium       // retained for Start + post-boot reads
 }
 
 // Boot runs the 7-step boot sequence against the project rooted at `start`.
@@ -235,7 +262,7 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 	}
 
 	// Step 4 — Modules
-	if err := modules(ctx, c, &manifest); err != nil {
+	if err := modulesWithMode(ctx, c, &manifest, o.Mode); err != nil {
 		return nil, coreerr.E("app.Boot", "module load failed", err)
 	}
 
@@ -247,6 +274,25 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 	// Step 6 — Config
 	if err := applyConfig(c, &manifest, o.Medium, root); err != nil {
 		return nil, coreerr.E("app.Boot", "config template failed", err)
+	}
+
+	// Workspace lifecycle — provision `<home>/.core/data/<code>/` so the
+	// app has a guaranteed place for its store, cache, keys and tmp by
+	// the time Start() fires. Failures here are non-fatal in dev mode
+	// (the developer iterates without a writable home) but block prod.
+	if !o.SkipWorkspace {
+		ws, wsErr := OpenWorkspace(o.Medium, o.WorkspaceHome, manifest.Code)
+		if wsErr != nil {
+			if o.Mode == ModeProd {
+				return nil, coreerr.E("app.Boot", "workspace bootstrap failed", wsErr)
+			}
+			// Dev mode: workspace is best-effort so the boot keeps
+			// flowing when DIR_HOME is empty (CI containers, sandbox
+			// tests). Inst.Workspace stays nil — handlers that need
+			// the data tree must check.
+			_ = wsErr
+		}
+		inst.Workspace = ws
 	}
 
 	// Note: Step 7 (Start) is the caller's explicit trigger — Boot returns

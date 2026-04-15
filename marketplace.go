@@ -295,6 +295,9 @@ func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInsta
 		if err := installNativeFromRepo(ctx, c, listing, dest); err != nil {
 			return dest, err
 		}
+		if err := verifyListingAfterInstall(medium, dest, listing, opts); err != nil {
+			return dest, err
+		}
 		return dest, nil
 	case PackageTypePWA:
 		pwa, err := FetchPWAManifest(ctx, listing.URL)
@@ -305,11 +308,20 @@ func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInsta
 		if m == nil {
 			return dest, coreerr.E("app.MarketplaceInstall", "WrapPWA returned nil", nil)
 		}
-		return InstallWrappedPWA(medium, m, PkgInstallOptions{
+		installed, err := InstallWrappedPWA(medium, m, PkgInstallOptions{
 			Home:   home,
 			Force:  opts.Force,
 			Source: "marketplace:" + listing.Code,
 		})
+		if err != nil {
+			return installed, err
+		}
+		// PWA wraps are unsigned by construction (the CoreApp signs the
+		// wrapped manifest only when the user supplies a key) so there
+		// is nothing to verify against the listing's `sign_key` here.
+		// The listing's own pinned key is used by `pkg install --sign`
+		// when invoked.
+		return installed, nil
 	case PackageTypeWeb, PackageTypeElectron, PackageTypeUnknown:
 		// Electron handled via repo clone (renderer assets only) — same
 		// path as native for now; the CLI-side flag drives a subsequent
@@ -317,18 +329,44 @@ func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInsta
 		if err := installNativeFromRepo(ctx, c, listing, dest); err != nil {
 			return dest, err
 		}
+		if err := verifyListingAfterInstall(medium, dest, listing, opts); err != nil {
+			return dest, err
+		}
 		return dest, nil
 	}
 	return dest, coreerr.E("app.MarketplaceInstall", "unreachable type switch", nil)
 }
 
+// verifyListingAfterInstall runs VerifyListing as the install's final
+// step unless the caller opted out (SkipVerify=true). A failed
+// verification rolls back the install — leaving an unverified package
+// on disk would let the user accidentally boot it later.
+//
+//	if err := verifyListingAfterInstall(medium, dest, listing, opts); err != nil {
+//	    return dest, err
+//	}
+func verifyListingAfterInstall(medium coreio.Medium, dest string, listing *MarketplaceListing, opts MarketplaceInstallOptions) error {
+	if opts.SkipVerify {
+		return nil
+	}
+	if err := VerifyListing(medium, dest, listing); err != nil {
+		// Roll back — the install was incomplete from a security
+		// standpoint, so we delete the destination so the next install
+		// attempt starts clean.
+		_ = medium.DeleteAll(dest)
+		return err
+	}
+	return nil
+}
+
 // MarketplaceInstallOptions tunes MarketplaceInstall. Force replaces an
 // existing install; Home overrides $DIR_HOME.
 type MarketplaceInstallOptions struct {
-	Root  string // marketplace cache root (where index.json lives)
-	Home  string // user home; defaults to $DIR_HOME
-	Code  string // listing code to install
-	Force bool   // overwrite an existing install
+	Root       string // marketplace cache root (where index.json lives)
+	Home       string // user home; defaults to $DIR_HOME
+	Code       string // listing code to install
+	Force      bool   // overwrite an existing install
+	SkipVerify bool   // bypass the post-install signature check (test-only)
 }
 
 // installNativeFromRepo clones a native-type marketplace entry into the

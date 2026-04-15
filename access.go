@@ -26,6 +26,10 @@ const (
 	AccessNet
 	// AccessRun — process execution, per `permissions.run: [...]`.
 	AccessRun
+	// AccessStore — object store, per `permissions.store: true`
+	// recorded in Config["store"]. The argument value is the store
+	// group / key tuple; today the gate only checks for declaration.
+	AccessStore
 )
 
 // String returns the lowercase permission field name.
@@ -41,6 +45,8 @@ func (a AccessMode) String() string {
 		return "net"
 	case AccessRun:
 		return "run"
+	case AccessStore:
+		return "store"
 	default:
 		return "unknown"
 	}
@@ -120,6 +126,15 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		return coreerr.E(
 			"app.CheckAccess",
 			"run access to '"+arg+"' not declared in manifest.permissions.run",
+			nil,
+		)
+	case AccessStore:
+		if hasManifestStorePermission(m) {
+			return nil
+		}
+		return coreerr.E(
+			"app.CheckAccess",
+			"store access to '"+arg+"' not declared (set permissions.store: true in view.yaml)",
 			nil,
 		)
 	default:

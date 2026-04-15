@@ -159,3 +159,84 @@ func TestPermissions_newChecker_Ugly(t *testing.T) {
 		t.Error("dev mode should still surface the reason")
 	}
 }
+
+// TestPermissions_newCheckerForManifest_Good — a manifest with
+// `permissions.store: true` recorded in Config["store"] satisfies the
+// store gate.
+func TestPermissions_newCheckerForManifest_Good(t *testing.T) {
+	m := &config.ViewManifest{
+		Config: map[string]any{"store": true},
+	}
+	checker := newCheckerForManifest(m, ModeProd)
+	e := checker("store.get", 1, context.Background())
+	if !e.Allowed {
+		t.Errorf("store.get should be allowed when Config[store]=true; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_newCheckerForManifest_Bad — the store gate denies
+// when neither Filesystem nor Config["store"] is set.
+func TestPermissions_newCheckerForManifest_Bad(t *testing.T) {
+	checker := newCheckerForManifest(&config.ViewManifest{}, ModeProd)
+	e := checker("store.get", 1, context.Background())
+	if e.Allowed {
+		t.Error("store.get should be denied without store / filesystem permission")
+	}
+}
+
+// TestPermissions_newCheckerForManifest_Ugly — Config["store"] of the
+// wrong type doesn't crash the checker; it falls back to the slot
+// check (which is also empty here, so the gate denies).
+func TestPermissions_newCheckerForManifest_Ugly(t *testing.T) {
+	m := &config.ViewManifest{
+		Config: map[string]any{"store": "yes"}, // wrong type
+	}
+	checker := newCheckerForManifest(m, ModeProd)
+	e := checker("store.set", 1, context.Background())
+	if e.Allowed {
+		t.Error("store.set should be denied when Config[store] is the wrong type")
+	}
+
+	// Filesystem=true still satisfies the gate by the legacy fallback.
+	m2 := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Filesystem: true},
+	}
+	checker2 := newCheckerForManifest(m2, ModeProd)
+	e2 := checker2("store.delete", 1, context.Background())
+	if !e2.Allowed {
+		t.Error("Filesystem=true should satisfy the store gate (legacy fallback)")
+	}
+}
+
+// TestPermissions_hasManifestStorePermission_Good — bool true and the
+// Filesystem fallback both report declared.
+func TestPermissions_hasManifestStorePermission_Good(t *testing.T) {
+	m := &config.ViewManifest{Config: map[string]any{"store": true}}
+	if !hasManifestStorePermission(m) {
+		t.Error("Config[store]=true should report declared")
+	}
+	m2 := &config.ViewManifest{Permissions: config.ViewPermissions{Filesystem: true}}
+	if !hasManifestStorePermission(m2) {
+		t.Error("Filesystem=true should report declared")
+	}
+}
+
+// TestPermissions_hasManifestStorePermission_Bad — nil manifest and
+// no flags both report not-declared.
+func TestPermissions_hasManifestStorePermission_Bad(t *testing.T) {
+	if hasManifestStorePermission(nil) {
+		t.Error("nil manifest should not report declared")
+	}
+	if hasManifestStorePermission(&config.ViewManifest{}) {
+		t.Error("empty manifest should not report declared")
+	}
+}
+
+// TestPermissions_hasManifestStorePermission_Ugly — wrong-type
+// Config["store"] reports not-declared without panicking.
+func TestPermissions_hasManifestStorePermission_Ugly(t *testing.T) {
+	m := &config.ViewManifest{Config: map[string]any{"store": "yes"}}
+	if hasManifestStorePermission(m) {
+		t.Error("Config[store] of wrong type should not report declared")
+	}
+}

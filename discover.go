@@ -125,3 +125,61 @@ func compiledToManifest(cm *CompiledManifest) config.ViewManifest {
 		Permissions: cm.Permissions,
 	}
 }
+
+// DiscoverInstalled resolves an installed package code to its
+// directory under `<home>/.core/apps/<code>/` and returns the absolute
+// path. Used by `core run <app-code>` (CLI side) and any host that
+// needs to locate a package without the user pointing at it.
+//
+//	dir, err := app.DiscoverInstalled(coreio.Local, home, "photo-browser")
+//
+// Rules:
+//
+//   - Empty code → typed error.
+//
+//   - Empty home → falls back to `$DIR_HOME`.
+//
+//   - Package missing → typed error naming the expected location so the
+//     CLI message points the user at the right `pkg install` command.
+func DiscoverInstalled(medium coreio.Medium, home, code string) (string, error) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if code == "" {
+		return "", coreerr.E("app.DiscoverInstalled", "empty code", nil)
+	}
+	if home == "" {
+		home = core.Env("DIR_HOME")
+	}
+	if home == "" {
+		return "", coreerr.E("app.DiscoverInstalled", "cannot resolve home directory", nil)
+	}
+
+	dir := core.Path(home, ".core", AppsDirName, code)
+	if !medium.IsDir(dir) {
+		return "", coreerr.E(
+			"app.DiscoverInstalled",
+			"package not installed: "+code+" (expected "+dir+")",
+			nil,
+		)
+	}
+	return dir, nil
+}
+
+// DiscoverInstalledManifest hydrates the ViewManifest of an installed
+// package by combining DiscoverInstalled with the regular manifest
+// loader. Convenience wrapper for hosts that want one call to go from
+// "code" to "loaded manifest" without the intermediate path step.
+//
+//	manifest, dir, err := app.DiscoverInstalledManifest(coreio.Local, home, "photo-browser")
+func DiscoverInstalledManifest(medium coreio.Medium, home, code string) (config.ViewManifest, string, error) {
+	dir, err := DiscoverInstalled(medium, home, code)
+	if err != nil {
+		return config.ViewManifest{}, "", err
+	}
+	manifest, _, err := discover(medium, dir)
+	if err != nil {
+		return config.ViewManifest{}, dir, err
+	}
+	return manifest, dir, nil
+}

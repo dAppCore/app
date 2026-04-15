@@ -11,7 +11,7 @@ import (
 )
 
 // TestModules_modules_Good — a manifest with no modules is a no-op.
-// This is the common case while the module registry is still stub.
+// The most common case until apps start declaring core/media etc.
 func TestModules_modules_Good(t *testing.T) {
 	c := core.New()
 	if err := modules(context.Background(), c, &config.ViewManifest{}); err != nil {
@@ -19,14 +19,14 @@ func TestModules_modules_Good(t *testing.T) {
 	}
 }
 
-// TestModules_modules_Bad — a manifest declaring a module that cannot
-// be resolved errors with the missing name included.
+// TestModules_modules_Bad — a manifest declaring a module that is not
+// in the host's registry errors with the missing name included.
 func TestModules_modules_Bad(t *testing.T) {
 	c := core.New()
 	m := &config.ViewManifest{Modules: []string{"core/never-registered"}}
 	err := modules(context.Background(), c, m)
 	if err == nil {
-		t.Fatal("modules should fail on unresolved module")
+		t.Fatal("modules should fail on unresolved module in prod mode")
 	}
 }
 
@@ -39,6 +39,50 @@ func TestModules_modules_Ugly(t *testing.T) {
 	}
 }
 
+// TestModules_modulesWithMode_Good — when every declared module is in
+// the registry, the boot-mode resolver succeeds in both regimes.
+func TestModules_modulesWithMode_Good(t *testing.T) {
+	const name = "core/test-modulesWithMode-good"
+	RegisterModule(name, func() core.CoreOption {
+		return func(_ *core.Core) core.Result { return core.Result{OK: true} }
+	})
+	defer UnregisterModule(name)
+
+	c := core.New()
+	m := &config.ViewManifest{Modules: []string{name}}
+	if err := modulesWithMode(context.Background(), c, m, ModeProd); err != nil {
+		t.Fatalf("prod resolve should succeed: %v", err)
+	}
+	if err := modulesWithMode(context.Background(), c, m, ModeDev); err != nil {
+		t.Fatalf("dev resolve should succeed: %v", err)
+	}
+}
+
+// TestModules_modulesWithMode_Bad — prod errors on an unresolved
+// module; dev mode logs a warning and keeps booting.
+func TestModules_modulesWithMode_Bad(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{Modules: []string{"core/unknown-module"}}
+	if err := modulesWithMode(context.Background(), c, m, ModeProd); err == nil {
+		t.Error("prod mode should reject an unresolved module")
+	}
+	if err := modulesWithMode(context.Background(), c, m, ModeDev); err != nil {
+		t.Errorf("dev mode should tolerate an unresolved module: %v", err)
+	}
+}
+
+// TestModules_modulesWithMode_Ugly — the boot helper handles nil
+// inputs without panic.
+func TestModules_modulesWithMode_Ugly(t *testing.T) {
+	if err := modulesWithMode(context.Background(), nil, &config.ViewManifest{}, ModeProd); err == nil {
+		t.Fatal("nil core should error")
+	}
+	c := core.New()
+	if err := modulesWithMode(context.Background(), c, nil, ModeProd); err == nil {
+		t.Fatal("nil manifest should error")
+	}
+}
+
 // TestModules_resolveModules_Good — no names → empty missing slice.
 func TestModules_resolveModules_Good(t *testing.T) {
 	c := core.New()
@@ -48,8 +92,8 @@ func TestModules_resolveModules_Good(t *testing.T) {
 	}
 }
 
-// TestModules_resolveModules_Bad — every name is unresolved until the
-// registry lands (see stub in moduleResolved).
+// TestModules_resolveModules_Bad — names absent from the registry come
+// back in the missing slice.
 func TestModules_resolveModules_Bad(t *testing.T) {
 	c := core.New()
 	missing := resolveModules(c, []string{"core/a", "core/b"})
@@ -68,28 +112,36 @@ func TestModules_resolveModules_Ugly(t *testing.T) {
 	}
 }
 
-// TestModules_moduleResolved_Good — the stub returns false for every
-// name. Pinned here so a real implementation has to update this test
-// alongside the resolver.
+// TestModules_moduleResolved_Good — a registered module name reports
+// resolved=true; an unregistered one reports false.
 func TestModules_moduleResolved_Good(t *testing.T) {
+	const name = "core/test-moduleResolved-good"
+	RegisterModule(name, func() core.CoreOption {
+		return func(_ *core.Core) core.Result { return core.Result{OK: true} }
+	})
+	defer UnregisterModule(name)
+
 	c := core.New()
-	if moduleResolved(c, "core/media") {
-		t.Error("stub resolver should report unresolved")
+	if !moduleResolved(c, name) {
+		t.Error("registered module should resolve")
+	}
+	if moduleResolved(c, "core/never-registered-here") {
+		t.Error("unregistered module should not resolve")
 	}
 }
 
-// TestModules_moduleResolved_Bad — nil core still returns false,
-// keeping the helper panic-free.
+// TestModules_moduleResolved_Bad — nil core still works, the registry
+// lookup is name-only.
 func TestModules_moduleResolved_Bad(t *testing.T) {
-	if moduleResolved(nil, "core/media") {
-		t.Error("stub resolver with nil core should be false")
+	if moduleResolved(nil, "core/unknown") {
+		t.Error("unregistered module with nil core should be false")
 	}
 }
 
-// TestModules_moduleResolved_Ugly — empty module name is false too.
+// TestModules_moduleResolved_Ugly — empty module name is false.
 func TestModules_moduleResolved_Ugly(t *testing.T) {
 	c := core.New()
 	if moduleResolved(c, "") {
-		t.Error("stub resolver with empty name should be false")
+		t.Error("empty name should be false")
 	}
 }

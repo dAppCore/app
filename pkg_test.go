@@ -328,9 +328,10 @@ func TestPkg_PkgUpdate_Ugly(t *testing.T) {
 	}
 }
 
-// TestPkg_ParseInstallSpec_Good covers each of the three detection
-// branches: HTTPS URL → PWA, github.com/owner/repo → Electron, plain
-// code → marketplace native lookup.
+// TestPkg_ParseInstallSpec_Good covers each detection branch: HTTPS
+// URL → PWA, github.com/owner/repo → Electron, file:// or relative
+// path → local install (Type unknown until DetectPackageType sees the
+// directory), plain code → marketplace native lookup.
 func TestPkg_ParseInstallSpec_Good(t *testing.T) {
 	cases := []struct {
 		in       string
@@ -338,13 +339,18 @@ func TestPkg_ParseInstallSpec_Good(t *testing.T) {
 		wantURL  string
 		wantRepo string
 		wantCode string
+		wantPath string
 	}{
-		{"https://app.example.com", app.PackageTypePWA, "https://app.example.com", "", ""},
-		{"http://localhost:8080/app", app.PackageTypePWA, "http://localhost:8080/app", "", ""},
-		{"github.com/owner/repo", app.PackageTypeElectron, "", "github.com/owner/repo", ""},
-		{"gitlab.com/owner/repo", app.PackageTypeElectron, "", "gitlab.com/owner/repo", ""},
-		{"plain-code", app.PackageTypeNative, "", "", "plain-code"},
-		{"core/photo-browser", app.PackageTypeNative, "", "", "core/photo-browser"},
+		{"https://app.example.com", app.PackageTypePWA, "https://app.example.com", "", "", ""},
+		{"http://localhost:8080/app", app.PackageTypePWA, "http://localhost:8080/app", "", "", ""},
+		{"github.com/owner/repo", app.PackageTypeElectron, "", "github.com/owner/repo", "", ""},
+		{"gitlab.com/owner/repo", app.PackageTypeElectron, "", "gitlab.com/owner/repo", "", ""},
+		{"plain-code", app.PackageTypeNative, "", "", "plain-code", ""},
+		{"core/photo-browser", app.PackageTypeNative, "", "", "core/photo-browser", ""},
+		{"./my-app", app.PackageTypeUnknown, "", "", "", "./my-app"},
+		{"../sibling-app", app.PackageTypeUnknown, "", "", "", "../sibling-app"},
+		{"/srv/app", app.PackageTypeUnknown, "", "", "", "/srv/app"},
+		{"file:///srv/app", app.PackageTypeUnknown, "", "", "", "/srv/app"},
 	}
 	for _, tc := range cases {
 		spec := app.ParseInstallSpec(tc.in)
@@ -359,6 +365,9 @@ func TestPkg_ParseInstallSpec_Good(t *testing.T) {
 		}
 		if spec.Code != tc.wantCode {
 			t.Errorf("ParseInstallSpec(%q).Code = %q; want %q", tc.in, spec.Code, tc.wantCode)
+		}
+		if spec.Path != tc.wantPath {
+			t.Errorf("ParseInstallSpec(%q).Path = %q; want %q", tc.in, spec.Path, tc.wantPath)
 		}
 	}
 }

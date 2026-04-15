@@ -104,13 +104,17 @@ func TestIntegration_Boot_Good(t *testing.T) {
 		app.WithMode(app.ModeProd),
 		app.WithMedium(medium),
 		app.WithPublicKey(hex.EncodeToString(pub)),
-		app.WithoutKeyLoad(), // keep the test hermetic
+		app.WithoutKeyLoad(),                  // keep the test hermetic
+		app.WithWorkspaceHome(t.TempDir()),    // workspace under temp
 	)
 	if err != nil {
 		t.Fatalf("Boot failed in prod mode: %v", err)
 	}
 	if inst == nil {
 		t.Fatal("Boot returned nil Instance")
+	}
+	if inst.Workspace == nil {
+		t.Error("Workspace should be provisioned in prod mode")
 	}
 
 	// Identity — prove the manifest was parsed.
@@ -192,7 +196,8 @@ func TestIntegration_Boot_Bad(t *testing.T) {
 	_, err := app.Boot(context.Background(), dir,
 		app.WithMode(app.ModeProd),
 		app.WithMedium(medium),
-		app.WithoutKeyLoad(), // suppress $DIR_HOME/.core/keys scan
+		app.WithoutKeyLoad(),               // suppress $DIR_HOME/.core/keys scan
+		app.WithWorkspaceHome(t.TempDir()), // workspace under temp
 	)
 	if err == nil {
 		t.Fatal("Boot should reject a signed manifest with no trusted keys in prod mode")
@@ -238,6 +243,7 @@ func TestIntegration_Boot_Ugly(t *testing.T) {
 		app.WithMedium(medium),
 		app.WithPublicKey(hex.EncodeToString(pub)),
 		app.WithoutKeyLoad(),
+		app.WithWorkspaceHome(t.TempDir()),
 	)
 	if err == nil {
 		t.Fatal("Boot should fail when a declared config template is missing")
@@ -315,6 +321,7 @@ func TestIntegration_CompileSignBoot_Good(t *testing.T) {
 		app.WithMode(app.ModeProd),
 		app.WithMedium(medium),
 		app.WithTrustedKeysDir(keysDir),
+		app.WithWorkspaceHome(t.TempDir()),
 	)
 	if err != nil {
 		t.Fatalf("Boot from core.json: %v", err)
@@ -367,6 +374,7 @@ func TestIntegration_KeyringLoad_Good(t *testing.T) {
 		app.WithMode(app.ModeProd),
 		app.WithMedium(medium),
 		app.WithTrustedKeysDir(keysDir),
+		app.WithWorkspaceHome(t.TempDir()),
 	)
 	if err != nil {
 		t.Fatalf("Boot failed with keyring: %v", err)

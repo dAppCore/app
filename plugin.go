@@ -102,13 +102,11 @@ func PluginBoot(ctx context.Context, opts PluginOptions) (*Instance, error) {
 	if err := permissions(c, &inst.Manifest, opts.Mode); err != nil {
 		return nil, coreerr.E("app.PluginBoot", "permission binding failed", err)
 	}
-	if err := modules(ctx, c, &inst.Manifest); err != nil {
-		// In dev mode missing modules are tolerated; in prod the host
-		// can decide whether to keep the plugin loaded after the
-		// typed error surfaces here.
-		if opts.Mode == ModeProd {
-			return nil, coreerr.E("app.PluginBoot", "module load failed", err)
-		}
+	if err := modulesWithMode(ctx, c, &inst.Manifest, opts.Mode); err != nil {
+		// modulesWithMode already short-circuits the dev path internally
+		// (logs + returns nil); a non-nil error here is therefore a
+		// genuine prod failure and should bubble up.
+		return nil, coreerr.E("app.PluginBoot", "module load failed", err)
 	}
 	if err := layout(c, &inst.Manifest); err != nil {
 		return nil, coreerr.E("app.PluginBoot", "layout composition failed", err)

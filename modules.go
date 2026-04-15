@@ -7,77 +7,58 @@ import (
 
 	core "dappco.re/go/core"
 	"dappco.re/go/core/config"
-	coreerr "dappco.re/go/core/log"
 )
 
 // modules is Step 4 of the 7-step boot — load the modules declared in
 // the manifest onto the Core container. Each entry in `manifest.modules`
-// names a Core module (e.g. "core/media", "core/fs") whose Register
-// function should have been wired through core.WithService() by the
-// host binary.
+// names a Core module (e.g. "core/media", "core/fs"); the host
+// pre-registers a ModuleFactory for every name it supports via
+// `app.RegisterModule`. This step resolves those factories, applies
+// them to the container and surfaces a typed error listing any module
+// the host did not advertise.
 //
+//	app.RegisterModule("core/media", func() core.CoreOption {
+//	    return core.WithService(media.Register)
+//	})
 //	err := modules(ctx, c, &manifest)
 //
-// TODO(app): the RFC mandates a module registry so the manifest list
-// resolves to Service factories without the host having to pre-register
-// every possible module. Options:
+// Mode handling:
 //
-//  1. core.ModuleRegistry — a map[string]core.ServiceFactory that hosts
-//     populate at init; this step looks up and applies.
-//  2. Go plugin/soname loading (plugin.Open) — heavier, brings dlopen.
-//  3. Deno sidecar modules (ts RFC §CoreDeno) — TypeScript modules loaded
-//     into the CoreTS runtime, not the Go process.
+//   - Prod: any unresolved module is fatal — the manifest asked for a
+//     capability the host cannot provide.
 //
-// Until the registry lands this step is a strict name-check: it records
-// the requested modules and errors if a prod boot asks for modules we
-// cannot resolve. Dev mode logs and continues.
-func modules(_ context.Context, c *core.Core, m *config.ViewManifest) error {
-	if c == nil {
-		return coreerr.E("app.modules", "nil core", nil)
-	}
-	if m == nil {
-		return coreerr.E("app.modules", "nil manifest", nil)
-	}
-	if len(m.Modules) == 0 {
-		return nil
-	}
+//   - Dev: unresolved modules are logged via core.Warn and the boot
+//     keeps going so the developer can iterate on a partial host.
+func modules(ctx context.Context, c *core.Core, m *config.ViewManifest) error {
+	return loadModules(ctx, c, m, ModeProd)
+}
 
-	missing := resolveModules(c, m.Modules)
-	if len(missing) == 0 {
-		return nil
-	}
-
-	// At the keystone-skeleton stage the module registry does not yet
-	// exist — see function doc. Return a typed error so the caller can
-	// decide whether to treat missing modules as fatal.
-	return coreerr.E(
-		"app.modules",
-		"cannot resolve "+core.Sprint(len(missing))+" declared module(s): "+core.Join(", ", missing...),
-		nil,
-	)
+// modulesWithMode mirrors modules() but lets the caller pick the
+// regime. Used by tests and by `PluginBoot` whose mode preference may
+// not match the package-level Boot path.
+//
+//	err := modulesWithMode(ctx, c, &manifest, ModeDev)
+func modulesWithMode(ctx context.Context, c *core.Core, m *config.ViewManifest, mode Mode) error {
+	return loadModules(ctx, c, m, mode)
 }
 
 // resolveModules checks which of the manifest's declared module names
-// the Core container already knows about. Returns the names that remain
-// unresolved so the caller can log / error / fall back.
+// the host's package registry knows about. Returns the names that
+// remain unresolved so the caller can log / error / fall back. Kept
+// for backwards-compatibility with code that pre-dates the registry.
 //
 //	missing := resolveModules(c, []string{"core/media", "core/fs"})
-func resolveModules(c *core.Core, names []string) []string {
-	var missing []string
-	for _, name := range names {
-		if !moduleResolved(c, name) {
-			missing = append(missing, name)
-		}
-	}
+func resolveModules(_ *core.Core, names []string) []string {
+	_, missing := resolveModulesFromRegistry(names)
 	return missing
 }
 
-// moduleResolved is the single decision point for "do we know this
-// module?" — kept as its own function so the registry lookup can be
-// swapped in without touching resolveModules.
+// moduleResolved reports whether the supplied module name is known to
+// the package registry. Single decision point so the registry lookup
+// stays in one place; modules() and resolveModules both go through it.
 //
-// TODO(app): query c.RegistryOf("modules") once the registry is live.
-// For now every module is unresolved.
-func moduleResolved(_ *core.Core, _ string) bool {
-	return false
+//	if moduleResolved(c, "core/media") { /* available */ }
+func moduleResolved(_ *core.Core, name string) bool {
+	_, ok := LookupModule(name)
+	return ok
 }

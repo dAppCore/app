@@ -161,11 +161,34 @@ func TestAccess_AccessMode_String_Good(t *testing.T) {
 		AccessWrite: "write",
 		AccessNet:   "net",
 		AccessRun:   "run",
+		AccessStore: "store",
 	}
 	for mode, want := range cases {
 		if got := mode.String(); got != want {
 			t.Errorf("%v.String() = %q; want %q", mode, got, want)
 		}
+	}
+}
+
+// TestAccess_CheckAccess_Store — Config["store"]=true and the
+// Filesystem fallback both grant the store gate; everything else is
+// rejected.
+func TestAccess_CheckAccess_Store(t *testing.T) {
+	declared := &config.ViewManifest{Config: map[string]any{"store": true}}
+	if err := CheckAccess(declared, AccessStore, "prefs:theme"); err != nil {
+		t.Errorf("Config[store]=true should grant store: %v", err)
+	}
+
+	legacy := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Filesystem: true},
+	}
+	if err := CheckAccess(legacy, AccessStore, "prefs:theme"); err != nil {
+		t.Errorf("Filesystem=true should grant store (legacy): %v", err)
+	}
+
+	empty := &config.ViewManifest{}
+	if err := CheckAccess(empty, AccessStore, "prefs:theme"); err == nil {
+		t.Error("empty manifest should deny store")
 	}
 }
 

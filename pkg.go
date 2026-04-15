@@ -352,6 +352,7 @@ type PkgInstallSpec struct {
 	URL    string      // populated for PWA / web-fetch installs
 	Repo   string      // populated for github.com/owner/name electron installs
 	Code   string      // populated for marketplace lookups
+	Path   string      // populated for local-directory installs
 }
 
 // ParseInstallSpec inspects the `core pkg install <source>` argument
@@ -361,6 +362,15 @@ type PkgInstallSpec struct {
 //
 //	spec := app.ParseInstallSpec("github.com/bitwarden/clients")
 //	if spec.Type == app.PackageTypeElectron { /* fetch release */ }
+//
+// Detection precedence:
+//
+//  1. `https://` / `http://`      → PWA (manifest fetch)
+//  2. `github.com/` / `gitlab.com/` / `git@` → Electron (release fetch)
+//  3. `file://`, `./`, `../`, `/` → Local directory; ParseInstallSpec
+//     records the path and leaves Type=PackageTypeUnknown so the caller
+//     can DetectPackageType against the directory.
+//  4. anything else                → marketplace listing (code lookup)
 func ParseInstallSpec(in string) PkgInstallSpec {
 	src := core.Trim(in)
 	if src == "" {
@@ -375,9 +385,174 @@ func ParseInstallSpec(in string) PkgInstallSpec {
 	case core.HasPrefix(src, "github.com/"), core.HasPrefix(src, "gitlab.com/"), core.HasPrefix(src, "git@"):
 		spec.Type = PackageTypeElectron
 		spec.Repo = src
+	case isLocalSource(src):
+		// Local install — caller runs DetectPackageType against the
+		// path to decide between native, pwa, electron and web. We set
+		// Type to Unknown so the dispatcher knows to call the detector.
+		spec.Type = PackageTypeUnknown
+		spec.Path = trimLocalPrefix(src)
 	default:
 		spec.Type = PackageTypeNative // marketplace listing — type confirmed at install time
 		spec.Code = src
 	}
 	return spec
+}
+
+// isLocalSource reports whether `s` references a directory on the
+// local filesystem (file URL, relative or absolute path). Marketplace
+// codes that happen to start with `.` are not common, so the relative
+// patterns are reasonably exclusive.
+//
+//	isLocalSource("./my-app")              // true
+//	isLocalSource("file:///srv/app")       // true
+//	isLocalSource("photo-browser")         // false
+func isLocalSource(s string) bool {
+	if s == "" {
+		return false
+	}
+	switch {
+	case core.HasPrefix(s, "file://"),
+		core.HasPrefix(s, "./"),
+		core.HasPrefix(s, "../"),
+		s == ".", s == "..":
+		return true
+	}
+	if core.PathIsAbs(s) {
+		return true
+	}
+	return false
+}
+
+// trimLocalPrefix strips the `file://` scheme so the caller has a plain
+// filesystem path to walk.
+//
+//	trimLocalPrefix("file:///srv/app") // "/srv/app"
+//	trimLocalPrefix("./my-app")        // "./my-app"
+func trimLocalPrefix(s string) string {
+	if core.HasPrefix(s, "file://") {
+		return s[len("file://"):]
+	}
+	return s
+}
+
+// PkgInstallLocal copies a local directory into
+// `<home>/.core/apps/<code>/`. The source must already be a CoreApp
+// (have a `.core/view.yaml`); for PWA/Electron/Web wraps run the
+// matching `pkg wrap` command first then point the install at the
+// wrapped output.
+//
+//	dest, err := app.PkgInstallLocal(coreio.Local, src, app.PkgInstallOptions{Home: home})
+//
+// Rules:
+//
+//   - The source manifest's Code is used for the destination directory
+//     name.
+//
+//   - Existing installs are rejected unless Force=true.
+//
+//   - The function uses the medium's Read/Write rather than a syscall
+//     copy so MockMedium and MemoryMedium round-trip cleanly in tests.
+func PkgInstallLocal(medium coreio.Medium, src string, opts PkgInstallOptions) (string, error) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if src == "" {
+		return "", coreerr.E("app.PkgInstallLocal", "empty source", nil)
+	}
+	if !medium.IsDir(src) {
+		return "", coreerr.E("app.PkgInstallLocal", "source is not a directory: "+src, nil)
+	}
+
+	manifestPath := core.Path(src, ".core", "view.yaml")
+	if !medium.Exists(manifestPath) {
+		return "", coreerr.E(
+			"app.PkgInstallLocal",
+			"source has no .core/view.yaml: "+src,
+			nil,
+		)
+	}
+
+	var manifest config.ViewManifest
+	if err := config.LoadManifest(medium, manifestPath, &manifest); err != nil {
+		return "", coreerr.E("app.PkgInstallLocal", "parse source manifest failed", err)
+	}
+	if manifest.Code == "" {
+		return "", coreerr.E("app.PkgInstallLocal", "source manifest.code is empty", nil)
+	}
+
+	home := opts.Home
+	if home == "" {
+		home = core.Env("DIR_HOME")
+	}
+	if home == "" {
+		return "", coreerr.E("app.PkgInstallLocal", "cannot resolve home directory", nil)
+	}
+
+	dest := core.Path(home, ".core", AppsDirName, manifest.Code)
+	if medium.IsDir(dest) {
+		if !opts.Force {
+			return dest, coreerr.E(
+				"app.PkgInstallLocal",
+				"already installed at "+dest+" (use Force to replace)",
+				nil,
+			)
+		}
+		if err := medium.DeleteAll(dest); err != nil {
+			return dest, coreerr.E("app.PkgInstallLocal", "remove existing failed", err)
+		}
+	}
+
+	if err := copyTree(medium, src, dest); err != nil {
+		return dest, coreerr.E("app.PkgInstallLocal", "copy tree failed", err)
+	}
+
+	// Stamp the source so `pkg list` shows where the install came from.
+	if opts.Source == "" {
+		opts.Source = "local:" + src
+	}
+	if err := stampSource(medium, dest, opts.Source); err != nil {
+		// Best-effort; the install itself succeeded.
+		_ = err
+	}
+	return dest, nil
+}
+
+// copyTree recursively copies every file beneath `src` into `dest`,
+// preserving the directory layout. Directories are created via
+// EnsureDir so missing intermediate folders are not an error.
+//
+//	err := copyTree(medium, src, dest)
+func copyTree(medium coreio.Medium, src, dest string) error {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if err := medium.EnsureDir(dest); err != nil {
+		return err
+	}
+	entries, err := medium.List(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if name == "" || name == "." || name == ".." {
+			continue
+		}
+		srcPath := core.Path(src, name)
+		dstPath := core.Path(dest, name)
+		if e.IsDir() {
+			if err := copyTree(medium, srcPath, dstPath); err != nil {
+				return err
+			}
+			continue
+		}
+		body, err := medium.Read(srcPath)
+		if err != nil {
+			return err
+		}
+		if err := medium.Write(dstPath, body); err != nil {
+			return err
+		}
+	}
+	return nil
 }

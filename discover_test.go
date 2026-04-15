@@ -209,3 +209,100 @@ func TestDiscover_compiledToManifest_Ugly(t *testing.T) {
 		t.Errorf("empty compiled slots should yield nil slots; got %+v", v.Slots)
 	}
 }
+
+// TestDiscover_DiscoverInstalled_Good — a planted package directory
+// resolves to its absolute path under home/.core/apps/.
+func TestDiscover_DiscoverInstalled_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+
+	// Plant an installed package.
+	dir := home + "/.core/apps/photo-browser/.core"
+	must(t, medium.EnsureDir(dir))
+	must(t, medium.Write(dir+"/view.yaml", `
+code: photo-browser
+name: Photo Browser
+version: 0.1.0
+`))
+
+	got, err := DiscoverInstalled(medium, home, "photo-browser")
+	if err != nil {
+		t.Fatalf("DiscoverInstalled: %v", err)
+	}
+	want := home + "/.core/apps/photo-browser"
+	if got != want {
+		t.Errorf("DiscoverInstalled = %q; want %q", got, want)
+	}
+}
+
+// TestDiscover_DiscoverInstalled_Bad — empty code, missing package and
+// unresolvable home all surface typed errors.
+func TestDiscover_DiscoverInstalled_Bad(t *testing.T) {
+	medium := coreio.Local
+
+	if _, err := DiscoverInstalled(medium, t.TempDir(), ""); err == nil {
+		t.Error("empty code should error")
+	}
+	if _, err := DiscoverInstalled(medium, t.TempDir(), "never-installed"); err == nil {
+		t.Error("missing package should error")
+	}
+}
+
+// TestDiscover_DiscoverInstalled_Ugly — nil medium falls back to
+// coreio.Local without panicking.
+func TestDiscover_DiscoverInstalled_Ugly(t *testing.T) {
+	if _, err := DiscoverInstalled(nil, t.TempDir(), "no-such-thing"); err == nil {
+		t.Error("nil medium with missing pkg should error")
+	}
+}
+
+// TestDiscover_DiscoverInstalledManifest_Good — round-trip from code →
+// loaded manifest works for a planted package.
+func TestDiscover_DiscoverInstalledManifest_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+
+	dir := home + "/.core/apps/loader-good/.core"
+	must(t, medium.EnsureDir(dir))
+	must(t, medium.Write(dir+"/view.yaml", `
+code: loader-good
+name: Loader Good
+version: 0.4.2
+`))
+
+	manifest, gotDir, err := DiscoverInstalledManifest(medium, home, "loader-good")
+	if err != nil {
+		t.Fatalf("DiscoverInstalledManifest: %v", err)
+	}
+	if manifest.Code != "loader-good" {
+		t.Errorf("Code = %q; want loader-good", manifest.Code)
+	}
+	if manifest.Version != "0.4.2" {
+		t.Errorf("Version = %q; want 0.4.2", manifest.Version)
+	}
+	if gotDir != home+"/.core/apps/loader-good" {
+		t.Errorf("dir = %q; want %q", gotDir, home+"/.core/apps/loader-good")
+	}
+}
+
+// TestDiscover_DiscoverInstalledManifest_Bad — missing package
+// surfaces the discover error, not the loader error.
+func TestDiscover_DiscoverInstalledManifest_Bad(t *testing.T) {
+	if _, _, err := DiscoverInstalledManifest(coreio.Local, t.TempDir(), "missing"); err == nil {
+		t.Error("missing package should error")
+	}
+}
+
+// TestDiscover_DiscoverInstalledManifest_Ugly — installed directory
+// without view.yaml errors at the manifest-load stage.
+func TestDiscover_DiscoverInstalledManifest_Ugly(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+
+	dir := home + "/.core/apps/no-manifest"
+	must(t, medium.EnsureDir(dir))
+
+	if _, _, err := DiscoverInstalledManifest(medium, home, "no-manifest"); err == nil {
+		t.Error("package without view.yaml should error")
+	}
+}

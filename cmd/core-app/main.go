@@ -93,14 +93,9 @@ func runInstalled(args []string) int {
 		core.Error("run: CODE is required")
 		return 64
 	}
-	home := core.Env("DIR_HOME")
-	if home == "" {
-		core.Error("run: cannot resolve DIR_HOME")
-		return 1
-	}
-	dir := core.Path(home, ".core", app.AppsDirName, code)
-	if !coreio.Local.IsDir(dir) {
-		core.Error("run: package not installed", "code", code, "expected", dir)
+	dir, err := app.DiscoverInstalled(coreio.Local, "", code)
+	if err != nil {
+		core.Error("run: discover failed", "code", code, "err", err)
 		return 1
 	}
 	runBootFromMode(mode, dir)

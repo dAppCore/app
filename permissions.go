@@ -92,7 +92,7 @@ func permissions(c *core.Core, m *config.ViewManifest, mode Mode) error {
 		return coreerr.E("app.permissions", "nil manifest", nil)
 	}
 
-	checker := newChecker(m.Permissions, mode)
+	checker := newCheckerForManifest(m, mode)
 	c.SetEntitlementChecker(checker)
 	return nil
 }
@@ -107,6 +107,20 @@ func permissions(c *core.Core, m *config.ViewManifest, mode Mode) error {
 // have been denied in prod, which is what the developer wants to see in
 // logs while they iterate.
 func newChecker(p config.ViewPermissions, mode Mode) core.EntitlementChecker {
+	return newCheckerForManifest(&config.ViewManifest{Permissions: p}, mode)
+}
+
+// newCheckerForManifest is the manifest-aware constructor that
+// permissions() uses to honour the store-bool flag stored in
+// Config["store"] (see hasManifestStorePermission).
+//
+//	c.SetEntitlementChecker(newCheckerForManifest(&manifest, ModeProd))
+func newCheckerForManifest(m *config.ViewManifest, mode Mode) core.EntitlementChecker {
+	if m == nil {
+		m = &config.ViewManifest{}
+	}
+	p := m.Permissions
+	storeDeclared := hasManifestStorePermission(m)
 	return func(action string, _ int, _ context.Context) core.Entitlement {
 		gate, ok := gateFor(action)
 		if !ok {
@@ -117,6 +131,11 @@ func newChecker(p config.ViewPermissions, mode Mode) core.EntitlementChecker {
 		}
 
 		declared := hasPermission(p, gate.field)
+		// Store has its own wider check — Config["store"] satisfies it
+		// even when ViewPermissions doesn't expose a typed field.
+		if !declared && gate.field == fieldStore {
+			declared = storeDeclared
+		}
 		if declared {
 			return core.Entitlement{Allowed: true, Unlimited: true}
 		}
@@ -161,12 +180,38 @@ func hasPermission(p config.ViewPermissions, field permissionField) bool {
 	case fieldRun:
 		return len(p.Run) > 0
 	case fieldStore:
-		// ViewPermissions does not yet expose a store boolean; store
-		// access is declared in view.yaml via `permissions.store: true`
-		// and the CoreApp RFC §2.2 documents it — config.ViewPermissions
-		// needs to grow the field. TODO(config).
-		return false
+		// ViewPermissions does not yet expose a store boolean. Until
+		// core/config grows one we honour `permissions.store: true`
+		// recorded in the manifest's Config map (the wrap pipeline
+		// stamps the field there for PWAs and any installer can do the
+		// same). The fallthrough check on Filesystem keeps backwards
+		// compat: an app declaring full filesystem access also gets
+		// store access since go-store's SQLite database lives on the
+		// filesystem.
+		return p.Filesystem
 	default:
 		return false
 	}
+}
+
+// hasManifestStorePermission inspects the wider ViewManifest for the
+// `permissions.store: true` legacy bool stored under Config["store"].
+// Kept separate from hasPermission so the entitlement closure can call
+// it without dragging the manifest into the inner switch.
+//
+//	declared := hasManifestStorePermission(&manifest)
+func hasManifestStorePermission(m *config.ViewManifest) bool {
+	if m == nil {
+		return false
+	}
+	if m.Permissions.Filesystem {
+		return true
+	}
+	if m.Config == nil {
+		return false
+	}
+	if v, ok := m.Config["store"].(bool); ok {
+		return v
+	}
+	return false
 }

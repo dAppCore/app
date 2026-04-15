@@ -66,11 +66,28 @@ func pkgUsage() {
 }
 
 // runPkgList prints `NAME\tTYPE\tVERSION\tSOURCE` rows for every
-// installed package. Uses `core.Env("DIR_HOME")` so the output matches
-// the directory scan `PkgList` performs.
+// installed package, or a JSON array when `--json` is passed. Uses
+// `core.Env("DIR_HOME")` so the output matches the directory scan
+// `PkgList` performs.
 //
 //	core-app pkg list
-func runPkgList(_ []string) int {
+//	core-app pkg list --json
+func runPkgList(args []string) int {
+	asJSON := false
+	for _, a := range args {
+		switch a {
+		case "--json":
+			asJSON = true
+		case "--help", "-h":
+			core.Println("core-app pkg list [--json]")
+			core.Println("  --json   emit a JSON array of {name, type, version, source, path}")
+			return 0
+		default:
+			core.Error("pkg list: unknown flag", "flag", a)
+			return 64
+		}
+	}
+
 	home := core.Env("DIR_HOME")
 	if home == "" {
 		core.Error("pkg list: cannot resolve DIR_HOME")
@@ -81,6 +98,34 @@ func runPkgList(_ []string) int {
 		core.Error("pkg list: failed", "err", err)
 		return 1
 	}
+
+	if asJSON {
+		// Project to a serialisable shape so the JSON output is stable
+		// regardless of internal field reordering in PkgEntry.
+		type row struct {
+			Name    string `json:"name"`
+			Type    string `json:"type"`
+			Version string `json:"version"`
+			Source  string `json:"source"`
+			Path    string `json:"path"`
+		}
+		rows := make([]row, 0, len(entries))
+		for _, e := range entries {
+			rows = append(rows, row{
+				Name: e.Name, Type: e.Type.String(), Version: e.Version,
+				Source: e.Source, Path: e.Path,
+			})
+		}
+		r := core.JSONMarshal(rows)
+		if !r.OK {
+			core.Error("pkg list: marshal failed", "err", r.Value)
+			return 1
+		}
+		raw, _ := r.Value.([]byte)
+		core.Println(string(raw))
+		return 0
+	}
+
 	if len(entries) == 0 {
 		core.Println("(no packages installed)")
 		return 0
@@ -278,6 +323,21 @@ func runPkgWrapElectron(opts pkgWrapArgs) int {
 			core.Error("pkg wrap --electron: asset download failed", "err", err)
 			return 1
 		}
+		// Auto-extract zip archives so the user can immediately scan
+		// the unpacked renderer with `pkg wrap --electron <dir>`.
+		// .tar / .tgz handling will follow when go-archive lands.
+		if core.HasSuffix(core.Lower(path), ".zip") {
+			extracted := core.Path(scratch, core.TrimSuffix(asset.Name, ".zip"))
+			if err := app.ExtractZip(medium, path, extracted); err != nil {
+				core.Error("pkg wrap --electron: zip extract failed", "err", err)
+				return 1
+			}
+			core.Info("renderer asset extracted — re-run with --electron <dir>",
+				"asset", asset.Name,
+				"extracted", extracted,
+				"tag", rel.TagName)
+			return 0
+		}
 		core.Info("renderer asset downloaded — extract and re-run with --electron <dir>",
 			"asset", asset.Name,
 			"path", path,
@@ -443,10 +503,36 @@ func runPkgInstall(args []string) int {
 		return runPkgInstallPWA(ctx, home, spec.URL)
 	case app.PackageTypeElectron:
 		return runPkgInstallElectron(ctx, spec.Repo)
+	case app.PackageTypeUnknown:
+		// Local directory — the path was set by ParseInstallSpec.
+		if spec.Path != "" {
+			return runPkgInstallLocal(home, spec.Path)
+		}
+		return runPkgInstallMarketplace(ctx, home, spec.Code)
 	default:
 		// Native marketplace listing (vendor/code or plain code).
 		return runPkgInstallMarketplace(ctx, home, spec.Code)
 	}
+}
+
+// runPkgInstallLocal installs a CoreApp from a local directory tree.
+// The source must already be a CoreApp (have `.core/view.yaml`); for
+// PWA / Electron / Web wraps run `pkg wrap` first then install the
+// wrapped output.
+//
+//	rc := runPkgInstallLocal(home, "./my-app")
+func runPkgInstallLocal(home, path string) int {
+	dest, err := app.PkgInstallLocal(coreio.Local, path, app.PkgInstallOptions{
+		Home:   home,
+		Force:  true,
+		Source: "local:" + path,
+	})
+	if err != nil {
+		core.Error("pkg install local: failed", "src", path, "err", err)
+		return 1
+	}
+	core.Info("installed", "type", "local", "src", path, "dest", dest)
+	return 0
 }
 
 // runPkgInstallElectron is the install-side counterpart to
@@ -481,6 +567,18 @@ func runPkgInstallElectron(ctx context.Context, ref string) int {
 	if err != nil {
 		core.Error("pkg install: asset download failed", "err", err)
 		return 1
+	}
+	// Auto-extract zip archives so the user can immediately re-invoke
+	// the installer against the unpacked renderer directory.
+	if core.HasSuffix(core.Lower(path), ".zip") {
+		extracted := core.Path(scratch, core.TrimSuffix(asset.Name, ".zip"))
+		if err := app.ExtractZip(coreio.Local, path, extracted); err != nil {
+			core.Error("pkg install: zip extract failed", "err", err)
+			return 1
+		}
+		core.Info("renderer asset extracted — run `pkg wrap --electron <dir>` next",
+			"asset", asset.Name, "extracted", extracted, "tag", rel.TagName)
+		return 0
 	}
 	core.Info("renderer asset downloaded — extract and run `pkg wrap --electron <dir>`",
 		"asset", asset.Name, "path", path, "tag", rel.TagName)
