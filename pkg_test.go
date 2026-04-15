@@ -438,6 +438,66 @@ func TestPkg_InstallWrappedElectron_Good(t *testing.T) {
 	}
 }
 
+// TestPkg_InstallWrappedElectron_ExplicitSign_Good confirms that an
+// explicit signing key is applied AFTER the renderer asset hash has been
+// bound into the manifest, so the installed artifact still verifies and
+// boots in prod mode.
+func TestPkg_InstallWrappedElectron_ExplicitSign_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	srcDir := t.TempDir()
+	if err := medium.Write(core.Path(srcDir, "package.json"), `{"name":"electron-explicit-sign"}`); err != nil {
+		t.Fatalf("Write package.json: %v", err)
+	}
+	if err := medium.Write(core.Path(srcDir, "main.js"), `console.log("signed")`); err != nil {
+		t.Fatalf("Write main.js: %v", err)
+	}
+
+	keysDir := t.TempDir()
+	keyPath, pubPath, err := app.Keygen(medium, keysDir, "explicit-sign")
+	if err != nil {
+		t.Fatalf("Keygen: %v", err)
+	}
+	pubHex, err := medium.Read(pubPath)
+	if err != nil {
+		t.Fatalf("Read pub key: %v", err)
+	}
+
+	manifest := &config.ViewManifest{
+		Code:    "electron-explicit-sign",
+		Name:    "Electron Explicit Sign",
+		Version: "0.1.0",
+		Config:  map[string]any{"type": "electron"},
+	}
+	dest, err := app.InstallWrappedElectron(medium, manifest, app.PkgInstallOptions{
+		Home:        home,
+		Force:       true,
+		AssetSource: srcDir,
+		SignKeyPath: keyPath,
+	})
+	if err != nil {
+		t.Fatalf("InstallWrappedElectron explicit sign: %v", err)
+	}
+
+	var round config.ViewManifest
+	if err := app.LoadViewManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+		t.Fatalf("LoadViewManifest: %v", err)
+	}
+	if round.Sign == "" {
+		t.Fatal("Sign field empty after explicit install signing")
+	}
+	if hash, _ := round.Config["asset_hash"].(string); hash == "" {
+		t.Fatal("asset_hash missing after explicit install signing")
+	}
+
+	if _, err := app.Boot(context.Background(), dest,
+		app.WithPublicKey(core.Trim(pubHex)),
+		app.WithWorkspaceHome(home),
+	); err != nil {
+		t.Fatalf("Boot(prod, explicit-sign Electron wrap): %v", err)
+	}
+}
+
 // TestPkg_InstallWrappedElectron_AssetsCopied pins the asset-aware
 // install path independently of the source stamp checks above.
 func TestPkg_InstallWrappedElectron_AssetsCopied(t *testing.T) {
@@ -468,6 +528,62 @@ func TestPkg_InstallWrappedElectron_AssetsCopied(t *testing.T) {
 	}
 	if !medium.Exists(core.Path(dest, "assets", "renderer.js")) {
 		t.Fatalf("renderer asset missing at %s", core.Path(dest, "assets", "renderer.js"))
+	}
+}
+
+// TestPkg_WriteWrappedAppWithOptions_ExplicitSign_Good pins the
+// non-install wrap path used by `pkg wrap --dest/--no-install`: staged
+// Electron assets participate in the signed envelope there too.
+func TestPkg_WriteWrappedAppWithOptions_ExplicitSign_Good(t *testing.T) {
+	medium := coreio.Local
+	srcDir := t.TempDir()
+	if err := medium.Write(core.Path(srcDir, "package.json"), `{"name":"manual-electron-sign"}`); err != nil {
+		t.Fatalf("Write package.json: %v", err)
+	}
+	if err := medium.Write(core.Path(srcDir, "renderer.js"), `window.manual = true`); err != nil {
+		t.Fatalf("Write renderer.js: %v", err)
+	}
+
+	keysDir := t.TempDir()
+	keyPath, pubPath, err := app.Keygen(medium, keysDir, "manual-sign")
+	if err != nil {
+		t.Fatalf("Keygen: %v", err)
+	}
+	pubHex, err := medium.Read(pubPath)
+	if err != nil {
+		t.Fatalf("Read pub key: %v", err)
+	}
+
+	dest := core.Path(t.TempDir(), "wrapped-manual-electron")
+	manifest := &config.ViewManifest{
+		Code:    "manual-electron-sign",
+		Name:    "Manual Electron Sign",
+		Version: "0.1.0",
+		Config:  map[string]any{"type": "electron"},
+	}
+	if err := app.WriteWrappedAppWithOptions(medium, dest, manifest, app.WriteWrappedOptions{
+		AssetSource: srcDir,
+		SignKeyPath: keyPath,
+	}); err != nil {
+		t.Fatalf("WriteWrappedAppWithOptions: %v", err)
+	}
+
+	var round config.ViewManifest
+	if err := app.LoadViewManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+		t.Fatalf("LoadViewManifest: %v", err)
+	}
+	if round.Sign == "" {
+		t.Fatal("Sign field empty after manual wrap signing")
+	}
+	if hash, _ := round.Config["asset_hash"].(string); hash == "" {
+		t.Fatal("asset_hash missing after manual wrap signing")
+	}
+
+	if _, err := app.Boot(context.Background(), dest,
+		app.WithPublicKey(core.Trim(pubHex)),
+		app.WithWorkspaceHome(t.TempDir()),
+	); err != nil {
+		t.Fatalf("Boot(prod, manual explicit-sign Electron wrap): %v", err)
 	}
 }
 

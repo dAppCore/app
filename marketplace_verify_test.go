@@ -142,6 +142,48 @@ func TestMarketplaceVerify_VerifyListingBytes_Good(t *testing.T) {
 	}
 }
 
+// TestMarketplaceVerify_VerifyListingBytes_RFCExtras_Good proves the
+// in-memory verify path honours RFC-native manifest fields (services,
+// url, store, theme, etc.) the same way disk loads do.
+func TestMarketplaceVerify_VerifyListingBytes_RFCExtras_Good(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	pwa := &app.PWAManifest{
+		Name:            "Play Example",
+		ShortName:       "play-example",
+		StartURL:        "/app",
+		Display:         "standalone",
+		ThemeColor:      "#6200ea",
+		BackgroundColor: "#ffffff",
+		Lang:            "en-GB",
+		Permissions:     []string{"notifications", "clipboard-write", "storage"},
+	}
+	manifest := app.WrapPWA(pwa, app.WrapPWAOptions{
+		TargetURL: app.ResolvePWAAppURL("https://play.example.com/manifest.webmanifest", pwa),
+	})
+	if manifest == nil {
+		t.Fatal("WrapPWA returned nil")
+	}
+	if err := app.SignManifestForTest(manifest, priv); err != nil {
+		t.Fatalf("SignManifestForTest: %v", err)
+	}
+
+	dest := t.TempDir()
+	if err := app.WritePWAWrap(coreio.Local, dest, manifest); err != nil {
+		t.Fatalf("WritePWAWrap: %v", err)
+	}
+	body, err := coreio.Local.Read(core.Path(dest, ".core", "view.yaml"))
+	if err != nil {
+		t.Fatalf("Read view.yaml: %v", err)
+	}
+
+	if err := app.VerifyListingBytes([]byte(body), app.SignListingKey(pub)); err != nil {
+		t.Errorf("VerifyListingBytes should accept RFC-native manifest bytes; got %v", err)
+	}
+}
+
 // TestMarketplaceVerify_VerifyListingBytes_Bad — bad inputs surface
 // typed errors rather than panic.
 func TestMarketplaceVerify_VerifyListingBytes_Bad(t *testing.T) {

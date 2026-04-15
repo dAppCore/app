@@ -148,5 +148,8 @@ func hexEncode(b []byte) string {
 //
 //	_ = yamlUnmarshal(body, &manifest)
 func yamlUnmarshal(body []byte, dst any) error {
+	if manifest, ok := dst.(*config.ViewManifest); ok {
+		return UnmarshalViewManifest(body, manifest)
+	}
 	return yamlUnmarshalImpl(body, dst)
 }

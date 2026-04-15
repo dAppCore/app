@@ -445,10 +445,6 @@ func runPkgWrapPWA(opts pkgWrapArgs) int {
 	if opts.Name != "" {
 		manifest.Name = opts.Name
 	}
-	if err := applyWrapSignature(opts, manifest); err != nil {
-		core.Error("pkg wrap --pwa: sign failed", "err", err)
-		return 1
-	}
 	return persistWrap(manifest, opts)
 }
 
@@ -493,10 +489,6 @@ func runPkgWrapElectron(opts pkgWrapArgs) int {
 			return 1
 		}
 		opts.AssetSource = rendererDir
-		if err := applyWrapSignature(opts, manifest); err != nil {
-			core.Error("pkg wrap --electron: sign failed", "err", err)
-			return 1
-		}
 		rc := persistWrap(manifest, opts)
 		if medium.IsDir(scratch) {
 			_ = medium.DeleteAll(scratch)
@@ -532,10 +524,6 @@ func runPkgWrapElectron(opts pkgWrapArgs) int {
 		manifest.Version = opts.Version
 	}
 	opts.AssetSource = dir
-	if err := applyWrapSignature(opts, manifest); err != nil {
-		core.Error("pkg wrap --electron: sign failed", "err", err)
-		return 1
-	}
 	return persistWrap(manifest, opts)
 }
 
@@ -572,10 +560,6 @@ func runPkgWrapWeb(opts pkgWrapArgs) int {
 		core.Error("pkg wrap --web: failed", "err", err)
 		return 1
 	}
-	if err := applyWrapSignature(opts, manifest); err != nil {
-		core.Error("pkg wrap --web: sign failed", "err", err)
-		return 1
-	}
 	opts.AssetSource = opts.WebDir
 	return persistWrap(manifest, opts)
 }
@@ -594,7 +578,11 @@ func persistWrap(manifest *config.ViewManifest, opts pkgWrapArgs) int {
 	medium := coreio.Local
 
 	if opts.Dest != "" && !opts.Install {
-		if err := app.WriteWrappedApp(medium, opts.Dest, manifest, opts.AssetSource); err != nil {
+		if err := app.WriteWrappedAppWithOptions(medium, opts.Dest, manifest, app.WriteWrappedOptions{
+			AssetSource: opts.AssetSource,
+			SignKeyPath: opts.Sign,
+			SignDefault: opts.UseDefaultKey,
+		}); err != nil {
 			core.Error("pkg wrap: write failed", "err", err)
 			return 1
 		}
@@ -613,6 +601,8 @@ func persistWrap(manifest *config.ViewManifest, opts pkgWrapArgs) int {
 			Force:       true,
 			Source:      "wrap:" + opts.sourceTag(),
 			AssetSource: opts.AssetSource,
+			SignKeyPath: opts.Sign,
+			SignDefault: opts.UseDefaultKey,
 		}
 		dest, err := installWrappedByType(medium, manifest, installOpts)
 		if err != nil {
@@ -626,7 +616,11 @@ func persistWrap(manifest *config.ViewManifest, opts pkgWrapArgs) int {
 	// Neither --dest nor --install → write next to cwd under a
 	// predictable scratch directory.
 	scratch := "./.core-wrap/" + manifest.Code
-	if err := app.WriteWrappedApp(medium, scratch, manifest, opts.AssetSource); err != nil {
+	if err := app.WriteWrappedAppWithOptions(medium, scratch, manifest, app.WriteWrappedOptions{
+		AssetSource: opts.AssetSource,
+		SignKeyPath: opts.Sign,
+		SignDefault: opts.UseDefaultKey,
+	}); err != nil {
 		core.Error("pkg wrap: scratch write failed", "err", err)
 		return 1
 	}

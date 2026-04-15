@@ -570,6 +570,18 @@ type PkgInstallOptions struct {
 	// written. Web and Electron wraps use this so the install contains
 	// the renderer assets as well as the generated manifest.
 	AssetSource string
+	// SignKeyPath forces the wrapped manifest to be signed with the
+	// supplied private key AFTER install-time mutations (source stamp,
+	// asset hash binding) have been applied. Used by `core pkg wrap
+	// --sign` so the on-disk artifact's signature matches the final
+	// manifest rather than an earlier in-memory draft.
+	SignKeyPath string
+	// SignDefault forces signing with the user's default key AFTER the
+	// install-time mutations above. Distinct from the legacy
+	// "manifest.Sign == empty" auto-sign path so callers can explicitly
+	// re-sign a wrapped artifact even when the manifest already carried
+	// a stale or placeholder signature.
+	SignDefault bool
 }
 
 // InstallWrappedPWA persists a wrapped PWA manifest into the installed
@@ -649,12 +661,10 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 		return dest, coreerr.E("app.installWrap", "bind asset hash failed", err)
 	}
 	// Wrapped installs are distribution artifacts, not dev drafts. Sign
-	// them with the user's default keypair on the way to disk so prod
-	// boots can verify the manifest immediately after install.
-	if manifest.Sign == "" {
-		if err := signManifestForHome(medium, home, manifest); err != nil {
-			return dest, coreerr.E("app.installWrap", "sign wrapped manifest failed", err)
-		}
+	// them AFTER the install-specific mutations (source stamp, asset
+	// hash) so prod-mode verification covers the final on-disk artifact.
+	if err := signWrappedManifest(medium, manifest, home, opts); err != nil {
+		return dest, coreerr.E("app.installWrap", "sign wrapped manifest failed", err)
 	}
 	if err := writeWrappedManifest(medium, dest, manifest); err != nil {
 		return dest, coreerr.E("app.installWrap", "materialise wrap failed", err)
@@ -662,12 +672,55 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 	return dest, nil
 }
 
+// WriteWrappedOptions tunes WriteWrappedAppWithOptions. The helper is
+// the non-install counterpart to installWrap: it materialises a wrapped
+// app at an arbitrary destination while still applying the RFC §16
+// asset-binding and optional signing steps in the right order.
+type WriteWrappedOptions struct {
+	// AssetSource points at the renderer / site tree to copy into dest
+	// before `.core/view.yaml` is written.
+	AssetSource string
+	// Home overrides `$DIR_HOME` when resolving the default signing key.
+	Home string
+	// SignKeyPath signs the final manifest with the supplied private key.
+	SignKeyPath string
+	// SignDefault signs the final manifest with the user's default key.
+	SignDefault bool
+}
+
 // WriteWrappedApp materialises a wrapped app at `dest`, optionally
 // copying a directory of renderer assets first and then writing the
 // generated `.core/view.yaml`.
 func WriteWrappedApp(medium coreio.Medium, dest string, manifest *config.ViewManifest, assetSource string) error {
-	if err := stageWrappedAssets(medium, dest, assetSource); err != nil {
+	return WriteWrappedAppWithOptions(medium, dest, manifest, WriteWrappedOptions{
+		AssetSource: assetSource,
+	})
+}
+
+// WriteWrappedAppWithOptions materialises a wrapped app at `dest`,
+// binding the renderer asset hash first and then applying any requested
+// signature to the final manifest bytes.
+func WriteWrappedAppWithOptions(medium coreio.Medium, dest string, manifest *config.ViewManifest, opts WriteWrappedOptions) error {
+	if manifest == nil {
+		return coreerr.E("app.WriteWrappedAppWithOptions", "nil manifest", nil)
+	}
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if err := stageWrappedAssets(medium, dest, opts.AssetSource); err != nil {
 		return err
+	}
+	if err := bindWrappedAssetHash(medium, dest, manifest); err != nil {
+		return coreerr.E("app.WriteWrappedAppWithOptions", "bind asset hash failed", err)
+	}
+	if opts.SignKeyPath != "" || opts.SignDefault {
+		if err := signWrappedManifest(medium, manifest, opts.Home, PkgInstallOptions{
+			Home:        opts.Home,
+			SignKeyPath: opts.SignKeyPath,
+			SignDefault: opts.SignDefault,
+		}); err != nil {
+			return coreerr.E("app.WriteWrappedAppWithOptions", "sign wrapped manifest failed", err)
+		}
 	}
 	return writeWrappedManifest(medium, dest, manifest)
 }
@@ -716,6 +769,40 @@ func writeWrappedManifest(medium coreio.Medium, dest string, manifest *config.Vi
 	}
 	if err := medium.Write(path, string(body)); err != nil {
 		return coreerr.E("app.writeWrappedManifest", "write failed", err)
+	}
+	return nil
+}
+
+func signWrappedManifest(medium coreio.Medium, manifest *config.ViewManifest, home string, opts PkgInstallOptions) error {
+	if manifest == nil {
+		return coreerr.E("app.signWrappedManifest", "nil manifest", nil)
+	}
+	if medium == nil {
+		medium = coreio.Local
+	}
+	switch {
+	case opts.SignKeyPath != "":
+		priv, err := LoadPrivateKey(medium, opts.SignKeyPath)
+		if err != nil {
+			return coreerr.E("app.signWrappedManifest", "load explicit private key failed", err)
+		}
+		if err := SignManifest(manifest, priv); err != nil {
+			return coreerr.E("app.signWrappedManifest", "sign with explicit key failed", err)
+		}
+		return nil
+	case opts.SignDefault:
+		priv, err := ensureDefaultPrivateKey(medium, home)
+		if err != nil {
+			return coreerr.E("app.signWrappedManifest", "resolve default key failed", err)
+		}
+		if err := SignManifest(manifest, priv); err != nil {
+			return coreerr.E("app.signWrappedManifest", "sign with default key failed", err)
+		}
+		return nil
+	case manifest.Sign == "":
+		if err := signManifestForHome(medium, home, manifest); err != nil {
+			return coreerr.E("app.signWrappedManifest", "auto-sign failed", err)
+		}
 	}
 	return nil
 }
