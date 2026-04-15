@@ -354,7 +354,9 @@ func TestSdk_RenderPHP_Ugly(t *testing.T) {
 
 // TestSdk_RenderPython_Good — the Python module carries the Protocol,
 // the SDK class, and one snake_case method per Action. Matches RFC §8's
-// "Client SDKs (TS, Python, Go, PHP)" pipeline output.
+// "Client SDKs (TS, Python, Go, PHP)" pipeline output. The `Optional`
+// spelling on the opts parameter keeps the module importable on Python
+// 3.8 (the `X | Y` shorthand is a 3.10 syntax error).
 func TestSdk_RenderPython_Good(t *testing.T) {
 	m := &config.ViewManifest{Code: "test", Version: "0.1.0"}
 	actions := []SDKAction{
@@ -369,10 +371,16 @@ func TestSdk_RenderPython_Good(t *testing.T) {
 		"def gui_dialog_confirm(",
 		`self._client.action("fs.read"`,
 		"Permission: read",
+		"Optional[Dict[str, Any]] = None",
+		"from typing import Any, Dict, Optional, Protocol",
 	} {
 		if !core.Contains(out, want) {
 			t.Errorf("missing %q in output:\n%s", want, out)
 		}
+	}
+	// Guard against a regression to the 3.10-only `X | None` shorthand.
+	if core.Contains(out, "Dict[str, Any] | None") {
+		t.Errorf("Python SDK uses 3.10-only `| None` syntax; expected Optional[]:\n%s", out)
 	}
 }
 
