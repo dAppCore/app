@@ -104,3 +104,42 @@ func TestSdk_runSDKGenerate_Ugly(t *testing.T) {
 		t.Error("runSDKGenerate against empty dir should fail")
 	}
 }
+
+// TestSdk_runSDKList_Good — `sdk list` renders the full action
+// catalogue with the expected column headings and without failing.
+func TestSdk_runSDKList_Good(t *testing.T) {
+	if rc := runSDK([]string{"list"}); rc != 0 {
+		t.Errorf("runSDK(list) rc = %d; want 0", rc)
+	}
+}
+
+// TestSdk_runSDKList_Bad — unknown flag is rejected with EX_USAGE (64).
+func TestSdk_runSDKList_Bad(t *testing.T) {
+	if rc := runSDK([]string{"list", "--unknown"}); rc != 64 {
+		t.Errorf("runSDK(list --unknown) rc = %d; want 64", rc)
+	}
+}
+
+// TestSdk_runSDKList_Ugly — `--json` produces a JSON document the CLI
+// caller can pipe into `jq` without re-parsing the human table.
+func TestSdk_runSDKList_Ugly(t *testing.T) {
+	if rc := runSDK([]string{"list", "--json"}); rc != 0 {
+		t.Errorf("runSDK(list --json) rc = %d; want 0", rc)
+	}
+}
+
+// TestSdk_displayPermission_Good — ungated actions render as an ASCII
+// hyphen so byte-counting table formatters keep the column aligned;
+// gated actions render the permission name as given.
+func TestSdk_displayPermission_Good(t *testing.T) {
+	cases := map[string]string{
+		"":     "-",
+		"read": "read",
+		"net":  "net",
+	}
+	for in, want := range cases {
+		if got := displayPermission(in); got != want {
+			t.Errorf("displayPermission(%q) = %q; want %q", in, got, want)
+		}
+	}
+}

@@ -9,12 +9,12 @@ import (
 	coreio "dappco.re/go/core/io"
 )
 
-// runSDK dispatches the `sdk` subverbs. Today the only verb is
-// `generate`; future iterations will add `list` (catalogue dump) and
-// `validate` (lint a hand-written manifest against a target language).
+// runSDK dispatches the `sdk` subverbs.
 //
 //	core-app sdk generate
 //	core-app sdk generate --lang ts --out ./build/sdk
+//	core-app sdk list
+//	core-app sdk list --json
 func runSDK(args []string) int {
 	if len(args) == 0 {
 		sdkUsage()
@@ -23,6 +23,8 @@ func runSDK(args []string) int {
 	switch args[0] {
 	case "generate":
 		return runSDKGenerate(args[1:])
+	case "list":
+		return runSDKList(args[1:])
 	case "--help", "-h":
 		sdkUsage()
 		return 0
@@ -40,6 +42,81 @@ func sdkUsage() {
 	core.Println("core-app sdk <verb> [flags]")
 	core.Println("  generate [--lang ts|go|php|python|openapi] [--out DIR] [--all] [project]")
 	core.Println("           emit client SDKs from .core/view.yaml; default emits all five")
+	core.Println("  list     [--json]")
+	core.Println("           print the Core primitive action catalogue (name, tag, permission, description)")
+}
+
+// runSDKList prints the Core primitive action catalogue so a developer
+// (or an agent) can discover every available action without opening the
+// RFC. Matches `core-app sdk list [--json]` — plain table output by
+// default, JSON array when `--json` is supplied.
+//
+//	core-app sdk list
+//	core-app sdk list --json
+func runSDKList(args []string) int {
+	asJSON := false
+	for _, a := range args {
+		switch a {
+		case "--json":
+			asJSON = true
+		case "--help", "-h":
+			core.Println("core-app sdk list [--json]")
+			core.Println("  --json   emit a JSON array of {name, tag, permission, description}")
+			return 0
+		default:
+			core.Error("sdk list: unknown flag", "flag", a)
+			return 64
+		}
+	}
+
+	catalogue := app.SDKCatalogue()
+	if asJSON {
+		r := core.JSONMarshal(catalogue)
+		if !r.OK {
+			core.Error("sdk list: marshal failed", "err", r.Value)
+			return 1
+		}
+		raw, _ := r.Value.([]byte)
+		core.Println(string(raw))
+		return 0
+	}
+
+	if len(catalogue) == 0 {
+		return 0
+	}
+	const gutter = 2
+	headers := []string{"NAME", "TAG", "PERMISSION", "DESCRIPTION"}
+	widths := []int{len(headers[0]), len(headers[1]), len(headers[2]), len(headers[3])}
+	for _, e := range catalogue {
+		cells := []string{e.Name, e.Tag, displayPermission(e.Permission), e.Description}
+		for i, cell := range cells {
+			if len(cell) > widths[i] {
+				widths[i] = len(cell)
+			}
+		}
+	}
+	core.Println(formatRow(headers, widths, gutter))
+	for _, e := range catalogue {
+		cells := []string{e.Name, e.Tag, displayPermission(e.Permission), e.Description}
+		core.Println(formatRow(cells, widths, gutter))
+	}
+	return 0
+}
+
+// displayPermission renders the permission column — an ungated action
+// surfaces as "-" (ASCII hyphen) so the table output aligns correctly
+// in a byte-counting formatter. RFC §9.3 uses the em-dash "—" but the
+// CLI's formatRow measures byte length, and a 3-byte em-dash throws
+// off column padding; the hyphen conveys the same "no permission"
+// meaning without breaking alignment.
+//
+//	displayPermission("read") // "read"
+//	displayPermission("")     // "-"
+func displayPermission(p string) string {
+	if p == "" {
+		return "-"
+	}
+	return p
 }
 
 // sdkGenerateArgs captures the flags the `sdk generate` subverb

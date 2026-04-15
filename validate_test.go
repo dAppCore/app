@@ -175,6 +175,79 @@ func TestValidate_ModulesWarnings_Ugly(t *testing.T) {
 	}
 }
 
+// TestValidate_LayoutSlotConsistency_Good — a manifest declaring a
+// slot that matches the layout variant produces no layout/slot warning.
+func TestValidate_LayoutSlotConsistency_Good(t *testing.T) {
+	m := &config.ViewManifest{
+		Code: "ok", Name: "OK", Version: "0.1.0",
+		Layout: "HCF",
+		Slots: map[string]any{
+			"H": "nav", "C": "main", "F": "footer",
+		},
+	}
+	report := ValidateManifest(m, ValidateOptions{AllowUnknownModules: true})
+	for _, w := range report.Warnings() {
+		if strings.HasPrefix(w.Field, "slots.") || w.Field == "layout" {
+			t.Errorf("unexpected layout/slot warning on consistent manifest: %+v", w)
+		}
+	}
+}
+
+// TestValidate_LayoutSlotConsistency_Bad — a slot declared outside
+// the variant string fires a warning so the developer can spot the
+// dead entry before runtime.
+func TestValidate_LayoutSlotConsistency_Bad(t *testing.T) {
+	m := &config.ViewManifest{
+		Code: "ok", Name: "OK", Version: "0.1.0",
+		Layout: "HCF",
+		Slots: map[string]any{
+			"H": "nav", "C": "main", "F": "footer",
+			"R": "dead-right-panel", // not in layout variant
+		},
+	}
+	report := ValidateManifest(m, ValidateOptions{AllowUnknownModules: true})
+	saw := false
+	for _, w := range report.Warnings() {
+		if w.Field == "slots.R" && strings.Contains(w.Message, "not referenced by layout") {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Errorf("expected warning for slot R declared outside layout HCF; got %+v", report.Warnings())
+	}
+}
+
+// TestValidate_LayoutSlotConsistency_Ugly — a layout variant naming a
+// slot character with no component fires a warning so core/gui never
+// renders an empty slot silently.
+func TestValidate_LayoutSlotConsistency_Ugly(t *testing.T) {
+	m := &config.ViewManifest{
+		Code: "ok", Name: "OK", Version: "0.1.0",
+		Layout: "HLCRF",
+		Slots: map[string]any{
+			"H": "nav", "C": "main", "F": "footer",
+			// L and R missing → empty slots
+		},
+	}
+	report := ValidateManifest(m, ValidateOptions{AllowUnknownModules: true})
+	need := map[string]bool{"L": false, "R": false}
+	for _, w := range report.Warnings() {
+		if w.Field != "layout" {
+			continue
+		}
+		for slot := range need {
+			if strings.Contains(w.Message, "'"+slot+"'") {
+				need[slot] = true
+			}
+		}
+	}
+	for slot, saw := range need {
+		if !saw {
+			t.Errorf("expected warning for layout slot %q without component; got %+v", slot, report.Warnings())
+		}
+	}
+}
+
 // TestValidate_ValidateIssueSeverity_Good — String returns the
 // canonical lowercase name used in CLI output.
 func TestValidate_ValidateIssueSeverity_Good(t *testing.T) {

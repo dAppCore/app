@@ -97,15 +97,22 @@ func TestPkgElectronFetch_IsRendererAsset_Good(t *testing.T) {
 }
 
 // TestPkgElectronFetch_IsRendererAsset_Bad rejects platform installers
-// and unrecognised extensions.
+// and unrecognised extensions. The `.AppImage` entry pins the RFC §16.2
+// rule that any platform-native installer is a hard reject regardless of
+// case (a real release asset usually ships as `App-1.0.0.AppImage`).
 func TestPkgElectronFetch_IsRendererAsset_Bad(t *testing.T) {
 	cases := []string{
 		"NiceHash-Setup-win-x64.exe",
 		"NiceHash.dmg",
 		"installer.msi",
-		"app-darwin-arm64.zip", // platform marker
-		"setup-installer.tar",  // installer marker
-		"foo.bin",              // unknown extension
+		"app-darwin-arm64.zip",    // platform marker
+		"setup-installer.tar",     // installer marker
+		"foo.bin",                 // unknown extension
+		"App-1.0.0.AppImage",      // Linux installer — mixed case extension
+		"App-1.0.0.appimage",      // Linux installer — lower-case extension
+		"Bitwarden-2024.8.1.snap", // Snap package
+		"package.deb",             // Debian package
+		"package.rpm",             // RPM package
 		"",
 	}
 	for _, name := range cases {

@@ -219,6 +219,50 @@ func ValidateManifest(m *config.ViewManifest, opts ValidateOptions) ValidateRepo
 		}
 	}
 
+	// §2.1 — layout + slots consistency. A slot declared outside the
+	// layout variant (e.g. `layout: HCF` + `slots: {R: right-panel}`)
+	// never mounts at runtime because resolveLayout's iteration order is
+	// driven by the variant string. Surface it as a warning so a
+	// developer spots the dead entry during validate. The converse —
+	// the layout variant naming a slot char with no component — is also
+	// worth flagging because core/gui will render an empty slot.
+	if m.Layout != "" && len(m.Slots) > 0 {
+		layoutSlots := map[string]bool{}
+		for _, ch := range m.Layout {
+			layoutSlots[string(ch)] = true
+		}
+		// Slots declared outside the variant → dead slot warning.
+		for slot := range m.Slots {
+			if !layoutSlots[slot] {
+				report.Issues = append(report.Issues, ValidateIssue{
+					Severity: ValidateWarning,
+					Field:    "slots." + slot,
+					Message:  "slot '" + slot + "' is declared but not referenced by layout '" + m.Layout + "'",
+				})
+			}
+		}
+		// Layout characters with no component → empty slot warning.
+		slotsMapped := map[string]bool{}
+		for slot := range m.Slots {
+			slotsMapped[slot] = true
+		}
+		seenChar := map[string]bool{}
+		for _, ch := range m.Layout {
+			slot := string(ch)
+			if seenChar[slot] {
+				continue
+			}
+			seenChar[slot] = true
+			if !slotsMapped[slot] {
+				report.Issues = append(report.Issues, ValidateIssue{
+					Severity: ValidateWarning,
+					Field:    "layout",
+					Message:  "layout '" + m.Layout + "' references slot '" + slot + "' but no component is declared under slots." + slot,
+				})
+			}
+		}
+	}
+
 	// §2.2 — permissions. Path entries containing `..` are hard errors
 	// regardless of mode; the RFC §5.2 defence layer is non-negotiable.
 	for i, entry := range m.Permissions.Read {

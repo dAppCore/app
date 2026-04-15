@@ -568,6 +568,51 @@ func manifestDeclaresPermission(m *config.ViewManifest, name string) bool {
 	return false
 }
 
+// SDKCatalogue returns a deterministic summary of every Core primitive
+// Action — handy for `core-app sdk list` and for IDE tooling that wants
+// to render the full action catalogue (action name, permission, short
+// description) without parsing the DefaultSDKActions struct.
+//
+//	for _, row := range app.SDKCatalogue() {
+//	    core.Println(row.Name, row.Permission, row.Description)
+//	}
+//
+// The returned slice is sorted by action name so CLI table output and
+// golden-file tests stay stable across runs.
+func SDKCatalogue() []SDKCatalogueEntry {
+	actions := DefaultSDKActions()
+	out := make([]SDKCatalogueEntry, 0, len(actions))
+	for _, a := range actions {
+		out = append(out, SDKCatalogueEntry{
+			Name:        a.Name,
+			Permission:  a.Permission,
+			Description: a.Description,
+			Tag:         tagOf(a.Name),
+		})
+	}
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j-1].Name > out[j].Name; j-- {
+			out[j-1], out[j] = out[j], out[j-1]
+		}
+	}
+	return out
+}
+
+// SDKCatalogueEntry is one row in the `core-app sdk list` output. The
+// shape mirrors the columns the CLI renders (name, tag, permission,
+// description) so JSON consumers and table renderers share the same
+// projection.
+//
+//	for _, e := range app.SDKCatalogue() {
+//	    fmt.Printf("%-30s %-10s %s\n", e.Name, e.Permission, e.Description)
+//	}
+type SDKCatalogueEntry struct {
+	Name        string `json:"name"`
+	Tag         string `json:"tag"`
+	Permission  string `json:"permission,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
 // SDKGenerate emits one or more language SDKs derived from the manifest.
 // Files are written via the supplied medium so MockMedium and
 // MemoryMedium tests round-trip cleanly.

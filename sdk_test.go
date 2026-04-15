@@ -830,3 +830,65 @@ func TestSdk_renderSDK_Ugly(t *testing.T) {
 		}
 	}
 }
+
+// TestSdk_SDKCatalogue_Good — the catalogue covers every primitive
+// Action in DefaultSDKActions and every entry carries a non-empty Name
+// + Tag. The deterministic sort order means a golden-file test could
+// compare against a fixed expected list without flakes.
+func TestSdk_SDKCatalogue_Good(t *testing.T) {
+	got := SDKCatalogue()
+	if len(got) != len(DefaultSDKActions()) {
+		t.Fatalf("SDKCatalogue() has %d entries; DefaultSDKActions() has %d", len(got), len(DefaultSDKActions()))
+	}
+	for _, e := range got {
+		if e.Name == "" {
+			t.Errorf("catalogue entry with empty Name: %+v", e)
+		}
+		if e.Tag == "" {
+			t.Errorf("catalogue entry with empty Tag: %+v", e)
+		}
+	}
+}
+
+// TestSdk_SDKCatalogue_Bad — entries are sorted lexicographically so
+// CLI tables and golden-file tests stay stable across runs.
+func TestSdk_SDKCatalogue_Bad(t *testing.T) {
+	got := SDKCatalogue()
+	for i := 1; i < len(got); i++ {
+		if got[i-1].Name > got[i].Name {
+			t.Errorf("SDKCatalogue() not sorted: %q after %q", got[i].Name, got[i-1].Name)
+		}
+	}
+}
+
+// TestSdk_SDKCatalogue_Ugly — the catalogue surfaces the permission
+// field verbatim (empty string for ungated actions like i18n.translate)
+// so downstream formatters can decide how to render "no permission".
+func TestSdk_SDKCatalogue_Ugly(t *testing.T) {
+	got := SDKCatalogue()
+	sawFsRead := false
+	sawI18nTranslate := false
+	for _, e := range got {
+		if e.Name == "fs.read" {
+			sawFsRead = true
+			if e.Permission != "read" {
+				t.Errorf("fs.read permission = %q; want %q", e.Permission, "read")
+			}
+			if e.Tag != "fs" {
+				t.Errorf("fs.read tag = %q; want %q", e.Tag, "fs")
+			}
+		}
+		if e.Name == "i18n.translate" {
+			sawI18nTranslate = true
+			if e.Permission != "" {
+				t.Errorf("i18n.translate permission = %q; want empty", e.Permission)
+			}
+		}
+	}
+	if !sawFsRead {
+		t.Error("SDKCatalogue missing fs.read")
+	}
+	if !sawI18nTranslate {
+		t.Error("SDKCatalogue missing i18n.translate")
+	}
+}

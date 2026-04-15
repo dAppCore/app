@@ -146,8 +146,11 @@ func IsRendererAsset(name string) bool {
 		return false
 	}
 	low := core.Lower(name)
+	// PathExt(low) is already lowercase — comparisons below match that
+	// convention (writing ".appimage" rather than ".AppImage" so the
+	// switch arm actually fires on `.AppImage` assets in the wild).
 	switch core.PathExt(low) {
-	case ".dmg", ".exe", ".msi", ".pkg", ".deb", ".rpm", ".snap", ".AppImage":
+	case ".dmg", ".exe", ".msi", ".pkg", ".deb", ".rpm", ".snap", ".appimage":
 		return false
 	case ".asar":
 		return true
