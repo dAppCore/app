@@ -61,6 +61,12 @@ var actionPermissionMap = []actionGate{
 	{prefix: "device.camera", field: fieldCamera},
 	{prefix: "device.microphone", field: fieldMicrophone},
 	{prefix: "device.location", field: fieldLocation},
+	// `brain.recall` dispatches a query to OpenBrain — an upstream
+	// network service — so RFC §9.3 lists it under the `net` permission.
+	// Listing the prefix here keeps the action behind the same gate as
+	// `net.fetch` / `net.ws` / `gui.browser.open`; a caller without the
+	// `net` declaration gets the same "capability not declared" denial.
+	{prefix: "brain.recall", field: fieldNet},
 }
 
 // permissionField names a slot in ViewPermissions.

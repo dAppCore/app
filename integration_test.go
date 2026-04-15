@@ -118,6 +118,22 @@ func TestIntegration_Boot_Good(t *testing.T) {
 		t.Error("Workspace should be provisioned in prod mode")
 	}
 
+	// Step 5 — Layout spec is stashed on the Instance so core/gui can
+	// compose the window without re-parsing the manifest. Confirm the
+	// HLCRF order survives the boot pipeline.
+	if inst.Layout == nil {
+		t.Fatal("Instance.Layout should be populated for a manifest with slots")
+	}
+	if inst.Layout.Variant != "HLCRF" {
+		t.Errorf("Layout.Variant = %q; want HLCRF", inst.Layout.Variant)
+	}
+	if got := inst.Layout.Slots["H"]; got != "nav-bar" {
+		t.Errorf("Layout.Slots[H] = %q; want nav-bar", got)
+	}
+	if len(inst.Layout.Order) < 3 {
+		t.Errorf("Layout.Order = %v; expected at least 3 entries", inst.Layout.Order)
+	}
+
 	// Identity — prove the manifest was parsed.
 	if inst.Manifest.Code != "integration-good" {
 		t.Errorf("Manifest.Code = %q; want %q", inst.Manifest.Code, "integration-good")

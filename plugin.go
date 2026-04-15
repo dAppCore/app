@@ -108,9 +108,11 @@ func PluginBoot(ctx context.Context, opts PluginOptions) (*Instance, error) {
 		// genuine prod failure and should bubble up.
 		return nil, coreerr.E("app.PluginBoot", "module load failed", err)
 	}
-	if err := layout(c, &inst.Manifest); err != nil {
+	spec, err := resolveLayout(c, &inst.Manifest)
+	if err != nil {
 		return nil, coreerr.E("app.PluginBoot", "layout composition failed", err)
 	}
+	inst.Layout = spec
 	if err := applyConfig(c, &inst.Manifest, medium, opts.ProjectRoot); err != nil {
 		return nil, coreerr.E("app.PluginBoot", "config template failed", err)
 	}

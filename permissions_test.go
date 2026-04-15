@@ -629,3 +629,49 @@ func TestPermissions_BrowserOpenGate_Ugly(t *testing.T) {
 		t.Error("dev mode should still surface the would-be denial reason")
 	}
 }
+
+// TestPermissions_BrainRecallGate_Good — `brain.recall` dispatches to
+// OpenBrain over the network, so RFC §9.3 gates it behind the `net`
+// permission. A manifest declaring `net` allows the action through.
+func TestPermissions_BrainRecallGate_Good(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Net: []string{"api.openbrain:443"}},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("brain.recall"); !e.Allowed {
+		t.Errorf("brain.recall should be allowed with net declared; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_BrainRecallGate_Bad — without `net`, prod mode denies
+// `brain.recall` so an app cannot silently query OpenBrain without
+// declaring the network capability.
+func TestPermissions_BrainRecallGate_Bad(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("brain.recall"); e.Allowed {
+		t.Errorf("brain.recall should be denied without net; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_BrainRecallGate_Ugly — dev mode lets the action
+// through but surfaces the would-be denial on Entitlement.Reason so
+// the developer can spot the missing manifest declaration in logs.
+func TestPermissions_BrainRecallGate_Ugly(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeDev); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	e := c.Entitled("brain.recall")
+	if !e.Allowed {
+		t.Errorf("dev mode should allow brain.recall; reason=%q", e.Reason)
+	}
+	if e.Reason == "" {
+		t.Error("dev mode should still surface the would-be denial reason")
+	}
+}

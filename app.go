@@ -209,6 +209,7 @@ type Instance struct {
 	Root      string              // absolute project root (directory of .core/)
 	Mode      Mode                // regime used during Boot
 	Workspace *Workspace          // per-app data tree (~/.core/data/<code>/)
+	Layout    *LayoutSpec         // resolved HLCRF layout (nil = headless CLI app)
 	medium    coreio.Medium       // retained for Start + post-boot reads
 	started   bool                // RFC §11.5 — toggled by start/stop so the lifecycle does not run twice
 }
@@ -267,10 +268,13 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 		return nil, coreerr.E("app.Boot", "module load failed", err)
 	}
 
-	// Step 5 — Layout
-	if err := layout(c, &manifest); err != nil {
+	// Step 5 — Layout. The resolved spec is stashed on the Instance so
+	// core/gui can compose the window without re-parsing the manifest.
+	spec, err := resolveLayout(c, &manifest)
+	if err != nil {
 		return nil, coreerr.E("app.Boot", "layout composition failed", err)
 	}
+	inst.Layout = spec
 
 	// Step 6 — Config
 	if err := applyConfig(c, &manifest, o.Medium, root); err != nil {

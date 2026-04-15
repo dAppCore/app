@@ -196,7 +196,7 @@ func parseArgs(args []string) (app.Mode, string) {
 			core.Println("  compile      compile .core/view.yaml → core.json")
 			core.Println("  sign         sign .core/view.yaml with a private key")
 			core.Println("  keygen       generate a paired ed25519 keypair")
-			core.Println("  sdk          generate client SDKs (openapi, ts, go, php)")
+			core.Println("  sdk          generate client SDKs (openapi, ts, go, php, python)")
 			core.Println("  run CODE     boot an installed package by code")
 			core.Println("  pkg ...      manage packages (list, wrap, install, remove, update)")
 			core.Println("  marketplace  search/install/fetch from the marketplace")
