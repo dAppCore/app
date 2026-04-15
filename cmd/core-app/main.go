@@ -72,6 +72,8 @@ func main() {
 			os.Exit(runSDK(args[1:]))
 		case "run":
 			os.Exit(runInstalled(args[1:]))
+		case "validate":
+			os.Exit(runValidate(args[1:]))
 		}
 	}
 
@@ -256,6 +258,7 @@ func parseArgs(args []string) (mode app.Mode, start string, watch bool) {
 			core.Println("  compile      compile .core/view.yaml → core.json")
 			core.Println("  sign         sign .core/view.yaml with a private key")
 			core.Println("  keygen       generate a paired ed25519 keypair")
+			core.Println("  validate     lint .core/view.yaml against RFC §2 rules")
 			core.Println("  sdk          generate client SDKs (openapi, ts, go, php, python)")
 			core.Println("  run CODE     boot an installed package by code")
 			core.Println("  pkg ...      manage packages (list, wrap, install, remove, update)")
@@ -524,5 +527,112 @@ func runKeygen(args []string) int {
 		"private", priv,
 		"public", pub,
 	)
+	return 0
+}
+
+// validateArgs captures the flags the `validate` subcommand understands.
+type validateArgs struct {
+	Start               string
+	RequireSignature    bool
+	AllowUnknownModules bool
+	JSON                bool
+}
+
+// runValidate lints `.core/view.yaml` against the RFC §2 rules. Exit
+// codes: 0 on OK, 1 on validation errors, 64 on argv errors. Warnings
+// are printed but do not fail the command unless `--strict` is set.
+//
+//	core-app validate
+//	core-app validate ./photo-browser
+//	core-app validate --strict --require-signature
+//	core-app validate --json ./photo-browser
+func runValidate(args []string) int {
+	opts := validateArgs{Start: "./"}
+	strict := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--require-signature":
+			opts.RequireSignature = true
+		case "--allow-unknown-modules":
+			opts.AllowUnknownModules = true
+		case "--strict":
+			strict = true
+		case "--json":
+			opts.JSON = true
+		case "--help", "-h":
+			core.Println("core-app validate [--require-signature] [--allow-unknown-modules] [--strict] [--json] [project-dir]")
+			core.Println("  --require-signature    promote unsigned-manifest warning to an error")
+			core.Println("  --allow-unknown-modules  skip the registry check for declared modules")
+			core.Println("  --strict               treat warnings as errors (exit 1 on any issue)")
+			core.Println("  --json                 emit the ValidateReport as JSON")
+			core.Println("  project-dir            directory holding .core/view.yaml (default: ./)")
+			return 0
+		default:
+			if core.HasPrefix(args[i], "-") {
+				core.Error("validate: unknown flag", "flag", args[i])
+				return 64
+			}
+			opts.Start = args[i]
+		}
+	}
+
+	medium := coreio.Local
+	path := config.FindManifest(medium, opts.Start, config.FileView)
+	if path == "" {
+		core.Error("validate: no .core/view.yaml found", "start", opts.Start)
+		return 1
+	}
+	var manifest config.ViewManifest
+	if err := config.LoadManifest(medium, path, &manifest); err != nil {
+		core.Error("validate: parse failed", "path", path, "err", err)
+		return 1
+	}
+
+	report := app.ValidateManifest(&manifest, app.ValidateOptions{
+		RequireSignature:    opts.RequireSignature,
+		AllowUnknownModules: opts.AllowUnknownModules,
+	})
+
+	if opts.JSON {
+		type row struct {
+			Severity string `json:"severity"`
+			Field    string `json:"field"`
+			Message  string `json:"message"`
+		}
+		rows := make([]row, 0, len(report.Issues))
+		for _, issue := range report.Issues {
+			rows = append(rows, row{
+				Severity: issue.Severity.String(),
+				Field:    issue.Field,
+				Message:  issue.Message,
+			})
+		}
+		r := core.JSONMarshal(rows)
+		if !r.OK {
+			core.Error("validate: marshal failed", "err", r.Value)
+			return 1
+		}
+		raw, _ := r.Value.([]byte)
+		core.Println(string(raw))
+	} else {
+		for _, issue := range report.Issues {
+			switch issue.Severity {
+			case app.ValidateError:
+				core.Error("validate", "field", issue.Field, "message", issue.Message)
+			case app.ValidateWarning:
+				core.Warn("validate", "field", issue.Field, "message", issue.Message)
+			}
+		}
+	}
+
+	if !report.OK() {
+		return 1
+	}
+	if strict && len(report.Warnings()) > 0 {
+		return 1
+	}
+	if !opts.JSON {
+		core.Info("validate OK", "path", path)
+	}
 	return 0
 }

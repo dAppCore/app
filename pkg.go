@@ -120,6 +120,92 @@ func PkgList(medium coreio.Medium, home string) ([]PkgEntry, error) {
 	return out, nil
 }
 
+// InstalledApp pairs a parsed ViewManifest with the install path on
+// disk. Returned by InstalledApps when a host wants to introspect
+// every installed plugin without launching them (CoreGUI plugin
+// drawer, `core-agent` fleet announce, diagnostic tooling).
+//
+//	apps, _ := app.InstalledApps(coreio.Local, home)
+//	for _, a := range apps {
+//	    core.Info("installed", "code", a.Manifest.Code, "path", a.Path)
+//	}
+type InstalledApp struct {
+	// Manifest is the fully-parsed ViewManifest (permissions, layout,
+	// modules, config all populated).
+	Manifest config.ViewManifest
+	// Path is the absolute install root — the directory containing
+	// `.core/view.yaml`. Callers needing the manifest file itself can
+	// join PathDir with `.core/view.yaml`.
+	Path string
+}
+
+// InstalledApps walks `<home>/.core/apps/*/.core/view.yaml` and returns
+// every installed package's fully-parsed manifest. Use PkgList when a
+// summary row (name, type, version, source) is enough; use this when
+// the host needs to inspect permissions, modules or layout without
+// taking a Launch round-trip.
+//
+//	apps, err := app.InstalledApps(coreio.Local, "/Users/me")
+//
+// Rules:
+//
+//   - Missing apps directory → nil slice + nil error. A fresh user
+//     should not have to handle an error just to render an empty list.
+//
+//   - Unreadable / malformed manifests are skipped silently, the same
+//     tolerance PkgList uses — a single broken install must not hide
+//     the rest of the tree.
+//
+//   - The returned slice is sorted by manifest.Code so tests and UIs
+//     get a deterministic rendering order.
+func InstalledApps(medium coreio.Medium, home string) ([]InstalledApp, error) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if home == "" {
+		return nil, coreerr.E("app.InstalledApps", "empty home directory", nil)
+	}
+	appsDir := core.Path(home, ".core", AppsDirName)
+	if !medium.IsDir(appsDir) {
+		return nil, nil
+	}
+	entries, err := medium.List(appsDir)
+	if err != nil {
+		return nil, coreerr.E("app.InstalledApps", "list apps dir failed", err)
+	}
+	var out []InstalledApp
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name == "" || name[0] == '.' {
+			continue
+		}
+		appPath := core.Path(appsDir, name)
+		viewPath := core.Path(appPath, ".core", "view.yaml")
+		if !medium.Exists(viewPath) {
+			continue
+		}
+		var manifest config.ViewManifest
+		if err := config.LoadManifest(medium, viewPath, &manifest); err != nil {
+			// Skip unreadable installs so one bad manifest does not
+			// hide the rest of the tree — matches PkgList's policy.
+			continue
+		}
+		out = append(out, InstalledApp{Manifest: manifest, Path: appPath})
+	}
+	// Deterministic order so hosts that render the list get stable
+	// rows. Using manifest.Code (rather than directory name) means a
+	// rename on disk does not reshuffle the UI.
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j-1].Manifest.Code > out[j].Manifest.Code; j-- {
+			out[j-1], out[j] = out[j], out[j-1]
+		}
+	}
+	return out, nil
+}
+
 // pkgEntryFromManifest loads a view.yaml and projects it into a PkgEntry.
 // The helper reads the optional `type` and `source` keys from the
 // Config map (where PWA/Electron wraps stash their provenance).

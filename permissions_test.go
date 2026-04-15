@@ -3,12 +3,50 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"strings"
 	"testing"
 
 	core "dappco.re/go/core"
 	"dappco.re/go/core/config"
 )
+
+// captureLog redirects the default core logger to a buffer for the
+// duration of fn, then asserts the emitted log body contains `phrase`
+// exactly `wantCount` times. The default logger is process-global so
+// this helper restores stderr when fn returns — parallel tests that
+// share the default logger should serialise their captures rather than
+// race each other.
+//
+// Captured body is surfaced on mismatch so the failing test can show
+// what was actually emitted.
+func captureLog(t *testing.T, fn func(), phrase string, wantCount int) {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	logger := core.Default()
+	logger.SetOutput(buf)
+	defer logger.SetOutput(stderrFallback())
+
+	fn()
+
+	got := strings.Count(buf.String(), phrase)
+	if got != wantCount {
+		t.Errorf("expected %d occurrences of %q in log output, got %d\n--log--\n%s\n-------",
+			wantCount, phrase, got, buf.String())
+	}
+}
+
+// stderrFallback returns the Writer the default logger was pointing at
+// before captureLog redirected it. `core.Default()` does not expose an
+// accessor for the current Writer, so the fallback goes to `io.Discard`
+// — the test harness already surfaces logs via t.Logf elsewhere and we
+// would rather drop test noise than pick a Writer that might surprise a
+// caller with a closed handle.
+func stderrFallback() io.Writer {
+	return io.Discard
+}
 
 // TestPermissions_permissions_Good — a manifest that declares `read`
 // results in fs.read being Allowed; an unmapped action (gui.*) is
@@ -674,4 +712,57 @@ func TestPermissions_BrainRecallGate_Ugly(t *testing.T) {
 	if e.Reason == "" {
 		t.Error("dev mode should still surface the would-be denial reason")
 	}
+}
+
+// TestPermissions_DevModeWarnDedup_Good — the dev-mode permission
+// checker emits `core.Warn` the first time an undeclared action is
+// called but stays quiet on subsequent hits so a 500ms hot-reload loop
+// does not produce one warning per tick (RFC §4.2).
+//
+// Captures stderr through a pipe because the default logger writes
+// there; an easier API (`SetDefault(NewLog(WithOutput(buf)))`) is TBD in
+// core/go — until then the pipe gives us a reliable assertion point.
+func TestPermissions_DevModeWarnDedup_Good(t *testing.T) {
+	m := &config.ViewManifest{Code: "dedup-good"}
+	captureLog(t, func() {
+		c := core.New()
+		if err := permissions(c, m, ModeDev); err != nil {
+			t.Fatalf("permissions: %v", err)
+		}
+		// First call → expected to warn once.
+		_ = c.Entitled("fs.read")
+		// Repeat the same action → no new warning.
+		_ = c.Entitled("fs.read")
+	}, "permission gate bypassed in dev mode", 1)
+}
+
+// TestPermissions_DevModeWarnDedup_Bad — different actions each trigger
+// their own warning so a developer sees every missing capability, not
+// only the first one they exercised.
+func TestPermissions_DevModeWarnDedup_Bad(t *testing.T) {
+	m := &config.ViewManifest{Code: "dedup-bad"}
+	captureLog(t, func() {
+		c := core.New()
+		if err := permissions(c, m, ModeDev); err != nil {
+			t.Fatalf("permissions: %v", err)
+		}
+		_ = c.Entitled("fs.read")
+		_ = c.Entitled("net.fetch")
+		_ = c.Entitled("store.get")
+	}, "permission gate bypassed in dev mode", 3)
+}
+
+// TestPermissions_DevModeWarnDedup_Ugly — prod mode does not emit
+// warnings at all (the denial itself is the signal; logging here would
+// be redundant with the caller's error path).
+func TestPermissions_DevModeWarnDedup_Ugly(t *testing.T) {
+	m := &config.ViewManifest{Code: "dedup-ugly"}
+	captureLog(t, func() {
+		c := core.New()
+		if err := permissions(c, m, ModeProd); err != nil {
+			t.Fatalf("permissions: %v", err)
+		}
+		_ = c.Entitled("fs.read")
+		_ = c.Entitled("fs.read")
+	}, "permission gate bypassed in dev mode", 0)
 }

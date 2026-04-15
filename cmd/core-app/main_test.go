@@ -235,3 +235,58 @@ func writeViewManifest(t *testing.T, code, name, version string) string {
 	}
 	return dir
 }
+
+// TestMain_runValidate_Good — a well-formed manifest exits 0.
+func TestMain_runValidate_Good(t *testing.T) {
+	dir := writeViewManifest(t, "photo-browser", "Photo Browser", "0.1.0")
+	if rc := runValidate([]string{"--allow-unknown-modules", dir}); rc != 0 {
+		t.Errorf("runValidate rc = %d; want 0", rc)
+	}
+}
+
+// TestMain_runValidate_Bad — a manifest missing required fields exits
+// non-zero.
+func TestMain_runValidate_Bad(t *testing.T) {
+	dir := t.TempDir()
+	path := core.Path(dir, ".core", "view.yaml")
+	if err := coreio.Local.EnsureDir(core.PathDir(path)); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	// Missing code and name.
+	if err := coreio.Local.Write(path, "version: 0.1.0\n"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if rc := runValidate([]string{"--allow-unknown-modules", dir}); rc == 0 {
+		t.Error("runValidate should fail on a manifest missing code/name")
+	}
+}
+
+// TestMain_runValidate_Ugly — unknown flag produces EX_USAGE (64).
+func TestMain_runValidate_Ugly(t *testing.T) {
+	if rc := runValidate([]string{"--nope"}); rc != 64 {
+		t.Errorf("unknown flag rc = %d; want 64", rc)
+	}
+}
+
+// TestMain_runValidate_Strict_Good — --strict elevates the unsigned
+// warning into an error when a plain validate would pass.
+func TestMain_runValidate_Strict_Good(t *testing.T) {
+	dir := writeViewManifest(t, "plain", "Plain", "0.1.0")
+	// Default: warning only → rc 0.
+	if rc := runValidate([]string{"--allow-unknown-modules", dir}); rc != 0 {
+		t.Errorf("plain validate rc = %d; want 0", rc)
+	}
+	// --strict with unsigned manifest → rc 1.
+	if rc := runValidate([]string{"--allow-unknown-modules", "--strict", dir}); rc != 1 {
+		t.Errorf("strict validate rc = %d; want 1 (unsigned warning elevated)", rc)
+	}
+}
+
+// TestMain_runValidate_JSON_Good — --json emits a serialised report
+// and still returns the right exit code.
+func TestMain_runValidate_JSON_Good(t *testing.T) {
+	dir := writeViewManifest(t, "x", "X", "0.1.0")
+	if rc := runValidate([]string{"--allow-unknown-modules", "--json", dir}); rc != 0 {
+		t.Errorf("json validate rc = %d; want 0", rc)
+	}
+}

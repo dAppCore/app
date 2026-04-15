@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"sync"
 
 	core "dappco.re/go/core"
 	"dappco.re/go/core/config"
@@ -168,6 +169,14 @@ func newChecker(p config.ViewPermissions, mode Mode) core.EntitlementChecker {
 // Config["store"] (see hasManifestStorePermission).
 //
 //	c.SetEntitlementChecker(newCheckerForManifest(&manifest, ModeProd))
+//
+// Dev-mode logging — the RFC §4.2 promise ("Permission violations
+// logged as warnings, not errors") is enforced here. Each undeclared
+// action surfaces a single `core.Warn` the first time it is attempted
+// so a developer iterating on view.yaml sees exactly which permission
+// they forgot without drowning in repeated messages on a hot loop. The
+// dedup map is keyed by the manifest code + action so two plugins
+// running in the same host don't cross-talk each other's warnings.
 func newCheckerForManifest(m *config.ViewManifest, mode Mode) core.EntitlementChecker {
 	if m == nil {
 		m = &config.ViewManifest{}
@@ -175,6 +184,12 @@ func newCheckerForManifest(m *config.ViewManifest, mode Mode) core.EntitlementCh
 	p := m.Permissions
 	storeDeclared := hasManifestStorePermission(m)
 	writeDeclared := len(manifestWriteList(m)) > 0
+	code := m.Code
+	// Dev-mode dedup — a single Warn per (code, action) so a 500ms
+	// hot-reload loop polling the same handler does not produce one
+	// log line per tick.
+	warned := map[string]bool{}
+	var warnMu sync.Mutex
 	return func(action string, _ int, _ context.Context) core.Entitlement {
 		gate, ok := gateFor(action)
 		if !ok {
@@ -202,8 +217,24 @@ func newCheckerForManifest(m *config.ViewManifest, mode Mode) core.EntitlementCh
 
 		reason := "manifest does not declare " + gate.field.String() + " permission for " + action
 		if mode == ModeDev {
-			// Dev mode — log the denial reason but let the call through
-			// so hot-reload iteration keeps flowing.
+			// RFC §4.2 — warning, not error. The call still goes through
+			// so hot-reload iteration keeps flowing, but a single log
+			// line per (code, action) flags the gap so the developer
+			// knows to add the permission before shipping.
+			warnMu.Lock()
+			key := code + "/" + action
+			seen := warned[key]
+			if !seen {
+				warned[key] = true
+			}
+			warnMu.Unlock()
+			if !seen {
+				core.Warn("permission gate bypassed in dev mode",
+					"code", code,
+					"action", action,
+					"missing", gate.field.String(),
+					"reason", reason)
+			}
 			return core.Entitlement{Allowed: true, Unlimited: true, Reason: reason}
 		}
 		return core.Entitlement{Allowed: false, Reason: reason}

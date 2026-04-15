@@ -633,3 +633,82 @@ func newPWAManifestServer(t *testing.T, body *string) *httptest.Server {
 		_, _ = w.Write([]byte(*body))
 	}))
 }
+
+// TestPkg_InstalledApps_Good writes two installed plugin trees and
+// asserts that InstalledApps returns both fully-parsed manifests in
+// lexicographic code order.
+func TestPkg_InstalledApps_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+
+	for _, entry := range []struct {
+		code    string
+		modules []string
+	}{
+		{"zebra", []string{"core/media"}},
+		{"alpha", []string{"core/fs", "core/media"}},
+	} {
+		m := &config.ViewManifest{
+			Code:    entry.code,
+			Name:    entry.code,
+			Version: "0.1.0",
+			Modules: entry.modules,
+			Permissions: config.ViewPermissions{
+				Read: []string{"./data/"},
+			},
+		}
+		body, err := yaml.Marshal(m)
+		if err != nil {
+			t.Fatalf("yaml.Marshal: %v", err)
+		}
+		dest := core.Path(home, ".core", "apps", entry.code, ".core", "view.yaml")
+		if err := medium.EnsureDir(core.PathDir(dest)); err != nil {
+			t.Fatalf("EnsureDir: %v", err)
+		}
+		if err := medium.Write(dest, string(body)); err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+	}
+
+	apps, err := app.InstalledApps(medium, home)
+	if err != nil {
+		t.Fatalf("InstalledApps: %v", err)
+	}
+	if len(apps) != 2 {
+		t.Fatalf("expected 2 apps, got %d", len(apps))
+	}
+	if apps[0].Manifest.Code != "alpha" {
+		t.Errorf("apps[0].Code = %q; want 'alpha' (sorted ordering)", apps[0].Manifest.Code)
+	}
+	if apps[1].Manifest.Code != "zebra" {
+		t.Errorf("apps[1].Code = %q; want 'zebra'", apps[1].Manifest.Code)
+	}
+	if len(apps[0].Manifest.Modules) != 2 {
+		t.Errorf("apps[0].Modules = %v; wanted 2 entries from the manifest", apps[0].Manifest.Modules)
+	}
+	if apps[0].Path == "" {
+		t.Error("apps[0].Path should carry the absolute install dir")
+	}
+}
+
+// TestPkg_InstalledApps_Bad — an empty home directory is rejected
+// up-front so callers don't get an ambiguous empty slice for a bug
+// they can't tell apart from "no apps installed".
+func TestPkg_InstalledApps_Bad(t *testing.T) {
+	if _, err := app.InstalledApps(coreio.Local, ""); err == nil {
+		t.Error("empty home should return a typed error")
+	}
+}
+
+// TestPkg_InstalledApps_Ugly — a missing apps directory returns nil
+// slice + nil error so a fresh user rendering a plugin drawer does
+// not need to branch on a synthetic "no installs" error.
+func TestPkg_InstalledApps_Ugly(t *testing.T) {
+	apps, err := app.InstalledApps(coreio.Local, t.TempDir())
+	if err != nil {
+		t.Fatalf("InstalledApps: %v", err)
+	}
+	if len(apps) != 0 {
+		t.Errorf("expected empty slice; got %d entries", len(apps))
+	}
+}
