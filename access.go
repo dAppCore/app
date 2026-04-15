@@ -135,9 +135,16 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if m.Permissions.Filesystem {
 			return nil
 		}
+		// Per-path write list lives in Config["write"] until the upstream
+		// ViewPermissions schema grows a typed slot. Matches RFC §2.2's
+		// `write: ["./photos/.thumbnails/"]` example so the manifest
+		// stays expressive without forcing the catch-all Filesystem flag.
+		if matchPrefix(manifestWriteList(m), arg) {
+			return nil
+		}
 		return coreerr.E(
 			"app.CheckAccess",
-			"write access to '"+arg+"' not declared in manifest.permissions",
+			"write access to '"+arg+"' not declared in manifest.permissions.write",
 			nil,
 		)
 	case AccessNet:
@@ -229,6 +236,40 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		)
 	default:
 		return coreerr.E("app.CheckAccess", "unknown access mode", nil)
+	}
+}
+
+// manifestWriteList extracts the per-path write list stored under
+// Config["write"]. ViewPermissions does not yet expose a typed Write
+// slot — until it does, the wrap and conclave pipelines stash the list
+// here so CheckAccess and the entitlement gate can both honour it.
+//
+//	for _, prefix := range manifestWriteList(m) { ... }
+//
+// Accepts either []string or []any (YAML decodes mixed scalar arrays
+// as []any in the Config map). Returns nil for missing or malformed
+// entries — the caller falls back to the catch-all Filesystem flag.
+func manifestWriteList(m *config.ViewManifest) []string {
+	if m == nil || m.Config == nil {
+		return nil
+	}
+	raw, ok := m.Config["write"]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch v := raw.(type) {
+	case []string:
+		return append([]string(nil), v...)
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
 	}
 }
 

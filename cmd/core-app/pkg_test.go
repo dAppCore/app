@@ -260,6 +260,81 @@ func TestPkg_runPkgInstall_Good(t *testing.T) {
 	}
 }
 
+// TestPkg_runPkgInstallLocal_Good — auto-detect a local PWA directory
+// (manifest.json with start_url) and wrap+install in one shot.
+func TestPkg_runPkgInstallLocal_Good(t *testing.T) {
+	src := t.TempDir()
+	home := t.TempDir()
+	medium := coreio.Local
+
+	manifest := `{"name":"Local Play","short_name":"localplay","start_url":"/"}`
+	if err := medium.Write(core.Path(src, "manifest.json"), manifest); err != nil {
+		t.Fatalf("write manifest.json: %v", err)
+	}
+
+	rc := runPkgInstallLocal(home, src)
+	if rc != 0 {
+		t.Fatalf("runPkgInstallLocal rc = %d; want 0", rc)
+	}
+	viewPath := core.Path(home, ".core", app.AppsDirName, "localplay", ".core", "view.yaml")
+	if !medium.Exists(viewPath) {
+		t.Errorf("local PWA install produced no view.yaml at %s", viewPath)
+	}
+}
+
+// TestPkg_runPkgInstallLocal_Bad — pointing the dispatcher at a
+// directory that holds no recognisable app type returns 1.
+func TestPkg_runPkgInstallLocal_Bad(t *testing.T) {
+	dir := t.TempDir() // empty
+	home := t.TempDir()
+	if rc := runPkgInstallLocal(home, dir); rc == 0 {
+		t.Errorf("local install of empty dir returned 0; want non-zero")
+	}
+	if rc := runPkgInstallLocal(home, "/definitely/not/a/dir"); rc == 0 {
+		t.Errorf("local install of missing dir returned 0; want non-zero")
+	}
+}
+
+// TestPkg_runPkgInstallLocal_Ugly — auto-detect a local Web directory
+// (just an index.html) and wrap+install with a slugified default code.
+func TestPkg_runPkgInstallLocal_Ugly(t *testing.T) {
+	src := t.TempDir()
+	home := t.TempDir()
+	medium := coreio.Local
+
+	if err := medium.Write(core.Path(src, "index.html"), "<html/>"); err != nil {
+		t.Fatalf("write index.html: %v", err)
+	}
+
+	rc := runPkgInstallLocal(home, src)
+	if rc != 0 {
+		t.Fatalf("runPkgInstallLocal rc = %d; want 0", rc)
+	}
+
+	// The web wrap derives `code` from the directory basename; rather
+	// than reproducing the slug logic here, walk the apps tree and look
+	// for any directory containing a wrapped manifest with type=web.
+	appsRoot := core.Path(home, ".core", app.AppsDirName)
+	entries, _ := medium.List(appsRoot)
+	if len(entries) == 0 {
+		t.Fatalf("no installs under %s after web wrap", appsRoot)
+	}
+	for _, e := range entries {
+		viewPath := core.Path(appsRoot, e.Name(), ".core", "view.yaml")
+		if !medium.Exists(viewPath) {
+			continue
+		}
+		var round config.ViewManifest
+		if err := config.LoadManifest(medium, viewPath, &round); err != nil {
+			continue
+		}
+		if t2, _ := round.Config["type"].(string); t2 == "web" {
+			return // success
+		}
+	}
+	t.Errorf("no web-type install found under %s", appsRoot)
+}
+
 // TestMain_runInstalled_Bad — `run` with no code returns 64; with an
 // unknown flag returns 64; with --help returns 0.
 func TestMain_runInstalled_Bad(t *testing.T) {

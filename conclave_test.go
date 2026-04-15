@@ -100,8 +100,17 @@ func TestConclave_manifestFromConclaveOptions_Good(t *testing.T) {
 	if len(m.Permissions.Read) != 2 {
 		t.Errorf("Read = %v; want 2 entries", m.Permissions.Read)
 	}
-	if !m.Permissions.Filesystem {
-		t.Error("WritePaths should set Filesystem until ViewPermissions grows a Write field")
+	// WritePaths now lands as a typed Config["write"] list (read by
+	// CheckAccess + the entitlement gate) rather than flipping the
+	// catch-all Filesystem flag — strict-isolation is the whole point
+	// of a conclave, so a single declared write path must not unlock
+	// "anywhere on the filesystem".
+	if m.Permissions.Filesystem {
+		t.Error("WritePaths should not flip Filesystem (per-path Config[write] is the right slot)")
+	}
+	writes, _ := m.Config["write"].([]any)
+	if len(writes) != 1 {
+		t.Errorf("Config[write] = %v; want 1 entry", writes)
 	}
 	if len(m.Permissions.Net) != 1 {
 		t.Errorf("Net = %v; want 1 entry", m.Permissions.Net)

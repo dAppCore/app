@@ -151,6 +151,7 @@ func newCheckerForManifest(m *config.ViewManifest, mode Mode) core.EntitlementCh
 	}
 	p := m.Permissions
 	storeDeclared := hasManifestStorePermission(m)
+	writeDeclared := len(manifestWriteList(m)) > 0
 	return func(action string, _ int, _ context.Context) core.Entitlement {
 		gate, ok := gateFor(action)
 		if !ok {
@@ -165,6 +166,12 @@ func newCheckerForManifest(m *config.ViewManifest, mode Mode) core.EntitlementCh
 		// even when ViewPermissions doesn't expose a typed field.
 		if !declared && gate.field == fieldStore {
 			declared = storeDeclared
+		}
+		// Write has a parallel wider check — Config["write"] (per-path
+		// list) satisfies it even when ViewPermissions stays on the
+		// catch-all Filesystem flag.
+		if !declared && gate.field == fieldWrite {
+			declared = writeDeclared
 		}
 		if declared {
 			return core.Entitlement{Allowed: true, Unlimited: true}
@@ -203,7 +210,10 @@ func hasPermission(p config.ViewPermissions, field permissionField) bool {
 		return len(p.Read) > 0 || p.Filesystem
 	case fieldWrite:
 		// ViewPermissions does not yet expose a write-path list; the
-		// Filesystem bool covers read+write together. See TODO below.
+		// Filesystem bool covers read+write together for the typed
+		// schema. The wider check via newCheckerForManifest also honours
+		// Config["write"] so manifests can declare per-path writes
+		// without flipping Filesystem.
 		return p.Filesystem
 	case fieldNet:
 		return len(p.Net) > 0 || p.Network

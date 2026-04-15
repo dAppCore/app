@@ -79,6 +79,32 @@ func TestPkgPwa_WrapPWA_Good(t *testing.T) {
 	if theme["primary"] != "#6200ea" {
 		t.Errorf("theme[primary] = %v; want #6200ea", theme["primary"])
 	}
+
+	// Service worker replacement (RFC §16.1.3) — every PWA wrap must
+	// declare the `store` service. When notifications are mapped, the
+	// `notification` service joins the list to take the push handler.
+	storeFlag, ok := m.Config["store"].(bool)
+	if !ok || !storeFlag {
+		t.Errorf("Config[store] = %v; want true (RFC §16.1 store: true)", m.Config["store"])
+	}
+	services, ok := m.Config["services"].([]any)
+	if !ok {
+		t.Fatalf("Config[services] not a []any; got %T", m.Config["services"])
+	}
+	wantService := func(name string) bool {
+		for _, s := range services {
+			if v, ok := s.(string); ok && v == name {
+				return true
+			}
+		}
+		return false
+	}
+	if !wantService("store") {
+		t.Errorf("Config[services] missing 'store'; got %v", services)
+	}
+	if !wantService("notification") {
+		t.Errorf("Config[services] missing 'notification' (notifications perm declared); got %v", services)
+	}
 }
 
 // TestPkgPwa_WrapPWA_Bad confirms nil input returns nil without a
@@ -95,6 +121,28 @@ func TestPkgPwa_WrapPWA_Bad(t *testing.T) {
 	}
 	if m.Code != "pwa-app" {
 		t.Errorf("Code = %q; want fallback 'pwa-app'", m.Code)
+	}
+}
+
+// TestPkgPwa_WrapPWA_Services_Bad confirms that a PWA without
+// notification permission only declares the `store` service. Push
+// handler routing only joins the list when notifications are mapped.
+func TestPkgPwa_WrapPWA_Services_Bad(t *testing.T) {
+	src := &app.PWAManifest{
+		Name:     "Quiet",
+		StartURL: "https://quiet.example.com/",
+		// no Permissions — no notifications
+	}
+	m := app.WrapPWA(src, app.WrapPWAOptions{})
+	if m == nil {
+		t.Fatal("WrapPWA returned nil")
+	}
+	services, ok := m.Config["services"].([]any)
+	if !ok {
+		t.Fatalf("Config[services] not a []any; got %T", m.Config["services"])
+	}
+	if len(services) != 1 || services[0] != "store" {
+		t.Errorf("Config[services] = %v; want [store] only (no notifications declared)", services)
 	}
 }
 

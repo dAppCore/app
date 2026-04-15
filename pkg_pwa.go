@@ -189,15 +189,26 @@ func WrapPWA(src *PWAManifest, opts WrapPWAOptions) *config.ViewManifest {
 	// Map standard PWA permission strings to CoreApp permission slots.
 	applyPWAPermissionMapping(m, src.Permissions)
 
-	// Store the fields ViewManifest cannot yet type in `Config` so
-	// downstream readers (marketplace index, SDK codegen) can still
-	// see them — lossless round-trip for wrapped PWAs.
+	// PWA service worker replacement (RFC §16.1.3) — every wrapped PWA
+	// gets the `store` service (localStorage / IndexedDB polyfill via
+	// go-store) and, when notifications were declared, the `notification`
+	// service (push handler routed through core-notify). The store
+	// permission is implicitly granted via Config["store"] so the
+	// permission gate accepts store.* actions without ViewPermissions
+	// growing a typed Store bool.
+	services := []any{"store"}
 	m.Config = map[string]any{
 		"type":       PackageTypePWA.String(),
 		"url":        url,
 		"display":    src.Display,
 		"short_name": src.ShortName,
+		"store":      true,
 	}
+	if m.Permissions.Notifications {
+		services = append(services, "notification")
+	}
+	m.Config["services"] = services
+
 	if src.ThemeColor != "" || src.BackgroundColor != "" {
 		m.Config["theme"] = map[string]any{
 			"primary":    src.ThemeColor,

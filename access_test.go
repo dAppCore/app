@@ -214,6 +214,36 @@ func TestAccess_AccessMode_String_Ugly(t *testing.T) {
 	}
 }
 
+// TestAccess_CheckAccess_WriteList — Config["write"] grants per-path
+// write access without flipping the catch-all Filesystem flag. Mirrors
+// RFC §2.2 `write: ["./photos/.thumbnails/"]` example.
+func TestAccess_CheckAccess_WriteList(t *testing.T) {
+	declared := &config.ViewManifest{
+		Config: map[string]any{
+			"write": []any{"./photos/.thumbnails/"},
+		},
+	}
+	if err := CheckAccess(declared, AccessWrite, "./photos/.thumbnails/sunset.webp"); err != nil {
+		t.Errorf("declared write prefix should grant: %v", err)
+	}
+	if err := CheckAccess(declared, AccessWrite, "./other/file.txt"); err == nil {
+		t.Error("write outside declared prefix should deny")
+	}
+
+	// []string also accepted (some callers stash typed slices directly).
+	typed := &config.ViewManifest{
+		Config: map[string]any{"write": []string{"./out/"}},
+	}
+	if err := CheckAccess(typed, AccessWrite, "./out/build.log"); err != nil {
+		t.Errorf("typed []string write list should grant: %v", err)
+	}
+
+	empty := &config.ViewManifest{}
+	if err := CheckAccess(empty, AccessWrite, "./out/build.log"); err == nil {
+		t.Error("empty manifest should deny write")
+	}
+}
+
 // TestAccess_CheckAccess_Notification — notifications gate granted only
 // when permissions.notifications: true is declared.
 func TestAccess_CheckAccess_Notification(t *testing.T) {

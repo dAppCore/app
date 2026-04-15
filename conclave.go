@@ -197,13 +197,6 @@ func manifestFromConclaveOptions(opts ConclaveOptions) config.ViewManifest {
 			Run:  append([]string(nil), opts.AllowedBins...),
 		},
 	}
-	if len(opts.WritePaths) > 0 {
-		// ViewPermissions has no per-path write list yet — fall back to
-		// the catch-all Filesystem flag. Once the upstream schema grows
-		// `permissions.write`, swap this branch for a direct slice copy.
-		m.Permissions.Filesystem = true
-	}
-
 	// Stamp the conclave provenance so `pkg list` and any host UI can
 	// distinguish a conclave from a regular CoreApp. The Config map is
 	// the documented home for fields the typed schema doesn't yet expose.
@@ -212,6 +205,12 @@ func manifestFromConclaveOptions(opts ConclaveOptions) config.ViewManifest {
 		"isolation": "max",
 	}
 	if len(opts.WritePaths) > 0 {
+		// ViewPermissions has no per-path write list yet — stash both
+		// the typed `write` list (CheckAccess + entitlement gate read it)
+		// and the legacy `write_paths` key (kept for backwards
+		// compatibility with hosts that already index on it). A direct
+		// slice copy lands once the upstream schema grows the field.
+		m.Config["write"] = stringsToAny(opts.WritePaths)
 		m.Config["write_paths"] = stringsToAny(opts.WritePaths)
 	}
 	return m

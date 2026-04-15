@@ -382,6 +382,62 @@ func TestPermissions_DeviceGates_Bad(t *testing.T) {
 	}
 }
 
+// TestPermissions_WriteList_Good — Config["write"] satisfies the
+// fs.write entitlement gate without flipping the catch-all Filesystem
+// flag. Mirrors RFC §2.2 `write: ["./photos/.thumbnails/"]` example.
+func TestPermissions_WriteList_Good(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Config: map[string]any{
+			"write": []any{"./photos/.thumbnails/"},
+		},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("fs.write"); !e.Allowed {
+		t.Errorf("fs.write should be allowed when Config[write] is set; reason=%q", e.Reason)
+	}
+	if e := c.Entitled("fs.delete"); !e.Allowed {
+		t.Errorf("fs.delete should be allowed (write gate) when Config[write] is set; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_WriteList_Bad — empty Config["write"] denies the
+// write gate in prod mode (same as no permission at all).
+func TestPermissions_WriteList_Bad(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Config: map[string]any{
+			"write": []any{}, // present but empty
+		},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("fs.write"); e.Allowed {
+		t.Error("fs.write should be denied when Config[write] is empty")
+	}
+}
+
+// TestPermissions_WriteList_Ugly — Config["write"] of the wrong type
+// doesn't crash the checker; the gate falls back to the slot check
+// (which is also unset here, so the write is denied).
+func TestPermissions_WriteList_Ugly(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Config: map[string]any{
+			"write": "should-be-a-list",
+		},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("fs.write"); e.Allowed {
+		t.Error("fs.write should be denied when Config[write] is the wrong type")
+	}
+}
+
 // TestPermissions_DeviceGates_Ugly — location lives in the Run-list as
 // `device.location`, so a stray Run entry doesn't accidentally grant a
 // random device.* action.

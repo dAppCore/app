@@ -517,23 +517,111 @@ func runPkgInstall(args []string) int {
 }
 
 // runPkgInstallLocal installs a CoreApp from a local directory tree.
-// The source must already be a CoreApp (have `.core/view.yaml`); for
-// PWA / Electron / Web wraps run `pkg wrap` first then install the
-// wrapped output.
+// Auto-detects the package type per RFC §16.4:
+//
+//   - `.core/view.yaml` present → PackageTypeNative; copy the tree.
+//   - `manifest.json` with start_url → PackageTypePWA; wrap+install.
+//   - `package.json` with electron dep → PackageTypeElectron; wrap+install.
+//   - `index.html` present → PackageTypeWeb; wrap+install.
+//
+// Anything else returns a typed error so the user knows the directory
+// does not look like a wrappable app.
 //
 //	rc := runPkgInstallLocal(home, "./my-app")
 func runPkgInstallLocal(home, path string) int {
-	dest, err := app.PkgInstallLocal(coreio.Local, path, app.PkgInstallOptions{
-		Home:   home,
-		Force:  true,
-		Source: "local:" + path,
-	})
-	if err != nil {
-		core.Error("pkg install local: failed", "src", path, "err", err)
+	medium := coreio.Local
+	if !medium.IsDir(path) {
+		core.Error("pkg install local: not a directory", "path", path)
 		return 1
 	}
-	core.Info("installed", "type", "local", "src", path, "dest", dest)
-	return 0
+
+	switch app.DetectPackageType(medium, path) {
+	case app.PackageTypeNative:
+		dest, err := app.PkgInstallLocal(medium, path, app.PkgInstallOptions{
+			Home:   home,
+			Force:  true,
+			Source: "local:" + path,
+		})
+		if err != nil {
+			core.Error("pkg install local: native install failed", "src", path, "err", err)
+			return 1
+		}
+		core.Info("installed", "type", "native", "src", path, "dest", dest)
+		return 0
+	case app.PackageTypePWA:
+		// Read the local manifest.json directly — no HTTP fetch needed.
+		manifestPath := core.Path(path, "manifest.json")
+		body, err := medium.Read(manifestPath)
+		if err != nil {
+			core.Error("pkg install local: read manifest.json failed", "path", manifestPath, "err", err)
+			return 1
+		}
+		var pwa app.PWAManifest
+		r := core.JSONUnmarshal([]byte(body), &pwa)
+		if !r.OK {
+			core.Error("pkg install local: decode manifest.json failed", "path", manifestPath, "err", r.Value)
+			return 1
+		}
+		manifest := app.WrapPWA(&pwa, app.WrapPWAOptions{TargetURL: pwa.StartURL})
+		if manifest == nil {
+			core.Error("pkg install local: WrapPWA returned nil")
+			return 1
+		}
+		dest, err := app.InstallWrappedPWA(medium, manifest, app.PkgInstallOptions{
+			Home: home, Force: true, Source: "wrap:pwa:" + manifestPath,
+		})
+		if err != nil {
+			core.Error("pkg install local: PWA install failed", "err", err)
+			return 1
+		}
+		core.Info("installed", "type", "pwa", "src", path, "dest", dest)
+		return 0
+	case app.PackageTypeElectron:
+		pkg, err := loadElectronPackageJSON(medium, path)
+		if err != nil {
+			core.Error("pkg install local: package.json load failed", "err", err)
+			return 1
+		}
+		scan, err := app.ScanElectronRenderer(medium, path)
+		if err != nil {
+			core.Error("pkg install local: scan failed", "err", err)
+			return 1
+		}
+		manifest := app.WrapElectron(pkg, scan, app.WrapElectronOptions{})
+		if manifest == nil {
+			core.Error("pkg install local: WrapElectron returned nil")
+			return 1
+		}
+		dest, err := app.InstallWrappedElectron(medium, manifest, app.PkgInstallOptions{
+			Home: home, Force: true, Source: "wrap:electron:" + path,
+		})
+		if err != nil {
+			core.Error("pkg install local: Electron install failed", "err", err)
+			return 1
+		}
+		core.Info("installed", "type", "electron", "src", path, "dest", dest)
+		return 0
+	case app.PackageTypeWeb:
+		manifest, err := app.WrapWeb(medium, path, app.WrapWebOptions{})
+		if err != nil {
+			core.Error("pkg install local: WrapWeb failed", "err", err)
+			return 1
+		}
+		dest, err := app.InstallWrappedWeb(medium, manifest, app.PkgInstallOptions{
+			Home: home, Force: true, Source: "wrap:web:" + path,
+		})
+		if err != nil {
+			core.Error("pkg install local: Web install failed", "err", err)
+			return 1
+		}
+		core.Info("installed", "type", "web", "src", path, "dest", dest)
+		return 0
+	default:
+		core.Error("pkg install local: cannot detect package type",
+			"path", path,
+			"hint", "expected .core/view.yaml, manifest.json, package.json, or index.html")
+		return 1
+	}
 }
 
 // runPkgInstallElectron is the install-side counterpart to
