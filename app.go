@@ -257,6 +257,9 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 	if err := verify(&manifest, o.Mode, trusted); err != nil {
 		return nil, coreerr.E("app.Boot", "verify failed", err)
 	}
+	if err := verifyAssetIntegrity(o.Medium, root, &manifest, o.Mode); err != nil {
+		return nil, coreerr.E("app.Boot", "asset integrity failed", err)
+	}
 
 	// Step 3 — Permissions
 	if err := permissions(c, &manifest, o.Mode); err != nil {

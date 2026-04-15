@@ -201,6 +201,9 @@ func (h *Host) Launch(ctx context.Context, code string, opts LaunchOptions) (*In
 	if err := verify(&manifest, mode, trusted); err != nil {
 		return nil, coreerr.E("app.Host.Launch", "verify failed for "+code, err)
 	}
+	if err := verifyAssetIntegrity(h.opts.Medium, projectRoot, &manifest, mode); err != nil {
+		return nil, coreerr.E("app.Host.Launch", "asset integrity failed for "+code, err)
+	}
 
 	// Resolve the plugin's service surface — the manifest's declared
 	// service names filtered against whichever registry applies to this

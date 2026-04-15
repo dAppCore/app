@@ -433,6 +433,9 @@ func TestPkg_InstallWrappedElectron_Good(t *testing.T) {
 	if src, _ := round.Config["source"].(string); src != "wrap:electron:github.com/foo/bar" {
 		t.Errorf("source stamp = %q; want 'wrap:electron:github.com/foo/bar'", src)
 	}
+	if hash, _ := round.Config["asset_hash"].(string); hash == "" {
+		t.Error("asset_hash missing from installed wrapped Electron manifest")
+	}
 }
 
 // TestPkg_InstallWrappedElectron_AssetsCopied pins the asset-aware
@@ -465,6 +468,53 @@ func TestPkg_InstallWrappedElectron_AssetsCopied(t *testing.T) {
 	}
 	if !medium.Exists(core.Path(dest, "assets", "renderer.js")) {
 		t.Fatalf("renderer asset missing at %s", core.Path(dest, "assets", "renderer.js"))
+	}
+}
+
+// TestPkg_InstallWrappedElectron_ProdBootTamper_Bad confirms the
+// installed renderer tree participates in the trusted envelope: once
+// an asset changes on disk, prod boot rejects the wrapped Electron app.
+func TestPkg_InstallWrappedElectron_ProdBootTamper_Bad(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	srcDir := t.TempDir()
+	if err := medium.Write(core.Path(srcDir, "package.json"), `{"name":"electron-tamper"}`); err != nil {
+		t.Fatalf("Write package.json: %v", err)
+	}
+	if err := medium.Write(core.Path(srcDir, "main.js"), `console.log("v1")`); err != nil {
+		t.Fatalf("Write main.js: %v", err)
+	}
+
+	manifest := &config.ViewManifest{
+		Code:    "electron-tamper",
+		Name:    "Electron Tamper",
+		Version: "0.1.0",
+		Config:  map[string]any{"type": "electron"},
+	}
+	dest, err := app.InstallWrappedElectron(medium, manifest, app.PkgInstallOptions{
+		Home:        home,
+		AssetSource: srcDir,
+	})
+	if err != nil {
+		t.Fatalf("InstallWrappedElectron: %v", err)
+	}
+
+	if _, err := app.Boot(context.Background(), dest,
+		app.WithTrustedKeysDir(core.Path(home, ".core", "keys")),
+		app.WithWorkspaceHome(home),
+	); err != nil {
+		t.Fatalf("Boot(prod, pristine Electron wrap): %v", err)
+	}
+
+	if err := medium.Write(core.Path(dest, "main.js"), `console.log("tampered")`); err != nil {
+		t.Fatalf("tamper main.js: %v", err)
+	}
+
+	if _, err := app.Boot(context.Background(), dest,
+		app.WithTrustedKeysDir(core.Path(home, ".core", "keys")),
+		app.WithWorkspaceHome(home),
+	); err == nil {
+		t.Fatal("Boot(prod) should fail after Electron asset tampering")
 	}
 }
 

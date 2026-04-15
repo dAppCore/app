@@ -642,6 +642,12 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 		}
 		manifest.Config["source"] = opts.Source
 	}
+	if err := stageWrappedAssets(medium, dest, opts.AssetSource); err != nil {
+		return dest, coreerr.E("app.installWrap", "materialise wrap failed", err)
+	}
+	if err := bindWrappedAssetHash(medium, dest, manifest); err != nil {
+		return dest, coreerr.E("app.installWrap", "bind asset hash failed", err)
+	}
 	// Wrapped installs are distribution artifacts, not dev drafts. Sign
 	// them with the user's default keypair on the way to disk so prod
 	// boots can verify the manifest immediately after install.
@@ -650,7 +656,7 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 			return dest, coreerr.E("app.installWrap", "sign wrapped manifest failed", err)
 		}
 	}
-	if err := WriteWrappedApp(medium, dest, manifest, opts.AssetSource); err != nil {
+	if err := writeWrappedManifest(medium, dest, manifest); err != nil {
 		return dest, coreerr.E("app.installWrap", "materialise wrap failed", err)
 	}
 	return dest, nil
@@ -660,38 +666,56 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 // copying a directory of renderer assets first and then writing the
 // generated `.core/view.yaml`.
 func WriteWrappedApp(medium coreio.Medium, dest string, manifest *config.ViewManifest, assetSource string) error {
+	if err := stageWrappedAssets(medium, dest, assetSource); err != nil {
+		return err
+	}
+	return writeWrappedManifest(medium, dest, manifest)
+}
+
+func stageWrappedAssets(medium coreio.Medium, dest, assetSource string) error {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if dest == "" {
+		return coreerr.E("app.stageWrappedAssets", "empty dest", nil)
+	}
+	if assetSource == "" {
+		return nil
+	}
+	if !medium.IsDir(assetSource) {
+		return coreerr.E(
+			"app.stageWrappedAssets",
+			"asset source is not a directory: "+assetSource,
+			nil,
+		)
+	}
+	if err := copyTree(medium, assetSource, dest); err != nil {
+		return coreerr.E("app.stageWrappedAssets", "copy asset tree failed", err)
+	}
+	return nil
+}
+
+func writeWrappedManifest(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
 	if manifest == nil {
-		return coreerr.E("app.WriteWrappedApp", "nil manifest", nil)
+		return coreerr.E("app.writeWrappedManifest", "nil manifest", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
 	}
 	if dest == "" {
-		return coreerr.E("app.WriteWrappedApp", "empty dest", nil)
-	}
-	if assetSource != "" {
-		if !medium.IsDir(assetSource) {
-			return coreerr.E(
-				"app.WriteWrappedApp",
-				"asset source is not a directory: "+assetSource,
-				nil,
-			)
-		}
-		if err := copyTree(medium, assetSource, dest); err != nil {
-			return coreerr.E("app.WriteWrappedApp", "copy asset tree failed", err)
-		}
+		return coreerr.E("app.writeWrappedManifest", "empty dest", nil)
 	}
 
 	path := core.Path(dest, ".core", "view.yaml")
 	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
-		return coreerr.E("app.WriteWrappedApp", "ensure dir failed", err)
+		return coreerr.E("app.writeWrappedManifest", "ensure dir failed", err)
 	}
 	body, err := yamlMarshalBytes(manifest)
 	if err != nil {
-		return coreerr.E("app.WriteWrappedApp", "marshal failed", err)
+		return coreerr.E("app.writeWrappedManifest", "marshal failed", err)
 	}
 	if err := medium.Write(path, string(body)); err != nil {
-		return coreerr.E("app.WriteWrappedApp", "write failed", err)
+		return coreerr.E("app.writeWrappedManifest", "write failed", err)
 	}
 	return nil
 }

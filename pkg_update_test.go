@@ -146,6 +146,9 @@ func TestPkgUpdate_PkgUpdate_Good_Electron(t *testing.T) {
 	if len(round.Permissions.Read) == 0 && !round.Permissions.Filesystem {
 		t.Errorf("rewrap should detect filesystem usage; perms = %+v", round.Permissions)
 	}
+	if hash, _ := round.Config["asset_hash"].(string); hash == "" {
+		t.Error("updated Electron wrap is missing asset_hash")
+	}
 }
 
 // TestPkgUpdate_PkgUpdate_Bad_Electron — wrap:electron sources that

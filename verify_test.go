@@ -245,6 +245,28 @@ func TestVerify_signableBytes_Ugly(t *testing.T) {
 	}
 }
 
+// TestVerify_verifyWithKey_AssetHash_Ugly — asset integrity metadata is
+// part of the signed envelope, unlike install-local provenance fields.
+func TestVerify_verifyWithKey_AssetHash_Ugly(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	m := &config.ViewManifest{
+		Code:    "asset-hash",
+		Name:    "Asset Hash",
+		Version: "0.1.0",
+		Config: map[string]any{
+			"type":       "electron",
+			"asset_hash": "abc123",
+		},
+	}
+	if err := signManifest(m, priv); err != nil {
+		t.Fatalf("signManifest: %v", err)
+	}
+	m.Config["asset_hash"] = "def456"
+	if err := verifyWithKey(m, pub); err == nil {
+		t.Fatal("verifyWithKey should fail when asset_hash changes after signing")
+	}
+}
+
 // TestVerify_verifyWithKey_RFCCompat_Good confirms the verifier accepts
 // the RFC-facing manifest layout and ignores local install metadata
 // (`config.source`, `config.category`) that the marketplace stamps

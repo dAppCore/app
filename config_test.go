@@ -230,7 +230,7 @@ func TestConfig_isReservedConfigKey_Good(t *testing.T) {
 	for _, name := range []string{
 		"services", "source", "type", "url", "display",
 		"short_name", "theme", "locale", "icon", "shim",
-		"gui_gates", "ipc_channels", "main", "entry",
+		"gui_gates", "ipc_channels", "main", "entry", manifestAssetHashKey,
 	} {
 		if !isReservedConfigKey(name) {
 			t.Errorf("expected %q to be reserved", name)
@@ -259,12 +259,13 @@ func TestConfig_applyConfig_ReservedKeys(t *testing.T) {
 	c := core.New()
 	m := &config.ViewManifest{
 		Config: map[string]any{
-			"services":    []any{"io", "store"},
-			"source":      "wrap:pwa:https://app.example.com",
-			"type":        "pwa",
-			"write":       []any{"./cache/"},
-			"store":       true,
-			"window_mode": "window",
+			"services":           []any{"io", "store"},
+			"source":             "wrap:pwa:https://app.example.com",
+			"type":               "pwa",
+			"write":              []any{"./cache/"},
+			"store":              true,
+			manifestAssetHashKey: "abc123",
+			"window_mode":        "window",
 		},
 	}
 	if err := applyConfig(c, m, coreio.Local, t.TempDir()); err != nil {
