@@ -462,6 +462,32 @@ func TestPkg_runPkgInstallLocal_Good(t *testing.T) {
 	}
 }
 
+// TestPkg_runPkgInstallLocal_Good_WebManifest confirms local PWA
+// installs also accept `manifest.webmanifest`, matching the remote PWA
+// fetch path's candidate probing.
+func TestPkg_runPkgInstallLocal_Good_WebManifest(t *testing.T) {
+	src := t.TempDir()
+	home := t.TempDir()
+	medium := coreio.Local
+
+	manifest := `{"name":"Local Play WebManifest","short_name":"localplaywm","start_url":"/"}`
+	if err := medium.Write(core.Path(src, "manifest.webmanifest"), manifest); err != nil {
+		t.Fatalf("write manifest.webmanifest: %v", err)
+	}
+	if err := medium.Write(core.Path(src, "index.html"), "<html>local play</html>"); err != nil {
+		t.Fatalf("write index.html: %v", err)
+	}
+
+	rc := runPkgInstallLocal(home, src)
+	if rc != 0 {
+		t.Fatalf("runPkgInstallLocal rc = %d; want 0", rc)
+	}
+	viewPath := core.Path(home, ".core", app.AppsDirName, "localplaywm", ".core", "view.yaml")
+	if !medium.Exists(viewPath) {
+		t.Errorf("local webmanifest install produced no view.yaml at %s", viewPath)
+	}
+}
+
 // TestPkg_runPkgInstallLocal_Bad — pointing the dispatcher at a
 // directory that holds no recognisable app type returns 1.
 func TestPkg_runPkgInstallLocal_Bad(t *testing.T) {
@@ -513,6 +539,29 @@ func TestPkg_runPkgInstallLocal_Ugly(t *testing.T) {
 		}
 	}
 	t.Errorf("no web-type install found under %s", appsRoot)
+}
+
+// TestPkg_runPkgInstallRepoPWAFromRoot_Good_WebManifest confirms the
+// repo-backed PWA install path accepts `manifest.webmanifest`.
+func TestPkg_runPkgInstallRepoPWAFromRoot_Good_WebManifest(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	medium := coreio.Local
+
+	if err := medium.Write(core.Path(root, "manifest.webmanifest"), `{"name":"Repo Play","short_name":"repoplay","start_url":"/"}`); err != nil {
+		t.Fatalf("write manifest.webmanifest: %v", err)
+	}
+	if err := medium.Write(core.Path(root, "index.html"), "<html>repo play</html>"); err != nil {
+		t.Fatalf("write index.html: %v", err)
+	}
+
+	if rc := runPkgInstallRepoPWAFromRoot(home, "github.com/example/repo-play", root); rc != 0 {
+		t.Fatalf("runPkgInstallRepoPWAFromRoot rc = %d; want 0", rc)
+	}
+	viewPath := core.Path(home, ".core", app.AppsDirName, "repoplay", ".core", "view.yaml")
+	if !medium.Exists(viewPath) {
+		t.Errorf("repo PWA install produced no view.yaml at %s", viewPath)
+	}
 }
 
 // TestMain_runInstalled_Bad — `run` with no code returns 64; with an

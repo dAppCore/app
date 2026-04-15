@@ -837,7 +837,8 @@ func runPkgInstall(args []string) int {
 // Auto-detects the package type per RFC §16.4:
 //
 //   - `.core/view.yaml` present → PackageTypeNative; copy the tree.
-//   - `manifest.json` with start_url → PackageTypePWA; wrap+install.
+//   - `manifest.json` / `manifest.webmanifest` with start_url
+//     → PackageTypePWA; wrap+install.
 //   - `package.json` with electron dep → PackageTypeElectron; wrap+install.
 //   - `index.html` present → PackageTypeWeb; wrap+install.
 //
@@ -850,7 +851,7 @@ func runPkgInstallLocal(home, path string) int {
 	if kind == app.PackageTypeUnknown {
 		core.Error("pkg install local: cannot detect package type",
 			"path", path,
-			"hint", "expected .core/view.yaml, manifest.json, package.json, or index.html")
+			"hint", "expected .core/view.yaml, manifest.json, manifest.webmanifest, package.json, or index.html")
 		return 1
 	}
 	return runPkgInstallLocalAs(home, path, kind)
@@ -880,17 +881,22 @@ func runPkgInstallLocalAs(home, path string, kind app.PackageType) int {
 		core.Info("installed", "type", "native", "src", path, "dest", dest)
 		return 0
 	case app.PackageTypePWA:
-		// Read the local manifest.json directly — no HTTP fetch needed.
-		manifestPath := core.Path(path, "manifest.json")
+		manifestPath, ok := app.FindLocalPWAManifest(medium, path)
+		if !ok {
+			core.Error("pkg install local: no PWA manifest found",
+				"path", path,
+				"hint", "expected manifest.json or manifest.webmanifest")
+			return 1
+		}
 		body, err := medium.Read(manifestPath)
 		if err != nil {
-			core.Error("pkg install local: read manifest.json failed", "path", manifestPath, "err", err)
+			core.Error("pkg install local: read PWA manifest failed", "path", manifestPath, "err", err)
 			return 1
 		}
 		var pwa app.PWAManifest
 		r := core.JSONUnmarshal([]byte(body), &pwa)
 		if !r.OK {
-			core.Error("pkg install local: decode manifest.json failed", "path", manifestPath, "err", r.Value)
+			core.Error("pkg install local: decode PWA manifest failed", "path", manifestPath, "err", r.Value)
 			return 1
 		}
 		manifest := app.WrapPWA(&pwa, app.WrapPWAOptions{
@@ -1010,16 +1016,22 @@ func runPkgInstallRepoPWA(ctx context.Context, home, ref string) int {
 }
 
 func runPkgInstallRepoPWAFromRoot(home, ref, root string) int {
-	manifestPath := core.Path(root, "manifest.json")
+	manifestPath, ok := app.FindLocalPWAManifest(coreio.Local, root)
+	if !ok {
+		core.Error("pkg install: no PWA manifest found",
+			"root", root,
+			"hint", "expected manifest.json or manifest.webmanifest")
+		return 1
+	}
 	body, err := coreio.Local.Read(manifestPath)
 	if err != nil {
-		core.Error("pkg install: read repo manifest.json failed", "path", manifestPath, "err", err)
+		core.Error("pkg install: read repo PWA manifest failed", "path", manifestPath, "err", err)
 		return 1
 	}
 	var pwa app.PWAManifest
 	r := core.JSONUnmarshal([]byte(body), &pwa)
 	if !r.OK {
-		core.Error("pkg install: decode repo manifest.json failed", "path", manifestPath, "err", r.Value)
+		core.Error("pkg install: decode repo PWA manifest failed", "path", manifestPath, "err", r.Value)
 		return 1
 	}
 	manifest := app.WrapPWA(&pwa, app.WrapPWAOptions{

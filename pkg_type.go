@@ -13,7 +13,8 @@ import (
 //
 //   - PackageTypeNative — a source directory already carrying .core/view.yaml.
 //
-//   - PackageTypePWA    — a web app with a standards manifest.json.
+//   - PackageTypePWA    — a web app with a standards PWA manifest
+//     (`manifest.json` or `manifest.webmanifest`).
 //
 //   - PackageTypeElectron — an Electron app whose renderer assets we
 //     download from GitHub releases.
@@ -32,7 +33,7 @@ const (
 	PackageTypeUnknown PackageType = iota
 	// PackageTypeNative is a directory with .core/view.yaml.
 	PackageTypeNative
-	// PackageTypePWA is a web app with a standards manifest.json.
+	// PackageTypePWA is a web app with a standards PWA manifest.
 	PackageTypePWA
 	// PackageTypeElectron is an Electron app (package.json declares
 	// `electron` in dependencies or devDependencies).
@@ -89,7 +90,8 @@ func ParsePackageType(s string) PackageType {
 // Rules (first match wins):
 //
 //  1. Directory contains `.core/view.yaml`     → PackageTypeNative
-//  2. Directory contains `manifest.json` that parses as a PWA
+//  2. Directory contains `manifest.json` or
+//     `manifest.webmanifest` that parses as a PWA
 //     (has `start_url`)                         → PackageTypePWA
 //  3. Directory contains `package.json` with
 //     an `electron` dependency                  → PackageTypeElectron
@@ -107,10 +109,9 @@ func DetectPackageType(medium coreio.Medium, dir string) PackageType {
 		return PackageTypeNative
 	}
 
-	manifestPath := core.Path(dir, "manifest.json")
-	if medium.Exists(manifestPath) {
+	if manifestPath, ok := FindLocalPWAManifest(medium, dir); ok {
 		body, err := medium.Read(manifestPath)
-		if err == nil && core.Contains(body, "start_url") {
+		if err == nil && detectsLocalPWA(body) {
 			return PackageTypePWA
 		}
 	}
@@ -162,10 +163,10 @@ func looksLikeElectronPackageJSON(body string) bool {
 	return false
 }
 
-// DetectPackageTypeFromManifestJSON inspects a raw manifest.json body
-// (typically fetched from a URL) and classifies it as a PWA if the bytes
-// parse as a Web App Manifest. Used by the `core pkg wrap --pwa <url>`
-// path where we have the bytes before we have a directory.
+// DetectPackageTypeFromManifestJSON inspects a raw PWA manifest body
+// (typically fetched from a URL or loaded from `manifest.json` /
+// `manifest.webmanifest`) and classifies it as a PWA if the bytes parse
+// as a Web App Manifest.
 //
 //	t := app.DetectPackageTypeFromManifestJSON(body)
 func DetectPackageTypeFromManifestJSON(body string) PackageType {
@@ -183,6 +184,23 @@ func DetectPackageTypeFromManifestJSON(body string) PackageType {
 	return PackageTypePWA
 }
 
+// detectsLocalPWA is the stricter local-directory counterpart to
+// DetectPackageTypeFromManifestJSON. The local RFC §16.4 detection table
+// requires an explicit `start_url` before a manifest file upgrades the
+// directory to PackageTypePWA; otherwise a directory with a decorative
+// manifest and plain index.html continues through the Web path.
+func detectsLocalPWA(body string) bool {
+	if body == "" {
+		return false
+	}
+	var pwa PWAManifest
+	r := core.JSONUnmarshal([]byte(body), &pwa)
+	if !r.OK {
+		return false
+	}
+	return pwa.StartURL != ""
+}
+
 // errDetect is the canonical error for unknown-type detection — kept as
 // a helper so callers wiring CLI exits don't duplicate the string.
 //
@@ -190,7 +208,7 @@ func DetectPackageTypeFromManifestJSON(body string) PackageType {
 func errDetect(where string) error {
 	return coreerr.E(
 		"app.DetectPackageType",
-		"cannot determine package type at "+where+" (no .core/view.yaml, manifest.json, package.json, or index.html)",
+		"cannot determine package type at "+where+" (no .core/view.yaml, manifest.json, manifest.webmanifest, package.json, or index.html)",
 		nil,
 	)
 }

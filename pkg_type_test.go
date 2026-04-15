@@ -73,7 +73,7 @@ func TestPkgType_ParsePackageType_Bad(t *testing.T) {
 }
 
 // TestPkgType_DetectPackageType_Good walks the detection precedence:
-// .core/view.yaml wins over manifest.json wins over package.json wins
+// .core/view.yaml wins over PWA manifest wins over package.json wins
 // over index.html.
 func TestPkgType_DetectPackageType_Good(t *testing.T) {
 	dir := t.TempDir()
@@ -101,6 +101,18 @@ func TestPkgType_DetectPackageType_Good(t *testing.T) {
 	}
 	if got := app.DetectPackageType(medium, pwa); got != app.PackageTypePWA {
 		t.Errorf("pwa case = %v; want PWA", got)
+	}
+
+	// Case 2b — PWA via manifest.webmanifest.
+	pwaWebmanifest := core.Path(dir, "pwa-webmanifest")
+	if err := medium.EnsureDir(pwaWebmanifest); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(core.Path(pwaWebmanifest, "manifest.webmanifest"), `{"name":"Y","start_url":"/app"}`); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if got := app.DetectPackageType(medium, pwaWebmanifest); got != app.PackageTypePWA {
+		t.Errorf("pwa webmanifest case = %v; want PWA", got)
 	}
 
 	// Case 3 — Electron via package.json.
@@ -205,5 +217,24 @@ func TestPkgType_DetectPackageTypeFromManifestJSON_Bad(t *testing.T) {
 		if got := app.DetectPackageTypeFromManifestJSON(in); got != app.PackageTypeUnknown {
 			t.Errorf("Detect(%q) = %v; want Unknown", in, got)
 		}
+	}
+}
+
+// TestPkgType_FindLocalPWAManifest_Good confirms the helper recognises
+// both conventional local manifest filenames.
+func TestPkgType_FindLocalPWAManifest_Good(t *testing.T) {
+	dir := t.TempDir()
+	medium := coreio.Local
+
+	if err := medium.Write(core.Path(dir, "manifest.webmanifest"), `{"name":"Play","start_url":"/"}`); err != nil {
+		t.Fatalf("write manifest.webmanifest: %v", err)
+	}
+
+	path, ok := app.FindLocalPWAManifest(medium, dir)
+	if !ok {
+		t.Fatal("FindLocalPWAManifest returned ok=false; want true")
+	}
+	if want := core.Path(dir, "manifest.webmanifest"); path != want {
+		t.Errorf("path = %q; want %q", path, want)
 	}
 }

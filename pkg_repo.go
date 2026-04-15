@@ -80,8 +80,9 @@ func FetchRepoSourceURL(ctx context.Context, medium coreio.Medium, url, scratchD
 }
 
 // LoadRepoPWAManifest fetches a repo source archive and returns the
-// parsed manifest.json plus the extracted project root so the caller can
-// copy the asset tree into an installed wrap.
+// parsed PWA manifest plus the extracted project root so the caller can
+// copy the asset tree into an installed wrap. Accepts both
+// `manifest.json` and `manifest.webmanifest`.
 //
 //	pwa, root, err := app.LoadRepoPWAManifest(ctx, coreio.Local, ref, scratch)
 func LoadRepoPWAManifest(ctx context.Context, medium coreio.Medium, ref, scratchDir string) (*PWAManifest, string, error) {
@@ -92,19 +93,19 @@ func LoadRepoPWAManifest(ctx context.Context, medium coreio.Medium, ref, scratch
 	if err != nil {
 		return nil, "", err
 	}
-	path := core.Path(root, "manifest.json")
-	if !medium.Exists(path) {
-		return nil, "", coreerr.E("app.LoadRepoPWAManifest", "manifest.json not found under "+root, nil)
+	path, ok := FindLocalPWAManifest(medium, root)
+	if !ok {
+		return nil, "", coreerr.E("app.LoadRepoPWAManifest", "PWA manifest not found under "+root, nil)
 	}
 	body, err := medium.Read(path)
 	if err != nil {
-		return nil, "", coreerr.E("app.LoadRepoPWAManifest", "read manifest.json failed", err)
+		return nil, "", coreerr.E("app.LoadRepoPWAManifest", "read PWA manifest failed", err)
 	}
 	var manifest PWAManifest
 	r := core.JSONUnmarshal([]byte(body), &manifest)
 	if !r.OK {
 		cause, _ := r.Value.(error)
-		return nil, "", coreerr.E("app.LoadRepoPWAManifest", "decode manifest.json failed", cause)
+		return nil, "", coreerr.E("app.LoadRepoPWAManifest", "decode PWA manifest failed", cause)
 	}
 	return &manifest, root, nil
 }

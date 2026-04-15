@@ -48,6 +48,12 @@ type PWAManifest struct {
 	Permissions     []string  `json:"permissions,omitempty"`
 }
 
+// localPWAManifestNames is the ordered set of manifest filenames a
+// local or repo-backed PWA may carry. `manifest.json` stays first
+// because RFC §16.1 uses that name in examples, but real-world apps
+// commonly ship `manifest.webmanifest`.
+var localPWAManifestNames = []string{"manifest.json", "manifest.webmanifest"}
+
 // pwaFetchTimeout caps the manifest-fetch HTTP call so a slow origin
 // cannot hang `core pkg wrap`. 15s matches the dAppServer marketplace
 // install-poll timeout.
@@ -256,6 +262,28 @@ func ResolvePWAAppURL(sourceURL string, manifest *PWAManifest) string {
 		return core.Trim(sourceURL)
 	}
 	return resolvePWAStartURL(sourceURL, manifest.StartURL)
+}
+
+// FindLocalPWAManifest returns the first recognised PWA manifest file
+// beneath `dir`. Local and repo install flows use this so they handle
+// both `manifest.json` and `manifest.webmanifest`, matching the HTTP
+// fetch path's candidate probing.
+//
+//	path, ok := app.FindLocalPWAManifest(coreio.Local, "./play")
+func FindLocalPWAManifest(medium coreio.Medium, dir string) (string, bool) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if dir == "" {
+		return "", false
+	}
+	for _, name := range localPWAManifestNames {
+		path := core.Path(dir, name)
+		if medium.Exists(path) {
+			return path, true
+		}
+	}
+	return "", false
 }
 
 // pwaWindowMode maps a PWA `display` field to a CoreApp window mode.
