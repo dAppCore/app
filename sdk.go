@@ -233,7 +233,32 @@ func DefaultSDKActions() []SDKAction {
 			Response:    []SDKArg{{Name: "confirmed", Type: "boolean"}},
 		},
 		{
+			Name:        "gui.dialog.open",
+			Description: "Show a file open dialog",
+			Request: []SDKArg{
+				{Name: "title", Type: "string"},
+				{Name: "filters", Type: "array"},
+			},
+			Response: []SDKArg{{Name: "path", Type: "string"}},
+		},
+		{
+			Name:        "gui.dialog.save",
+			Description: "Show a file save dialog",
+			Request: []SDKArg{
+				{Name: "title", Type: "string"},
+				{Name: "default_name", Type: "string"},
+			},
+			Response: []SDKArg{{Name: "path", Type: "string"}},
+		},
+		{
+			Name:        "gui.browser.open",
+			Description: "Open a URL in the user's default browser",
+			Permission:  "net",
+			Request:     []SDKArg{{Name: "url", Type: "string", Required: true}},
+		},
+		{
 			Name:        "gui.notification.send",
+			Permission:  "notifications",
 			Description: "Show a system notification",
 			Request: []SDKArg{
 				{Name: "title", Type: "string", Required: true},
@@ -241,9 +266,37 @@ func DefaultSDKActions() []SDKAction {
 			},
 		},
 		{
+			Name:        "gui.clipboard.read",
+			Permission:  "clipboard",
+			Description: "Read text from the system clipboard",
+			Response:    []SDKArg{{Name: "text", Type: "string"}},
+		},
+		{
 			Name:        "gui.clipboard.write",
+			Permission:  "clipboard",
 			Description: "Write text to the system clipboard",
 			Request:     []SDKArg{{Name: "text", Type: "string", Required: true}},
+		},
+		{
+			Name:        "device.location",
+			Permission:  "location",
+			Description: "Read the device's geolocation",
+			Response: []SDKArg{
+				{Name: "latitude", Type: "number"},
+				{Name: "longitude", Type: "number"},
+				{Name: "accuracy", Type: "number"},
+			},
+		},
+		{
+			Name:        "device.camera",
+			Permission:  "camera",
+			Description: "Access the device camera",
+			Request:     []SDKArg{{Name: "facing", Type: "string"}},
+		},
+		{
+			Name:        "device.microphone",
+			Permission:  "microphone",
+			Description: "Access the device microphone",
 		},
 		{
 			Name:        "i18n.translate",
@@ -316,6 +369,23 @@ func manifestDeclaresPermission(m *config.ViewManifest, name string) bool {
 		return len(m.Permissions.Run) > 0
 	case "store":
 		return hasManifestStorePermission(m)
+	case "notifications":
+		return m.Permissions.Notifications
+	case "clipboard":
+		return m.Permissions.Clipboard
+	case "camera":
+		return m.Permissions.Camera
+	case "microphone":
+		return m.Permissions.Microphone
+	case "location":
+		// `device.location` lives in the Run-list until ViewPermissions
+		// grows a typed slot — mirror the entitlement gate.
+		for _, entry := range m.Permissions.Run {
+			if entry == "device.location" {
+				return true
+			}
+		}
+		return false
 	}
 	return false
 }

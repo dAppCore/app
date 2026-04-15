@@ -9,8 +9,9 @@ import (
 )
 
 // AccessMode names the capability an action requires. The capital-letter
-// enum mirrors the RFC §2.2 permission field names (`read`, `write`,
-// `net`, `run`, `store`) but typed so callers never misspell one.
+// enum mirrors the RFC §2.2 / §16.1 permission field names (`read`,
+// `write`, `net`, `run`, `store`, `notifications`, `clipboard`, `camera`,
+// `microphone`, `location`) but typed so callers never misspell one.
 //
 //	if err := app.CheckAccess(manifest, app.AccessRead, "./photos/a.jpg"); err != nil { ... }
 type AccessMode int
@@ -30,6 +31,28 @@ const (
 	// recorded in Config["store"]. The argument value is the store
 	// group / key tuple; today the gate only checks for declaration.
 	AccessStore
+	// AccessNotification — desktop / system notifications, per
+	// `permissions.notifications: true`. RFC §16.1 maps the PWA
+	// `notifications` permission onto this gate.
+	AccessNotification
+	// AccessClipboardRead — clipboard read, per `permissions.clipboard:
+	// true`. Read and write share a single ViewPermissions field today
+	// because the Web platform groups them; once a per-direction split
+	// lands in core/config, AccessClipboardRead and AccessClipboardWrite
+	// can diverge without changing this enum.
+	AccessClipboardRead
+	// AccessClipboardWrite — clipboard write, mirror of
+	// AccessClipboardRead.
+	AccessClipboardWrite
+	// AccessCamera — camera access, per `permissions.camera: true`.
+	AccessCamera
+	// AccessMicrophone — microphone access, per `permissions.microphone:
+	// true`.
+	AccessMicrophone
+	// AccessLocation — geolocation, per the legacy `device.location`
+	// entry stored in `permissions.run` (see hasPermission for the
+	// rationale).
+	AccessLocation
 )
 
 // String returns the lowercase permission field name.
@@ -47,6 +70,16 @@ func (a AccessMode) String() string {
 		return "run"
 	case AccessStore:
 		return "store"
+	case AccessNotification:
+		return "notifications"
+	case AccessClipboardRead, AccessClipboardWrite:
+		return "clipboard"
+	case AccessCamera:
+		return "camera"
+	case AccessMicrophone:
+		return "microphone"
+	case AccessLocation:
+		return "location"
 	default:
 		return "unknown"
 	}
@@ -135,6 +168,63 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		return coreerr.E(
 			"app.CheckAccess",
 			"store access to '"+arg+"' not declared (set permissions.store: true in view.yaml)",
+			nil,
+		)
+	case AccessNotification:
+		if m.Permissions.Notifications {
+			return nil
+		}
+		return coreerr.E(
+			"app.CheckAccess",
+			"notification access not declared (set permissions.notifications: true in view.yaml)",
+			nil,
+		)
+	case AccessClipboardRead:
+		if m.Permissions.Clipboard {
+			return nil
+		}
+		return coreerr.E(
+			"app.CheckAccess",
+			"clipboard read not declared (set permissions.clipboard: true in view.yaml)",
+			nil,
+		)
+	case AccessClipboardWrite:
+		if m.Permissions.Clipboard {
+			return nil
+		}
+		return coreerr.E(
+			"app.CheckAccess",
+			"clipboard write not declared (set permissions.clipboard: true in view.yaml)",
+			nil,
+		)
+	case AccessCamera:
+		if m.Permissions.Camera {
+			return nil
+		}
+		return coreerr.E(
+			"app.CheckAccess",
+			"camera access not declared (set permissions.camera: true in view.yaml)",
+			nil,
+		)
+	case AccessMicrophone:
+		if m.Permissions.Microphone {
+			return nil
+		}
+		return coreerr.E(
+			"app.CheckAccess",
+			"microphone access not declared (set permissions.microphone: true in view.yaml)",
+			nil,
+		)
+	case AccessLocation:
+		// Location lives in the Run-list as `device.location` until
+		// ViewPermissions grows a typed slot. matchExact mirrors the
+		// AccessRun gate so the convention stays consistent.
+		if matchExact(m.Permissions.Run, "device.location") {
+			return nil
+		}
+		return coreerr.E(
+			"app.CheckAccess",
+			"location access not declared (add 'device.location' to permissions.run in view.yaml)",
 			nil,
 		)
 	default:

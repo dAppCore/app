@@ -439,6 +439,18 @@ func TestSdk_DefaultSDKActions_Ugly(t *testing.T) {
 		"store.get":          false,
 		"net.fetch":          false,
 		"gui.dialog.confirm": false,
+		// RFC §16 mappings (PWA + Electron) — consumers expect these to
+		// be present so the SDK can surface the same surface as the
+		// permission gates.
+		"gui.dialog.open":       false,
+		"gui.dialog.save":       false,
+		"gui.browser.open":      false,
+		"gui.notification.send": false,
+		"gui.clipboard.read":    false,
+		"gui.clipboard.write":   false,
+		"device.location":       false,
+		"device.camera":         false,
+		"device.microphone":     false,
 	}
 	for _, a := range DefaultSDKActions() {
 		if _, ok := want[a.Name]; ok {
@@ -450,6 +462,92 @@ func TestSdk_DefaultSDKActions_Ugly(t *testing.T) {
 			t.Errorf("default catalogue missing %q", name)
 		}
 	}
+}
+
+// TestSdk_SelectActions_DevicePermissions — when the manifest declares
+// camera + microphone, the matching device.* actions are selected and
+// the unrelated ones (location, notification) are filtered out.
+func TestSdk_SelectActions_DevicePermissions(t *testing.T) {
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{
+			Camera:     true,
+			Microphone: true,
+		},
+	}
+	actions := SelectActions(DefaultSDKActions(), m, false)
+
+	hasCamera := false
+	hasMic := false
+	hasLocation := false
+	hasNotification := false
+	for _, a := range actions {
+		switch a.Name {
+		case "device.camera":
+			hasCamera = true
+		case "device.microphone":
+			hasMic = true
+		case "device.location":
+			hasLocation = true
+		case "gui.notification.send":
+			hasNotification = true
+		}
+	}
+	if !hasCamera {
+		t.Error("device.camera should be included when camera is declared")
+	}
+	if !hasMic {
+		t.Error("device.microphone should be included when microphone is declared")
+	}
+	if hasLocation {
+		t.Error("device.location should NOT be included without a location declaration")
+	}
+	if hasNotification {
+		t.Error("gui.notification.send should NOT be included without a notifications declaration")
+	}
+}
+
+// TestSdk_SelectActions_NotificationsClipboard — Notifications + Clipboard
+// declarations include the gui.* actions that depend on them.
+func TestSdk_SelectActions_NotificationsClipboard(t *testing.T) {
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{
+			Notifications: true,
+			Clipboard:     true,
+		},
+	}
+	actions := SelectActions(DefaultSDKActions(), m, false)
+	want := map[string]bool{
+		"gui.notification.send": false,
+		"gui.clipboard.read":    false,
+		"gui.clipboard.write":   false,
+	}
+	for _, a := range actions {
+		if _, ok := want[a.Name]; ok {
+			want[a.Name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("expected %q in selected actions", name)
+		}
+	}
+}
+
+// TestSdk_SelectActions_LocationViaRun — `device.location` declared via
+// the legacy permissions.run entry surfaces device.location in the SDK.
+func TestSdk_SelectActions_LocationViaRun(t *testing.T) {
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{
+			Run: []string{"device.location"},
+		},
+	}
+	actions := SelectActions(DefaultSDKActions(), m, false)
+	for _, a := range actions {
+		if a.Name == "device.location" {
+			return
+		}
+	}
+	t.Error("device.location should be selected when permissions.run lists it")
 }
 
 // TestSdk_operationIDOf_Good — dotted action names compress into camelCase

@@ -14,11 +14,17 @@ import (
 // mapping as a table means new Actions can join the gate by appending a
 // row — no code changes elsewhere.
 //
-//	"fs.read"  → requires permissions.read  (path list)
-//	"fs.write" → requires permissions.write (path list)
-//	"net.*"    → requires permissions.net   (host:port list)
-//	"process.*"→ requires permissions.run   (binary list)
-//	"store.*"  → requires permissions.store (boolean)
+//	"fs.read"            → requires permissions.read  (path list)
+//	"fs.write"           → requires permissions.write (path list)
+//	"net.*"              → requires permissions.net   (host:port list)
+//	"process.*"          → requires permissions.run   (binary list)
+//	"store.*"            → requires permissions.store (boolean)
+//	"gui.notification.*" → requires permissions.notifications (boolean)
+//	"gui.clipboard.read" → requires permissions.clipboard (boolean)
+//	"gui.clipboard.write"→ requires permissions.clipboard (boolean)
+//	"device.camera"      → requires permissions.camera (boolean)
+//	"device.microphone"  → requires permissions.microphone (boolean)
+//	"device.location"    → requires permissions.location (Run-list legacy entry)
 var actionPermissionMap = []actionGate{
 	{prefix: "fs.read", field: fieldRead},
 	{prefix: "fs.list", field: fieldRead},
@@ -32,6 +38,12 @@ var actionPermissionMap = []actionGate{
 	{prefix: "store.get", field: fieldStore},
 	{prefix: "store.set", field: fieldStore},
 	{prefix: "store.delete", field: fieldStore},
+	{prefix: "gui.notification.send", field: fieldNotification},
+	{prefix: "gui.clipboard.read", field: fieldClipboardRead},
+	{prefix: "gui.clipboard.write", field: fieldClipboardWrite},
+	{prefix: "device.camera", field: fieldCamera},
+	{prefix: "device.microphone", field: fieldMicrophone},
+	{prefix: "device.location", field: fieldLocation},
 }
 
 // permissionField names a slot in ViewPermissions.
@@ -43,6 +55,12 @@ const (
 	fieldNet
 	fieldRun
 	fieldStore
+	fieldNotification
+	fieldClipboardRead
+	fieldClipboardWrite
+	fieldCamera
+	fieldMicrophone
+	fieldLocation
 )
 
 // String returns the manifest key name — used in denial messages so a
@@ -61,6 +79,18 @@ func (f permissionField) String() string {
 		return "run"
 	case fieldStore:
 		return "store"
+	case fieldNotification:
+		return "notifications"
+	case fieldClipboardRead:
+		return "clipboard"
+	case fieldClipboardWrite:
+		return "clipboard"
+	case fieldCamera:
+		return "camera"
+	case fieldMicrophone:
+		return "microphone"
+	case fieldLocation:
+		return "location"
 	default:
 		return "unknown"
 	}
@@ -189,6 +219,26 @@ func hasPermission(p config.ViewPermissions, field permissionField) bool {
 		// store access since go-store's SQLite database lives on the
 		// filesystem.
 		return p.Filesystem
+	case fieldNotification:
+		return p.Notifications
+	case fieldClipboardRead, fieldClipboardWrite:
+		return p.Clipboard
+	case fieldCamera:
+		return p.Camera
+	case fieldMicrophone:
+		return p.Microphone
+	case fieldLocation:
+		// ViewPermissions has no location bool yet — the wrap pipeline
+		// stashes the capability in Run as `device.location` so the
+		// gate can detect the explicit declaration. Mirrors the
+		// pattern hasManifestStorePermission uses for the legacy store
+		// flag.
+		for _, entry := range p.Run {
+			if entry == "device.location" {
+				return true
+			}
+		}
+		return false
 	default:
 		return false
 	}

@@ -240,3 +240,160 @@ func TestPermissions_hasManifestStorePermission_Ugly(t *testing.T) {
 		t.Error("Config[store] of wrong type should not report declared")
 	}
 }
+
+// TestPermissions_NotificationGate_Good — gui.notification.send is
+// allowed when permissions.notifications: true is declared.
+func TestPermissions_NotificationGate_Good(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Notifications: true},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("gui.notification.send"); !e.Allowed {
+		t.Errorf("gui.notification.send should be allowed; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_NotificationGate_Bad — undeclared notification
+// permission denies in prod mode and emits a reason.
+func TestPermissions_NotificationGate_Bad(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	e := c.Entitled("gui.notification.send")
+	if e.Allowed {
+		t.Error("gui.notification.send should be denied without notifications permission")
+	}
+	if e.Reason == "" {
+		t.Error("denial should explain why")
+	}
+}
+
+// TestPermissions_NotificationGate_Ugly — dev mode allows-with-reason
+// even on missing notification permission.
+func TestPermissions_NotificationGate_Ugly(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeDev); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	e := c.Entitled("gui.notification.send")
+	if !e.Allowed {
+		t.Error("dev mode should allow even without notifications permission")
+	}
+	if e.Reason == "" {
+		t.Error("dev mode should still surface the would-have-denied reason")
+	}
+}
+
+// TestPermissions_ClipboardGate_Good — clipboard read and write are
+// both allowed when permissions.clipboard: true is declared.
+func TestPermissions_ClipboardGate_Good(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Clipboard: true},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("gui.clipboard.read"); !e.Allowed {
+		t.Errorf("gui.clipboard.read should be allowed; reason=%q", e.Reason)
+	}
+	if e := c.Entitled("gui.clipboard.write"); !e.Allowed {
+		t.Errorf("gui.clipboard.write should be allowed; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_ClipboardGate_Bad — clipboard gates are denied when
+// the permission is undeclared.
+func TestPermissions_ClipboardGate_Bad(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("gui.clipboard.read"); e.Allowed {
+		t.Error("gui.clipboard.read should be denied without clipboard permission")
+	}
+	if e := c.Entitled("gui.clipboard.write"); e.Allowed {
+		t.Error("gui.clipboard.write should be denied without clipboard permission")
+	}
+}
+
+// TestPermissions_ClipboardGate_Ugly — clipboard read+write share one
+// declaration; declaring it for one direction enables the other.
+func TestPermissions_ClipboardGate_Ugly(t *testing.T) {
+	// Direct hasPermission round-trip — both clipboard fields read from
+	// the same Clipboard bool slot, so declaring it covers both.
+	p := config.ViewPermissions{Clipboard: true}
+	if !hasPermission(p, fieldClipboardRead) {
+		t.Error("Clipboard=true should satisfy fieldClipboardRead")
+	}
+	if !hasPermission(p, fieldClipboardWrite) {
+		t.Error("Clipboard=true should satisfy fieldClipboardWrite")
+	}
+}
+
+// TestPermissions_DeviceGates_Good — Camera, Microphone and Location
+// gates honour their declarations.
+func TestPermissions_DeviceGates_Good(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{
+			Camera:     true,
+			Microphone: true,
+			Run:        []string{"device.location"},
+		},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	for _, name := range []string{
+		"device.camera",
+		"device.microphone",
+		"device.location",
+	} {
+		if e := c.Entitled(name); !e.Allowed {
+			t.Errorf("%s should be allowed; reason=%q", name, e.Reason)
+		}
+	}
+}
+
+// TestPermissions_DeviceGates_Bad — undeclared device permissions are
+// rejected with a reason.
+func TestPermissions_DeviceGates_Bad(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	for _, name := range []string{
+		"device.camera",
+		"device.microphone",
+		"device.location",
+	} {
+		e := c.Entitled(name)
+		if e.Allowed {
+			t.Errorf("%s should be denied without declaration", name)
+		}
+		if e.Reason == "" {
+			t.Errorf("%s denial should explain why", name)
+		}
+	}
+}
+
+// TestPermissions_DeviceGates_Ugly — location lives in the Run-list as
+// `device.location`, so a stray Run entry doesn't accidentally grant a
+// random device.* action.
+func TestPermissions_DeviceGates_Ugly(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Run: []string{"ffmpeg"}},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("device.location"); e.Allowed {
+		t.Error("device.location should be denied — Run list does not contain device.location")
+	}
+}

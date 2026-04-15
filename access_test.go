@@ -157,11 +157,17 @@ func TestAccess_matchExact_Ugly(t *testing.T) {
 // their lowercase name.
 func TestAccess_AccessMode_String_Good(t *testing.T) {
 	cases := map[AccessMode]string{
-		AccessRead:  "read",
-		AccessWrite: "write",
-		AccessNet:   "net",
-		AccessRun:   "run",
-		AccessStore: "store",
+		AccessRead:           "read",
+		AccessWrite:          "write",
+		AccessNet:            "net",
+		AccessRun:            "run",
+		AccessStore:          "store",
+		AccessNotification:   "notifications",
+		AccessClipboardRead:  "clipboard",
+		AccessClipboardWrite: "clipboard",
+		AccessCamera:         "camera",
+		AccessMicrophone:     "microphone",
+		AccessLocation:       "location",
 	}
 	for mode, want := range cases {
 		if got := mode.String(); got != want {
@@ -205,5 +211,78 @@ func TestAccess_AccessMode_String_Bad(t *testing.T) {
 func TestAccess_AccessMode_String_Ugly(t *testing.T) {
 	if got := AccessMode(-1).String(); got != "unknown" {
 		t.Errorf("negative mode = %q; want %q", got, "unknown")
+	}
+}
+
+// TestAccess_CheckAccess_Notification — notifications gate granted only
+// when permissions.notifications: true is declared.
+func TestAccess_CheckAccess_Notification(t *testing.T) {
+	declared := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Notifications: true},
+	}
+	if err := CheckAccess(declared, AccessNotification, ""); err != nil {
+		t.Errorf("notifications=true should grant: %v", err)
+	}
+
+	empty := &config.ViewManifest{}
+	if err := CheckAccess(empty, AccessNotification, ""); err == nil {
+		t.Error("empty manifest should deny notification")
+	}
+}
+
+// TestAccess_CheckAccess_Clipboard — Clipboard=true grants both
+// read and write directions; an empty manifest denies both.
+func TestAccess_CheckAccess_Clipboard(t *testing.T) {
+	declared := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Clipboard: true},
+	}
+	if err := CheckAccess(declared, AccessClipboardRead, ""); err != nil {
+		t.Errorf("clipboard=true should grant read: %v", err)
+	}
+	if err := CheckAccess(declared, AccessClipboardWrite, ""); err != nil {
+		t.Errorf("clipboard=true should grant write: %v", err)
+	}
+	empty := &config.ViewManifest{}
+	if err := CheckAccess(empty, AccessClipboardRead, ""); err == nil {
+		t.Error("empty manifest should deny clipboard read")
+	}
+	if err := CheckAccess(empty, AccessClipboardWrite, ""); err == nil {
+		t.Error("empty manifest should deny clipboard write")
+	}
+}
+
+// TestAccess_CheckAccess_Devices — Camera, Microphone and Location
+// gates honour their respective declarations and deny otherwise. The
+// location gate honours the legacy `device.location` entry stored in
+// permissions.run because ViewPermissions has no typed slot yet.
+func TestAccess_CheckAccess_Devices(t *testing.T) {
+	cam := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Camera: true},
+	}
+	if err := CheckAccess(cam, AccessCamera, ""); err != nil {
+		t.Errorf("camera=true should grant: %v", err)
+	}
+	mic := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Microphone: true},
+	}
+	if err := CheckAccess(mic, AccessMicrophone, ""); err != nil {
+		t.Errorf("microphone=true should grant: %v", err)
+	}
+	loc := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Run: []string{"device.location"}},
+	}
+	if err := CheckAccess(loc, AccessLocation, ""); err != nil {
+		t.Errorf("location declared via Run should grant: %v", err)
+	}
+
+	empty := &config.ViewManifest{}
+	if err := CheckAccess(empty, AccessCamera, ""); err == nil {
+		t.Error("empty manifest should deny camera")
+	}
+	if err := CheckAccess(empty, AccessMicrophone, ""); err == nil {
+		t.Error("empty manifest should deny microphone")
+	}
+	if err := CheckAccess(empty, AccessLocation, ""); err == nil {
+		t.Error("empty manifest should deny location")
 	}
 }
