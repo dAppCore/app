@@ -10,6 +10,16 @@
 //	core-app sign --key app.key  # sign .core/view.yaml in place
 //	core-app keygen --dir ~/.core/keys --name app
 //	                              # generate a paired ed25519 keypair
+//	core-app pkg list             # list installed packages
+//	core-app pkg wrap --pwa URL   # wrap a PWA as a CoreApp
+//	core-app pkg wrap --electron REPO
+//	                              # wrap an Electron app as a CoreApp
+//	core-app pkg wrap --web DIR   # wrap a local web dir as a CoreApp
+//	core-app pkg remove NAME      # remove an installed package
+//	core-app pkg update NAME      # re-fetch and re-wrap an installed pkg
+//	core-app marketplace search Q # search the local marketplace cache
+//	core-app marketplace install CODE
+//	                              # install a marketplace listing
 //
 // This binary is the thin CLI shell around app.Boot, app.Compile and
 // app.Sign. Real orchestration lives in the app package; main is here to
@@ -41,10 +51,86 @@ func main() {
 			os.Exit(runSign(args[1:]))
 		case "keygen":
 			os.Exit(runKeygen(args[1:]))
+		case "pkg":
+			os.Exit(runPkg(args[1:]))
+		case "marketplace":
+			os.Exit(runMarketplace(args[1:]))
+		case "run":
+			os.Exit(runInstalled(args[1:]))
 		}
 	}
 
 	runBoot(args)
+}
+
+// runInstalled boots an app by its installed code (RFC §4.0
+// `core run <app-code>`). Resolves the path under
+// `$DIR_HOME/.core/apps/<code>/` and delegates to runBoot.
+//
+//	core-app run photo-browser
+//	core-app run --dev photo-browser
+func runInstalled(args []string) int {
+	mode := app.ModeProd
+	code := ""
+	for _, a := range args {
+		switch a {
+		case "--dev":
+			mode = app.ModeDev
+		case "--help", "-h":
+			core.Println("core-app run [--dev] CODE")
+			core.Println("  CODE   the installed package code (under ~/.core/apps/CODE/)")
+			return 0
+		default:
+			if core.HasPrefix(a, "-") {
+				core.Error("run: unknown flag", "flag", a)
+				return 64
+			}
+			code = a
+		}
+	}
+	if code == "" {
+		core.Error("run: CODE is required")
+		return 64
+	}
+	home := core.Env("DIR_HOME")
+	if home == "" {
+		core.Error("run: cannot resolve DIR_HOME")
+		return 1
+	}
+	dir := core.Path(home, ".core", app.AppsDirName, code)
+	if !coreio.Local.IsDir(dir) {
+		core.Error("run: package not installed", "code", code, "expected", dir)
+		return 1
+	}
+	runBootFromMode(mode, dir)
+	return 0
+}
+
+// runBootFromMode is a small helper that drives runBoot from a
+// pre-resolved (mode, start) pair. Keeps the Boot wiring in one place
+// even when the caller already knows the directory.
+//
+//	runBootFromMode(app.ModeDev, "/Users/me/.core/apps/photo-browser")
+func runBootFromMode(mode app.Mode, start string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	inst, err := app.Boot(ctx, start, app.WithMode(mode))
+	if err != nil {
+		core.Error("boot failed", "start", start, "mode", mode.String(), "err", err)
+		os.Exit(1)
+	}
+	core.Info("CoreApp booted",
+		"code", inst.Manifest.Code,
+		"name", inst.Manifest.Name,
+		"version", inst.Manifest.Version,
+		"mode", inst.Mode.String(),
+		"root", inst.Root,
+	)
+	if r := inst.Start(ctx); !r.OK {
+		core.Error("start failed", "err", r.Value)
+		os.Exit(2)
+	}
 }
 
 // runBoot drives the "boot a CoreApp" path. Extracted from main so the
@@ -100,9 +186,12 @@ func parseArgs(args []string) (app.Mode, string) {
 			core.Println("  path    directory holding .core/view.yaml (default: ./)")
 			core.Println("")
 			core.Println("Subcommands:")
-			core.Println("  compile   compile .core/view.yaml → core.json")
-			core.Println("  sign      sign .core/view.yaml with a private key")
-			core.Println("  keygen    generate a paired ed25519 keypair")
+			core.Println("  compile      compile .core/view.yaml → core.json")
+			core.Println("  sign         sign .core/view.yaml with a private key")
+			core.Println("  keygen       generate a paired ed25519 keypair")
+			core.Println("  run CODE     boot an installed package by code")
+			core.Println("  pkg ...      manage packages (list, wrap, install, remove, update)")
+			core.Println("  marketplace  search/install/fetch from the marketplace")
 			os.Exit(0)
 		default:
 			if core.HasPrefix(a, "-") {

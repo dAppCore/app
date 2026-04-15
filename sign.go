@@ -151,6 +151,20 @@ func WritePublicKey(medium coreio.Medium, path string, pub ed25519.PublicKey) er
 	return nil
 }
 
+// SignManifest signs a ViewManifest in memory — the canonical YAML
+// bytes (with Sign cleared) are fed through ed25519.Sign and the
+// base64-encoded signature is stapled into Sign. Same machinery Sign()
+// uses against a file on disk; exposed publicly so packaging and
+// wrapping paths can sign before writing.
+//
+//	err := app.SignManifest(&manifest, priv)
+//
+// The function mutates `m` in place (writes to m.Sign). Callers that
+// need the signed bytes should YAML-marshal the manifest afterwards.
+func SignManifest(m *config.ViewManifest, priv ed25519.PrivateKey) error {
+	return signManifest(m, priv)
+}
+
 // Keygen generates a fresh ed25519 keypair and writes both halves to the
 // supplied directory. Returns the absolute paths of the private and
 // public key files. The RFC §3.2 default layout is
