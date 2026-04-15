@@ -423,3 +423,67 @@ func TestMarketplace_StampSource_Ugly(t *testing.T) {
 		t.Errorf("Config[source] = %q; want %q", src, "marketplace:fresh")
 	}
 }
+
+// TestMarketplace_MarketplaceRemove_Good — the marketplace-layer alias
+// removes an installed package directory. Equivalent to PkgRemove but
+// named per RFC §6.2 so callers reasoning at the marketplace level have
+// a one-stop surface.
+func TestMarketplace_MarketplaceRemove_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	dir := core.Path(home, ".core", "apps", "rm-good", ".core")
+	if err := medium.EnsureDir(dir); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(core.Path(dir, "view.yaml"),
+		"code: rm-good\nname: Remove Good\nversion: 0.1.0\n"); err != nil {
+		t.Fatalf("Write manifest: %v", err)
+	}
+	if err := app.MarketplaceRemove(medium, home, "rm-good", false); err != nil {
+		t.Fatalf("MarketplaceRemove: %v", err)
+	}
+	if medium.IsDir(core.Path(home, ".core", "apps", "rm-good")) {
+		t.Error("install tree should have been removed")
+	}
+}
+
+// TestMarketplace_MarketplaceRemove_Bad — calling against a missing
+// package surfaces a typed error so the CLI can print a friendly "not
+// installed" message rather than silently succeeding.
+func TestMarketplace_MarketplaceRemove_Bad(t *testing.T) {
+	home := t.TempDir()
+	if err := app.MarketplaceRemove(coreio.Local, home, "never-installed", false); err == nil {
+		t.Fatal("MarketplaceRemove on missing package should error")
+	}
+}
+
+// TestMarketplace_MarketplaceRemove_Ugly — Purge=true drops both the
+// install tree and the workspace data tree, mirroring
+// `core marketplace remove --purge` semantics.
+func TestMarketplace_MarketplaceRemove_Ugly(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	dir := core.Path(home, ".core", "apps", "rm-ugly", ".core")
+	if err := medium.EnsureDir(dir); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(core.Path(dir, "view.yaml"),
+		"code: rm-ugly\nname: Remove Ugly\nversion: 0.1.0\n"); err != nil {
+		t.Fatalf("Write manifest: %v", err)
+	}
+	// Plant a data tree so Purge has work to do.
+	dataDir := core.Path(home, ".core", "data", "rm-ugly")
+	if err := medium.EnsureDir(dataDir); err != nil {
+		t.Fatalf("EnsureDir data: %v", err)
+	}
+	if err := medium.Write(core.Path(dataDir, "kv.db"), "x"); err != nil {
+		t.Fatalf("Write kv: %v", err)
+	}
+	if err := app.MarketplaceRemove(medium, home, "rm-ugly", true); err != nil {
+		t.Fatalf("MarketplaceRemove: %v", err)
+	}
+	if medium.IsDir(dataDir) {
+		t.Error("purge should have removed the workspace data tree")
+	}
+}
+

@@ -303,3 +303,110 @@ func TestCompile_indentJSON_Ugly(t *testing.T) {
 		t.Errorf("string contents mutated: %q", out)
 	}
 }
+
+// TestCompile_Compile_Config_Good — Config is copied into the
+// CompiledManifest so template blocks (RFC §4.1 step 6) and Config-backed
+// permission flags survive the compile→core.json round-trip. Without
+// this the runtime would silently lose `config:` entries when booting
+// from the compiled artefact.
+func TestCompile_Compile_Config_Good(t *testing.T) {
+	m := &config.ViewManifest{
+		Code:    "c-app",
+		Name:    "C App",
+		Version: "0.1.0",
+		Config: map[string]any{
+			"thumbnails": map[string]any{
+				"template": "conf/thumbs.json.tmpl",
+				"vars":     map[string]any{"size": "256"},
+			},
+			"store": true,
+			"write": []any{"./photos/.thumbnails/"},
+		},
+	}
+	cm, err := Compile(m, CompileOptions{})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if cm.Config == nil {
+		t.Fatal("Config missing from CompiledManifest")
+	}
+	if cm.Config["store"] != true {
+		t.Errorf("Config[store] = %v; want true", cm.Config["store"])
+	}
+	if _, ok := cm.Config["thumbnails"]; !ok {
+		t.Error("Config[thumbnails] missing — template block was dropped")
+	}
+}
+
+// TestCompile_Compile_Config_Bad — an empty Config map produces a nil
+// Config slot on the CompiledManifest so the JSON `omitempty` rule fires
+// and core.json doesn't carry a redundant `"config": {}`.
+func TestCompile_Compile_Config_Bad(t *testing.T) {
+	m := &config.ViewManifest{
+		Code: "empty", Name: "Empty", Version: "0.1.0",
+		Config: map[string]any{},
+	}
+	cm, err := Compile(m, CompileOptions{})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if cm.Config != nil {
+		t.Errorf("Config should be nil for empty input; got %v", cm.Config)
+	}
+}
+
+// TestCompile_Compile_Config_Ugly — mutating the source manifest after
+// Compile does not leak into the CompiledManifest. The copyConfig
+// helper does a shallow clone so the caller owns their copy.
+func TestCompile_Compile_Config_Ugly(t *testing.T) {
+	m := &config.ViewManifest{
+		Code: "iso", Name: "Iso", Version: "0.1.0",
+		Config: map[string]any{"k": "original"},
+	}
+	cm, err := Compile(m, CompileOptions{})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	m.Config["k"] = "mutated"
+	if cm.Config["k"] != "original" {
+		t.Errorf("CompiledManifest.Config was aliased: got %q", cm.Config["k"])
+	}
+}
+
+// TestCompile_copyConfig_Good — copyConfig returns an independent map
+// with the same keys so mutations on the source don't reach the copy.
+func TestCompile_copyConfig_Good(t *testing.T) {
+	src := map[string]any{"a": 1, "b": "two"}
+	dst := copyConfig(src)
+	if len(dst) != 2 {
+		t.Fatalf("len(dst) = %d; want 2", len(dst))
+	}
+	dst["a"] = 99
+	if src["a"] != 1 {
+		t.Errorf("source mutated via copy: %v", src["a"])
+	}
+}
+
+// TestCompile_copyConfig_Bad — nil and empty inputs yield a nil output
+// so the caller's JSON omitempty tag fires.
+func TestCompile_copyConfig_Bad(t *testing.T) {
+	if got := copyConfig(nil); got != nil {
+		t.Errorf("copyConfig(nil) = %v; want nil", got)
+	}
+	if got := copyConfig(map[string]any{}); got != nil {
+		t.Errorf("copyConfig({}) = %v; want nil", got)
+	}
+}
+
+// TestCompile_copyConfig_Ugly — values are copied by reference (shallow
+// clone). Nested maps are NOT deep-copied; that matches the Go convention
+// and keeps Compile allocation-light.
+func TestCompile_copyConfig_Ugly(t *testing.T) {
+	nested := map[string]any{"inner": 1}
+	src := map[string]any{"n": nested}
+	dst := copyConfig(src)
+	nested["inner"] = 2
+	if got := dst["n"].(map[string]any)["inner"]; got != 2 {
+		t.Errorf("nested map should be aliased (shallow copy); got %v", got)
+	}
+}

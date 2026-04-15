@@ -108,6 +108,14 @@ func (a AccessMode) String() string {
 //   - AccessRun: `arg` must match any entry in `permissions.run[]`
 //     exactly.
 //
+//   - AccessRead / AccessWrite also reject path traversal (RFC §5.2 /
+//     §10.2) — any `arg` containing a `..` segment is denied regardless
+//     of declared prefixes. Prefix matching alone isn't safe: a manifest
+//     granting `./data/` would otherwise admit `./data/../etc/passwd`.
+//     The legacy Filesystem bool granting "everything" still applies —
+//     but even there, an explicit traversal attempt is rejected so the
+//     defence holds uniformly.
+//
 // Returns nil when access is granted.
 //
 //	if err := app.CheckAccess(manifest, app.AccessRead, "./photos/a.jpg"); err != nil {
@@ -120,6 +128,9 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 
 	switch mode {
 	case AccessRead:
+		if err := rejectPathTraversal("read", arg); err != nil {
+			return err
+		}
 		if m.Permissions.Filesystem {
 			return nil
 		}
@@ -132,6 +143,9 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 			nil,
 		)
 	case AccessWrite:
+		if err := rejectPathTraversal("write", arg); err != nil {
+			return err
+		}
 		if m.Permissions.Filesystem {
 			return nil
 		}
@@ -271,6 +285,48 @@ func manifestWriteList(m *config.ViewManifest) []string {
 	default:
 		return nil
 	}
+}
+
+// rejectPathTraversal blocks any path argument that contains a parent
+// traversal segment (`..`). Matches RFC §5.2 / §10.2 — "Path traversal
+// blocked" is a hard rule of the permission gate regardless of how the
+// manifest's declared prefixes happen to look. A prefix match like
+// `./data/` would otherwise admit `./data/../etc/passwd` because
+// HasPrefix is purely textual; this helper short-circuits that before
+// any match check runs.
+//
+//	_ = rejectPathTraversal("read", "./data/../etc/passwd") // error
+//	_ = rejectPathTraversal("read", "./data/a.jpg")          // nil
+//
+// Detected forms:
+//
+//   - `..` as the whole argument.
+//
+//   - `../` or `..\\` at the start of the argument.
+//
+//   - `/../`, `\\..\\` or `/..` anywhere inside.
+//
+// The check is deliberately conservative — a legitimate filename like
+// `double..extension.txt` passes because there's no path-separator
+// boundary on either side of `..`.
+func rejectPathTraversal(scope, arg string) error {
+	if arg == "" {
+		return nil
+	}
+	if arg == ".." ||
+		core.HasPrefix(arg, "../") ||
+		core.HasPrefix(arg, "..\\") ||
+		core.Contains(arg, "/../") ||
+		core.Contains(arg, "\\..\\") ||
+		core.HasSuffix(arg, "/..") ||
+		core.HasSuffix(arg, "\\..") {
+		return coreerr.E(
+			"app.CheckAccess",
+			scope+" access refused: path traversal in '"+arg+"'",
+			nil,
+		)
+	}
+	return nil
 }
 
 // matchPrefix returns true when `arg` starts with any entry in list.

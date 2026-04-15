@@ -668,3 +668,20 @@ func rollbackNativeRepo(ctx context.Context, c *core.Core, dest string) error {
 func MarketplaceInstalled(medium coreio.Medium, home string) ([]PkgEntry, error) {
 	return PkgList(medium, home)
 }
+
+// MarketplaceRemove is the marketplace-flavoured alias for PkgRemove so
+// the surface matches RFC §6.2's four-verb set
+// (search/install/update/remove). Same validation and failure modes as
+// PkgRemove; Purge wipes the workspace data tree alongside the install.
+//
+//	err := app.MarketplaceRemove(coreio.Local, home, "photo-browser", false)
+//	err := app.MarketplaceRemove(coreio.Local, home, "photo-browser", true)  // purge
+//
+// Having this here means callers that reason at the marketplace layer
+// (MarketplaceResolve → MarketplaceInstall → MarketplaceUpdate →
+// MarketplaceRemove) never need to dip into the lower-level pkg.go
+// helpers; the naming follows the RFC's `core marketplace remove`
+// command verb so docs and code agree.
+func MarketplaceRemove(medium coreio.Medium, home, name string, purge bool) error {
+	return PkgRemoveWith(medium, home, name, PkgRemoveOptions{Purge: purge})
+}

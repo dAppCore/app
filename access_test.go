@@ -281,6 +281,117 @@ func TestAccess_CheckAccess_Clipboard(t *testing.T) {
 	}
 }
 
+// TestAccess_rejectPathTraversal_Good — the direct traversal forms
+// surface a typed error regardless of mode.
+func TestAccess_rejectPathTraversal_Good(t *testing.T) {
+	cases := []string{
+		"..",
+		"../etc/passwd",
+		"./data/../etc/passwd",
+		"/foo/../bar",
+		"..\\windows\\system32",
+		"C:\\data\\..\\Windows",
+		"foo/..",
+		"foo\\..",
+	}
+	for _, arg := range cases {
+		if err := rejectPathTraversal("read", arg); err == nil {
+			t.Errorf("rejectPathTraversal(%q) = nil; want error", arg)
+		}
+	}
+}
+
+// TestAccess_rejectPathTraversal_Bad — legitimate paths (no `..`
+// segment) return nil so the normal match check can proceed.
+func TestAccess_rejectPathTraversal_Bad(t *testing.T) {
+	cases := []string{
+		"",
+		"./data/a.jpg",
+		"/tmp/file",
+		"double..extension.txt", // no path boundary around `..`
+		"foo..bar",
+	}
+	for _, arg := range cases {
+		if err := rejectPathTraversal("read", arg); err != nil {
+			t.Errorf("rejectPathTraversal(%q) = %v; want nil", arg, err)
+		}
+	}
+}
+
+// TestAccess_rejectPathTraversal_Ugly — scope name is carried into the
+// error message so callers can match denial to the right operation.
+func TestAccess_rejectPathTraversal_Ugly(t *testing.T) {
+	err := rejectPathTraversal("write", "./photos/../etc/shadow")
+	if err == nil {
+		t.Fatal("expected traversal error")
+	}
+	if !contains(err.Error(), "write") {
+		t.Errorf("error should mention the scope 'write': %v", err)
+	}
+	if !contains(err.Error(), "./photos/../etc/shadow") {
+		t.Errorf("error should echo the offending arg: %v", err)
+	}
+}
+
+// contains is a tiny substring helper the path-traversal assertions
+// use — kept local to the test file so production code doesn't grow a
+// duplicate of core.Contains.
+func contains(haystack, needle string) bool {
+	if needle == "" {
+		return true
+	}
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if haystack[i:i+len(needle)] == needle {
+			return true
+		}
+	}
+	return false
+}
+
+// TestAccess_CheckAccess_Traversal_Good — a declared-prefix manifest
+// rejects a traversal attempt even when the textual prefix would
+// otherwise match. Proves RFC §5.2 / §10.2 "Path traversal blocked"
+// holds for the public gate.
+func TestAccess_CheckAccess_Traversal_Good(t *testing.T) {
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{
+			Read: []string{"./photos/"},
+		},
+	}
+	if err := CheckAccess(m, AccessRead, "./photos/../etc/passwd"); err == nil {
+		t.Error("traversal through declared prefix should be denied")
+	}
+}
+
+// TestAccess_CheckAccess_Traversal_Bad — legacy Filesystem=true still
+// rejects a traversal attempt so the "blanket allow" flag does not
+// become a footgun. RFC §5.2 is a hard rule of the gate.
+func TestAccess_CheckAccess_Traversal_Bad(t *testing.T) {
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Filesystem: true},
+	}
+	if err := CheckAccess(m, AccessRead, "./data/../etc/passwd"); err == nil {
+		t.Error("Filesystem=true must not bypass traversal defence")
+	}
+	if err := CheckAccess(m, AccessWrite, "./data/../etc/passwd"); err == nil {
+		t.Error("Filesystem=true must not bypass traversal defence on write")
+	}
+}
+
+// TestAccess_CheckAccess_Traversal_Ugly — Config["write"] list also
+// subject to the traversal defence, so a clever manifest can't slip
+// past by using the per-path list instead of Filesystem=true.
+func TestAccess_CheckAccess_Traversal_Ugly(t *testing.T) {
+	m := &config.ViewManifest{
+		Config: map[string]any{
+			"write": []any{"./tmp/"},
+		},
+	}
+	if err := CheckAccess(m, AccessWrite, "./tmp/../etc/passwd"); err == nil {
+		t.Error("Config[write] prefix must not bypass traversal defence")
+	}
+}
+
 // TestAccess_CheckAccess_Devices — Camera, Microphone and Location
 // gates honour their respective declarations and deny otherwise. The
 // location gate honours the legacy `device.location` entry stored in

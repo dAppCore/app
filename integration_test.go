@@ -347,6 +347,102 @@ func TestIntegration_CompileSignBoot_Good(t *testing.T) {
 	}
 }
 
+// TestIntegration_Compile_Preserves_Config — compile then boot-from-core.json
+// must still render config templates. Pins the RFC §3.1 contract that
+// core.json is the "distribution-ready artifact" — it must carry every
+// field Step 6 needs, not just the identity + permissions.
+//
+// Without this guarantee, a user running `core compile && core`
+// (prod mode reads core.json) would silently skip their declared
+// template blocks. Adding Config to CompiledManifest closes that gap.
+func TestIntegration_Compile_Preserves_Config(t *testing.T) {
+	projectDir := t.TempDir()
+	medium := coreio.Local
+
+	pub, priv, _ := ed25519.GenerateKey(nil)
+
+	// Source manifest with a template block. Step 6 must render this
+	// even after the compile→core.json→boot round-trip.
+	manifest := config.ViewManifest{
+		Code:    "compile-config",
+		Name:    "Compile Config",
+		Version: "0.1.0",
+		Permissions: config.ViewPermissions{
+			Read: []string{"./data/"},
+		},
+		Config: map[string]any{
+			"thumbnails": map[string]any{
+				"template": "conf/thumbs.json.tmpl",
+				"vars":     map[string]any{"size": "256"},
+			},
+		},
+	}
+	if err := app.SignManifestForTest(&manifest, priv); err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+
+	body, _ := yaml.Marshal(&manifest)
+	viewPath := core.Path(projectDir, ".core", "view.yaml")
+	if err := medium.EnsureDir(core.PathDir(viewPath)); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(viewPath, string(body)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	// Drop the template on disk so Step 6's existence check passes.
+	tmplPath := core.Path(projectDir, "conf", "thumbs.json.tmpl")
+	if err := medium.EnsureDir(core.PathDir(tmplPath)); err != nil {
+		t.Fatalf("EnsureDir conf: %v", err)
+	}
+	if err := medium.Write(tmplPath, `{"size":{{ .size }}}`); err != nil {
+		t.Fatalf("Write tmpl: %v", err)
+	}
+
+	// Compile so prod mode reads core.json, not view.yaml.
+	var signed config.ViewManifest
+	if err := config.LoadManifest(medium, viewPath, &signed); err != nil {
+		t.Fatalf("reload manifest: %v", err)
+	}
+	cm, err := app.Compile(&signed, app.CompileOptions{})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if err := app.WriteCompiled(medium, projectDir, cm); err != nil {
+		t.Fatalf("WriteCompiled: %v", err)
+	}
+
+	// Delete the YAML so the only way to succeed is through core.json.
+	if err := medium.Delete(viewPath); err != nil {
+		t.Fatalf("Delete view.yaml: %v", err)
+	}
+	// Ensure .core/ still exists so CoreDirs finds the project root.
+	if err := medium.EnsureDir(core.Path(projectDir, ".core")); err != nil {
+		t.Fatalf("EnsureDir .core: %v", err)
+	}
+
+	_, err = app.Boot(context.Background(), projectDir,
+		app.WithMode(app.ModeProd),
+		app.WithMedium(medium),
+		app.WithPublicKey(hex.EncodeToString(pub)),
+		app.WithoutKeyLoad(),
+		app.WithWorkspaceHome(t.TempDir()),
+	)
+	if err != nil {
+		t.Fatalf("Boot from core.json with template failed: %v", err)
+	}
+
+	// Template must have been rendered from the Config carried through
+	// compile → core.json → hydrated ViewManifest.
+	rendered, rerr := medium.Read(core.Path(projectDir, "conf", "thumbs.json"))
+	if rerr != nil {
+		t.Fatalf("read rendered template: %v", rerr)
+	}
+	if rendered != `{"size":256}` {
+		t.Errorf("template not rendered from core.json Config; got %q", rendered)
+	}
+}
+
 // TestIntegration_KeyringLoad_Good — an actual keys/ directory scan
 // resolves a dropped `*.pub` file and trusts the signature. This proves
 // the CLI convention ("drop a pubkey in ~/.core/keys/") works with the

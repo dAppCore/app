@@ -582,3 +582,50 @@ func TestPermissions_UngatedActions_Ugly(t *testing.T) {
 		t.Errorf("custom action should be Allowed+Unlimited; got %+v", e)
 	}
 }
+
+// TestPermissions_BrowserOpenGate_Good — `gui.browser.open` rides the
+// `net` permission because it hands a URL to the OS browser (the app is
+// doing network dispatch on behalf of the user). A manifest that
+// declares net[] lets the action through.
+func TestPermissions_BrowserOpenGate_Good(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Net: []string{"*"}},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("gui.browser.open"); !e.Allowed {
+		t.Errorf("gui.browser.open should be allowed with net declared; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_BrowserOpenGate_Bad — without `net`, `gui.browser.open`
+// is denied in prod mode so a wrapped Electron app that forgets to map
+// shell.openExternal cannot silently exfiltrate via the browser.
+func TestPermissions_BrowserOpenGate_Bad(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("gui.browser.open"); e.Allowed {
+		t.Errorf("gui.browser.open should be denied without net; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_BrowserOpenGate_Ugly — dev mode warns instead of
+// denying, so a developer iterating without net declared still sees the
+// action fire but the reason surfaces the would-be denial.
+func TestPermissions_BrowserOpenGate_Ugly(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeDev); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	e := c.Entitled("gui.browser.open")
+	if !e.Allowed {
+		t.Errorf("dev mode should allow gui.browser.open; reason=%q", e.Reason)
+	}
+	if e.Reason == "" {
+		t.Error("dev mode should still surface the would-be denial reason")
+	}
+}

@@ -102,6 +102,11 @@ func discoverCompiled(medium coreio.Medium, start string, mode Mode) (config.Vie
 // Slots go from string → any (the YAML-flexible shape) so the layout
 // step re-uses the same validator without special-casing the origin.
 //
+// Config is copied through verbatim so the template renderer (RFC §4.1
+// step 6) and the Config-backed permission flags (`store`, `write`,
+// `services`) behave identically whether the runtime booted from
+// `.core/view.yaml` or from the compiled `core.json`.
+//
 //	view := compiledToManifest(cm)
 func compiledToManifest(cm *CompiledManifest) config.ViewManifest {
 	if cm == nil {
@@ -114,6 +119,13 @@ func compiledToManifest(cm *CompiledManifest) config.ViewManifest {
 			slots[k] = v
 		}
 	}
+	var cfg map[string]any
+	if len(cm.Config) > 0 {
+		cfg = make(map[string]any, len(cm.Config))
+		for k, v := range cm.Config {
+			cfg[k] = v
+		}
+	}
 	return config.ViewManifest{
 		Code:        cm.Code,
 		Name:        cm.Name,
@@ -123,6 +135,7 @@ func compiledToManifest(cm *CompiledManifest) config.ViewManifest {
 		Slots:       slots,
 		Modules:     append([]string(nil), cm.Modules...),
 		Permissions: cm.Permissions,
+		Config:      cfg,
 	}
 }
 

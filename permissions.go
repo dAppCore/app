@@ -53,6 +53,11 @@ var actionPermissionMap = []actionGate{
 	{prefix: "gui.notification.send", field: fieldNotification},
 	{prefix: "gui.clipboard.read", field: fieldClipboardRead},
 	{prefix: "gui.clipboard.write", field: fieldClipboardWrite},
+	// `gui.browser.open` hands a URL to the OS browser — the app is
+	// effectively performing a network dispatch on behalf of the user, so
+	// it rides the `net` permission gate. SDK §9.3 marks the action with
+	// Permission="net" to match.
+	{prefix: "gui.browser.open", field: fieldNet},
 	{prefix: "device.camera", field: fieldCamera},
 	{prefix: "device.microphone", field: fieldMicrophone},
 	{prefix: "device.location", field: fieldLocation},

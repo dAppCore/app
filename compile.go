@@ -47,6 +47,13 @@ type ComponentSpec struct {
 //
 //	cm := app.Compile(&manifest, app.CompileOptions{})
 //	r := core.JSONMarshal(cm) // "core.json" bytes
+//
+// Config is copied verbatim from the source manifest so the boot-time
+// template renderer (RFC §4.1 step 6) and the permission gate's
+// Config-backed flags (`store`, `write`, `services`, …) survive the
+// compile→core.json→Boot round-trip. Without this the runtime would
+// silently lose any template block or wrap provenance the manifest
+// recorded.
 type CompiledManifest struct {
 	Code        string                   `json:"code"`
 	Name        string                   `json:"name"`
@@ -59,6 +66,7 @@ type CompiledManifest struct {
 	Permissions config.ViewPermissions   `json:"permissions"`
 	Modules     []string                 `json:"modules,omitempty"`
 	Components  map[string]ComponentSpec `json:"components,omitempty"`
+	Config      map[string]any           `json:"config,omitempty"`
 }
 
 // CompileOptions tunes the Compile step. Zero-value options produce a
@@ -134,8 +142,27 @@ func Compile(m *config.ViewManifest, opts CompileOptions) (*CompiledManifest, er
 		Permissions: m.Permissions,
 		Modules:     append([]string(nil), m.Modules...),
 		Components:  components,
+		Config:      copyConfig(m.Config),
 	}
 	return out, nil
+}
+
+// copyConfig returns a shallow clone of the manifest's Config map so a
+// Compile caller can mutate their source manifest afterwards without
+// affecting the emitted artefact (and vice-versa). A nil input stays
+// nil — we never promote an empty map into core.json for the sake of a
+// single level of defensive copying.
+//
+//	cm.Config = copyConfig(m.Config)
+func copyConfig(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
 }
 
 // resolveSlots narrows the YAML-flexible `map[string]any` into a strict

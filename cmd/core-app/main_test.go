@@ -142,6 +142,28 @@ func TestMain_runSign_Ugly(t *testing.T) {
 	}
 }
 
+// TestMain_runSign_NoFlag_RFCDefault — the RFC §3.2 example `core sign`
+// (no flag) resolves to the default keyring path. The test can't
+// override core.Env("DIR_HOME") from within the test binary (it's
+// captured at init) so this case exercises the failure path — the
+// default key lookup surfaces a recognisable error when the key is
+// absent, which proves the no-flag branch routed to LoadDefaultPrivateKey
+// rather than falling through to the old "--key required" reject.
+func TestMain_runSign_NoFlag_RFCDefault(t *testing.T) {
+	dir := writeViewManifest(t, "cli-sign-no-flag", "CLI Sign No Flag", "0.1.0")
+	// Touch $DIR_HOME/.core/keys out of the way of any real default key
+	// by not providing --key or --default. The function should attempt
+	// LoadDefaultPrivateKey and fail with a "default key not found"
+	// message (or succeed silently if a default key happens to be
+	// installed on the host). Either way, the return code must NOT be
+	// the old flag-required EX_USAGE=64.
+	rc := runSign([]string{dir})
+	if rc == 64 {
+		t.Fatalf("runSign (no flag) returned EX_USAGE=64; the no-flag branch "+
+			"should route to the default key, not reject the invocation (rc=%d)", rc)
+	}
+}
+
 // TestMain_runKeygen_Good — keygen writes paired files in the target
 // directory.
 func TestMain_runKeygen_Good(t *testing.T) {

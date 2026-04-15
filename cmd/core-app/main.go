@@ -347,9 +347,10 @@ func runSign(args []string) int {
 			opts.UseDefaultKey = true
 		case "--help", "-h":
 			core.Println("core-app sign [--key PATH | --default] [project-dir]")
-			core.Println("  --key      hex-encoded ed25519 private key (.key file)")
-			core.Println("  --default  use $DIR_HOME/.core/keys/default.key")
-			core.Println("  project    project root holding .core/view.yaml (default: ./)")
+			core.Println("  (no flag) sign with $DIR_HOME/.core/keys/default.key (RFC §3.2)")
+			core.Println("  --key     hex-encoded ed25519 private key (.key file)")
+			core.Println("  --default explicit opt-in for $DIR_HOME/.core/keys/default.key")
+			core.Println("  project   project root holding .core/view.yaml (default: ./)")
 			return 0
 		default:
 			if core.HasPrefix(args[i], "-") {
@@ -360,11 +361,6 @@ func runSign(args []string) int {
 		}
 	}
 
-	if opts.Key == "" && !opts.UseDefaultKey {
-		core.Error("sign: --key or --default is required")
-		return 64
-	}
-
 	medium := coreio.Local
 
 	path := config.FindManifest(medium, opts.Start, config.FileView)
@@ -373,19 +369,31 @@ func runSign(args []string) int {
 		return 1
 	}
 
+	// Per RFC §3.2 — `core sign` with no flag signs with the default key
+	// at $DIR_HOME/.core/keys/default.key. `--key PATH` overrides to a
+	// specific file; `--default` is an explicit synonym kept for scripts
+	// that want to be unambiguous.
 	var priv ed25519.PrivateKey
-	if opts.UseDefaultKey {
-		var err error
-		priv, err = app.LoadDefaultPrivateKey(medium)
-		if err != nil {
-			core.Error("sign: default key load failed", "err", err)
-			return 1
-		}
-	} else {
+	switch {
+	case opts.Key != "":
 		var err error
 		priv, err = app.LoadPrivateKey(medium, opts.Key)
 		if err != nil {
 			core.Error("sign: private key load failed", "path", opts.Key, "err", err)
+			return 1
+		}
+	default:
+		// Either `--default` was passed or no flag was supplied — both
+		// resolve to the default keyring location so the RFC one-liner
+		// `core sign` works without surprises. `opts.UseDefaultKey`
+		// stays true for log parity.
+		_ = opts.UseDefaultKey
+		var err error
+		priv, err = app.LoadDefaultPrivateKey(medium)
+		if err != nil {
+			core.Error("sign: default key load failed "+
+				"(run `core-app keygen --dir $DIR_HOME/.core/keys --name default` first)",
+				"err", err)
 			return 1
 		}
 	}

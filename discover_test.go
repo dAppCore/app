@@ -210,6 +210,64 @@ func TestDiscover_compiledToManifest_Ugly(t *testing.T) {
 	}
 }
 
+// TestDiscover_compiledToManifest_Config_Good — Config survives the
+// CompiledManifest → ViewManifest projection so boot-from-core.json
+// still honours template blocks and Config-backed permission flags.
+func TestDiscover_compiledToManifest_Config_Good(t *testing.T) {
+	cm := &CompiledManifest{
+		Code:    "c-round",
+		Name:    "C Round",
+		Version: "0.1.0",
+		Config: map[string]any{
+			"store": true,
+			"write": []any{"./scratch/"},
+			"thumbnails": map[string]any{
+				"template": "conf/thumbs.json.tmpl",
+				"vars":     map[string]any{"size": "256"},
+			},
+		},
+	}
+	v := compiledToManifest(cm)
+	if v.Config == nil {
+		t.Fatal("Config dropped during projection")
+	}
+	if v.Config["store"] != true {
+		t.Errorf("Config[store] lost: %v", v.Config["store"])
+	}
+	if _, ok := v.Config["thumbnails"]; !ok {
+		t.Error("template block dropped during projection")
+	}
+}
+
+// TestDiscover_compiledToManifest_Config_Bad — empty Config map becomes
+// a nil projection so the ViewManifest keeps its "no-config" shape.
+func TestDiscover_compiledToManifest_Config_Bad(t *testing.T) {
+	cm := &CompiledManifest{
+		Code: "empty-cfg", Name: "Empty", Version: "0.1.0",
+		Config: map[string]any{},
+	}
+	v := compiledToManifest(cm)
+	if v.Config != nil {
+		t.Errorf("empty Config should project to nil; got %v", v.Config)
+	}
+}
+
+// TestDiscover_compiledToManifest_Config_Ugly — the projection is a
+// defensive copy, so mutating the source's Config does not leak into
+// the projected ViewManifest. Mirrors the pattern copyConfig establishes
+// on the compile side.
+func TestDiscover_compiledToManifest_Config_Ugly(t *testing.T) {
+	cm := &CompiledManifest{
+		Code: "iso", Name: "Iso", Version: "0.1.0",
+		Config: map[string]any{"k": "original"},
+	}
+	v := compiledToManifest(cm)
+	cm.Config["k"] = "mutated"
+	if v.Config["k"] != "original" {
+		t.Errorf("projection aliased Config; got %v", v.Config["k"])
+	}
+}
+
 // TestDiscover_DiscoverInstalled_Good — a planted package directory
 // resolves to its absolute path under home/.core/apps/.
 func TestDiscover_DiscoverInstalled_Good(t *testing.T) {
