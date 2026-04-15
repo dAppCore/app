@@ -113,7 +113,7 @@ func PluginBoot(ctx context.Context, opts PluginOptions) (*Instance, error) {
 		return nil, coreerr.E("app.PluginBoot", "layout composition failed", err)
 	}
 	inst.Layout = spec
-	if err := applyConfig(c, &inst.Manifest, medium, opts.ProjectRoot); err != nil {
+	if err := applyConfigWithMode(c, &inst.Manifest, medium, opts.ProjectRoot, opts.Mode); err != nil {
 		return nil, coreerr.E("app.PluginBoot", "config template failed", err)
 	}
 

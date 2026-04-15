@@ -326,6 +326,7 @@ type pkgWrapArgs struct {
 	Install       bool   // true → persist under DIR_HOME; false → dump to Dest only
 	Sign          string // path to a private .key file (optional)
 	UseDefaultKey bool   // sign with $DIR_HOME/.core/keys/default.key
+	AssetSource   string // optional local dir copied into the wrapped app root
 }
 
 // runPkgWrap parses flags and dispatches to the right wrap path.
@@ -473,52 +474,34 @@ func runPkgWrapElectron(opts pkgWrapArgs) int {
 	medium := coreio.Local
 
 	if isRepoSpec(dir) {
-		host, owner, repo, ok := app.ParseGitHubRepo(dir)
+		_, _, repo, ok := app.ParseGitHubRepo(dir)
 		if !ok {
 			core.Error("pkg wrap --electron: cannot parse repo reference", "ref", dir)
 			return 1
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		rel, err := app.FetchElectronRelease(ctx, host, owner, repo)
-		if err != nil {
-			core.Error("pkg wrap --electron: release fetch failed",
-				"host", host, "owner", owner, "repo", repo, "err", err)
-			return 1
-		}
-		asset, ok := app.SelectRendererAsset(rel)
-		if !ok {
-			core.Error("pkg wrap --electron: no renderer-shaped asset in release",
-				"tag", rel.TagName)
-			return 1
-		}
 		scratch := core.Path("./.core-wrap", "electron-"+repo)
-		path, err := app.DownloadAsset(ctx, medium, asset, scratch)
+		manifest, rendererDir, err := app.WrapElectronRepo(ctx, medium, dir, app.WrapElectronRepoOptions{
+			Code:       opts.Code,
+			Name:       opts.Name,
+			Version:    opts.Version,
+			ScratchDir: scratch,
+		})
 		if err != nil {
-			core.Error("pkg wrap --electron: asset download failed", "err", err)
+			core.Error("pkg wrap --electron: wrap failed", "repo", dir, "err", err)
 			return 1
 		}
-		// Auto-extract every supported archive shape (.zip, .tar,
-		// .tar.gz, .tgz) so the user can immediately scan the unpacked
-		// renderer with `pkg wrap --electron <dir>`.
-		if isExtractable(path) {
-			extracted := app.ArchiveExtractedDir(scratch, asset.Name)
-			if err := app.ExtractArchive(medium, path, extracted); err != nil {
-				core.Error("pkg wrap --electron: archive extract failed",
-					"asset", asset.Name, "err", err)
-				return 1
-			}
-			core.Info("renderer asset extracted — re-run with --electron <dir>",
-				"asset", asset.Name,
-				"extracted", extracted,
-				"tag", rel.TagName)
-			return 0
+		opts.AssetSource = rendererDir
+		if err := applyWrapSignature(opts, manifest); err != nil {
+			core.Error("pkg wrap --electron: sign failed", "err", err)
+			return 1
 		}
-		core.Info("renderer asset downloaded — extract and re-run with --electron <dir>",
-			"asset", asset.Name,
-			"path", path,
-			"tag", rel.TagName)
-		return 0
+		rc := persistWrap(manifest, opts)
+		if medium.IsDir(scratch) {
+			_ = medium.DeleteAll(scratch)
+		}
+		return rc
 	}
 
 	if !medium.IsDir(dir) {
@@ -548,6 +531,7 @@ func runPkgWrapElectron(opts pkgWrapArgs) int {
 	if opts.Version != "" {
 		manifest.Version = opts.Version
 	}
+	opts.AssetSource = dir
 	if err := applyWrapSignature(opts, manifest); err != nil {
 		core.Error("pkg wrap --electron: sign failed", "err", err)
 		return 1
@@ -592,6 +576,7 @@ func runPkgWrapWeb(opts pkgWrapArgs) int {
 		core.Error("pkg wrap --web: sign failed", "err", err)
 		return 1
 	}
+	opts.AssetSource = opts.WebDir
 	return persistWrap(manifest, opts)
 }
 
@@ -609,7 +594,7 @@ func persistWrap(manifest *config.ViewManifest, opts pkgWrapArgs) int {
 	medium := coreio.Local
 
 	if opts.Dest != "" && !opts.Install {
-		if err := app.WritePWAWrap(medium, opts.Dest, manifest); err != nil {
+		if err := app.WriteWrappedApp(medium, opts.Dest, manifest, opts.AssetSource); err != nil {
 			core.Error("pkg wrap: write failed", "err", err)
 			return 1
 		}
@@ -623,11 +608,13 @@ func persistWrap(manifest *config.ViewManifest, opts pkgWrapArgs) int {
 			core.Error("pkg wrap: cannot resolve DIR_HOME")
 			return 1
 		}
-		dest, err := app.InstallWrappedPWA(medium, manifest, app.PkgInstallOptions{
-			Home:   home,
-			Force:  true,
-			Source: "wrap:" + opts.sourceTag(),
-		})
+		installOpts := app.PkgInstallOptions{
+			Home:        home,
+			Force:       true,
+			Source:      "wrap:" + opts.sourceTag(),
+			AssetSource: opts.AssetSource,
+		}
+		dest, err := installWrappedByType(medium, manifest, installOpts)
 		if err != nil {
 			core.Error("pkg wrap: install failed", "err", err)
 			return 1
@@ -639,12 +626,44 @@ func persistWrap(manifest *config.ViewManifest, opts pkgWrapArgs) int {
 	// Neither --dest nor --install → write next to cwd under a
 	// predictable scratch directory.
 	scratch := "./.core-wrap/" + manifest.Code
-	if err := app.WritePWAWrap(medium, scratch, manifest); err != nil {
+	if err := app.WriteWrappedApp(medium, scratch, manifest, opts.AssetSource); err != nil {
 		core.Error("pkg wrap: scratch write failed", "err", err)
 		return 1
 	}
 	core.Info("wrapped", "code", manifest.Code, "dest", scratch)
 	return 0
+}
+
+// installWrappedByType dispatches to the install helper matching the
+// wrapped manifest's package type so web and Electron wraps can carry
+// their copied assets into the install root.
+func installWrappedByType(medium coreio.Medium, manifest *config.ViewManifest, opts app.PkgInstallOptions) (string, error) {
+	if manifest == nil {
+		return "", core.NewError("installWrappedByType: nil manifest")
+	}
+	switch manifestPackageType(manifest) {
+	case app.PackageTypeElectron:
+		return app.InstallWrappedElectron(medium, manifest, opts)
+	case app.PackageTypeWeb:
+		return app.InstallWrappedWeb(medium, manifest, opts)
+	default:
+		return app.InstallWrappedPWA(medium, manifest, opts)
+	}
+}
+
+// manifestPackageType reads the wrap-emitted `config.type` field.
+// Missing / unknown values fall back to PWA, which is the manifest-only
+// wrap path.
+func manifestPackageType(manifest *config.ViewManifest) app.PackageType {
+	if manifest == nil || manifest.Config == nil {
+		return app.PackageTypePWA
+	}
+	if raw, ok := manifest.Config["type"].(string); ok {
+		if t := app.ParsePackageType(raw); t != app.PackageTypeUnknown {
+			return t
+		}
+	}
+	return app.PackageTypePWA
 }
 
 // runPkgInstall handles `pkg install <source>`. Auto-detects the
@@ -716,21 +735,33 @@ func runPkgInstall(args []string) int {
 		// as web (or vice-versa) without renaming the directory.
 		switch override {
 		case app.PackageTypePWA:
+			if spec.Path != "" {
+				return runPkgInstallLocalAs(home, spec.Path, app.PackageTypePWA)
+			}
 			if spec.URL == "" {
 				spec.URL = src
 			}
 			return runPkgInstallPWA(ctx, home, spec.URL)
 		case app.PackageTypeElectron:
+			if spec.Path != "" {
+				return runPkgInstallLocalAs(home, spec.Path, app.PackageTypeElectron)
+			}
 			if spec.Repo == "" {
 				spec.Repo = src
 			}
-			return runPkgInstallElectron(ctx, spec.Repo)
-		case app.PackageTypeWeb, app.PackageTypeNative:
+			return runPkgInstallElectron(ctx, home, spec.Repo)
+		case app.PackageTypeWeb:
 			path := spec.Path
 			if path == "" {
 				path = src
 			}
-			return runPkgInstallLocal(home, path)
+			return runPkgInstallLocalAs(home, path, app.PackageTypeWeb)
+		case app.PackageTypeNative:
+			path := spec.Path
+			if path == "" {
+				path = src
+			}
+			return runPkgInstallLocalAs(home, path, app.PackageTypeNative)
 		}
 	}
 
@@ -738,7 +769,7 @@ func runPkgInstall(args []string) int {
 	case app.PackageTypePWA:
 		return runPkgInstallPWA(ctx, home, spec.URL)
 	case app.PackageTypeElectron:
-		return runPkgInstallElectron(ctx, spec.Repo)
+		return runPkgInstallElectron(ctx, home, spec.Repo)
 	case app.PackageTypeUnknown:
 		// Local directory — the path was set by ParseInstallSpec.
 		if spec.Path != "" {
@@ -764,13 +795,27 @@ func runPkgInstall(args []string) int {
 //
 //	rc := runPkgInstallLocal(home, "./my-app")
 func runPkgInstallLocal(home, path string) int {
+	kind := app.DetectPackageType(coreio.Local, path)
+	if kind == app.PackageTypeUnknown {
+		core.Error("pkg install local: cannot detect package type",
+			"path", path,
+			"hint", "expected .core/view.yaml, manifest.json, package.json, or index.html")
+		return 1
+	}
+	return runPkgInstallLocalAs(home, path, kind)
+}
+
+// runPkgInstallLocalAs installs a local directory using the explicitly
+// selected package type. This is the path `pkg install --type ...`
+// relies on so an override genuinely forces the requested wrap mode.
+func runPkgInstallLocalAs(home, path string, kind app.PackageType) int {
 	medium := coreio.Local
 	if !medium.IsDir(path) {
 		core.Error("pkg install local: not a directory", "path", path)
 		return 1
 	}
 
-	switch app.DetectPackageType(medium, path) {
+	switch kind {
 	case app.PackageTypeNative:
 		dest, err := app.PkgInstallLocal(medium, path, app.PkgInstallOptions{
 			Home:   home,
@@ -828,7 +873,7 @@ func runPkgInstallLocal(home, path string) int {
 			return 1
 		}
 		dest, err := app.InstallWrappedElectron(medium, manifest, app.PkgInstallOptions{
-			Home: home, Force: true, Source: "wrap:electron:" + path,
+			Home: home, Force: true, Source: "wrap:electron:" + path, AssetSource: path,
 		})
 		if err != nil {
 			core.Error("pkg install local: Electron install failed", "err", err)
@@ -843,7 +888,7 @@ func runPkgInstallLocal(home, path string) int {
 			return 1
 		}
 		dest, err := app.InstallWrappedWeb(medium, manifest, app.PkgInstallOptions{
-			Home: home, Force: true, Source: "wrap:web:" + path,
+			Home: home, Force: true, Source: "wrap:web:" + path, AssetSource: path,
 		})
 		if err != nil {
 			core.Error("pkg install local: Web install failed", "err", err)
@@ -852,9 +897,7 @@ func runPkgInstallLocal(home, path string) int {
 		core.Info("installed", "type", "web", "src", path, "dest", dest)
 		return 0
 	default:
-		core.Error("pkg install local: cannot detect package type",
-			"path", path,
-			"hint", "expected .core/view.yaml, manifest.json, package.json, or index.html")
+		core.Error("pkg install local: unsupported forced type", "type", kind.String(), "path", path)
 		return 1
 	}
 }
@@ -868,46 +911,34 @@ func runPkgInstallLocal(home, path string) int {
 // than a "not yet wired" message.
 //
 //	rc := runPkgInstallElectron(ctx, "github.com/owner/repo")
-func runPkgInstallElectron(ctx context.Context, ref string) int {
-	host, owner, repo, ok := app.ParseGitHubRepo(ref)
+func runPkgInstallElectron(ctx context.Context, home, ref string) int {
+	_, _, repo, ok := app.ParseGitHubRepo(ref)
 	if !ok {
 		core.Error("pkg install: cannot parse repo reference", "ref", ref)
 		return 1
 	}
-	rel, err := app.FetchElectronRelease(ctx, host, owner, repo)
+	scratch := core.Path(home, ".core", ".wrap", "electron-"+repo)
+	manifest, rendererDir, err := app.WrapElectronRepo(ctx, coreio.Local, ref, app.WrapElectronRepoOptions{
+		ScratchDir: scratch,
+	})
 	if err != nil {
-		core.Error("pkg install: release fetch failed",
-			"host", host, "owner", owner, "repo", repo, "err", err)
+		core.Error("pkg install: wrap failed", "repo", ref, "err", err)
 		return 1
 	}
-	asset, ok := app.SelectRendererAsset(rel)
-	if !ok {
-		core.Error("pkg install: no renderer-shaped asset in release",
-			"tag", rel.TagName)
-		return 1
+	dest, err := app.InstallWrappedElectron(coreio.Local, manifest, app.PkgInstallOptions{
+		Home:        home,
+		Force:       true,
+		Source:      "wrap:electron:" + ref,
+		AssetSource: rendererDir,
+	})
+	if coreio.Local.IsDir(scratch) {
+		_ = coreio.Local.DeleteAll(scratch)
 	}
-	scratch := core.Path("./.core-wrap", "electron-"+repo)
-	path, err := app.DownloadAsset(ctx, coreio.Local, asset, scratch)
 	if err != nil {
-		core.Error("pkg install: asset download failed", "err", err)
+		core.Error("pkg install: Electron install failed", "err", err)
 		return 1
 	}
-	// Auto-extract every supported archive shape so the user can
-	// immediately re-invoke the installer against the unpacked
-	// renderer directory.
-	if isExtractable(path) {
-		extracted := app.ArchiveExtractedDir(scratch, asset.Name)
-		if err := app.ExtractArchive(coreio.Local, path, extracted); err != nil {
-			core.Error("pkg install: archive extract failed",
-				"asset", asset.Name, "err", err)
-			return 1
-		}
-		core.Info("renderer asset extracted — run `pkg wrap --electron <dir>` next",
-			"asset", asset.Name, "extracted", extracted, "tag", rel.TagName)
-		return 0
-	}
-	core.Info("renderer asset downloaded — extract and run `pkg wrap --electron <dir>`",
-		"asset", asset.Name, "path", path, "tag", rel.TagName)
+	core.Info("installed", "code", manifest.Code, "type", "electron", "dest", dest)
 	return 0
 }
 

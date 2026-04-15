@@ -277,7 +277,7 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 	inst.Layout = spec
 
 	// Step 6 — Config
-	if err := applyConfig(c, &manifest, o.Medium, root); err != nil {
+	if err := applyConfigWithMode(c, &manifest, o.Medium, root, o.Mode); err != nil {
 		return nil, coreerr.E("app.Boot", "config template failed", err)
 	}
 

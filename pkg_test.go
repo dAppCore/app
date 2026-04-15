@@ -317,6 +317,13 @@ func TestPkg_InstallWrappedPWA_Ugly(t *testing.T) {
 func TestPkg_InstallWrappedElectron_Good(t *testing.T) {
 	home := t.TempDir()
 	medium := coreio.Local
+	srcDir := t.TempDir()
+	if err := medium.Write(core.Path(srcDir, "package.json"), `{"name":"electron-wrap"}`); err != nil {
+		t.Fatalf("Write package.json: %v", err)
+	}
+	if err := medium.Write(core.Path(srcDir, "main.js"), `console.log("ok")`); err != nil {
+		t.Fatalf("Write main.js: %v", err)
+	}
 
 	manifest := &config.ViewManifest{
 		Code:    "electron-wrap",
@@ -328,7 +335,11 @@ func TestPkg_InstallWrappedElectron_Good(t *testing.T) {
 	}
 
 	dest, err := app.InstallWrappedElectron(medium, manifest,
-		app.PkgInstallOptions{Home: home, Source: "wrap:electron:github.com/foo/bar"})
+		app.PkgInstallOptions{
+			Home:        home,
+			Source:      "wrap:electron:github.com/foo/bar",
+			AssetSource: srcDir,
+		})
 	if err != nil {
 		t.Fatalf("InstallWrappedElectron: %v", err)
 	}
@@ -338,6 +349,9 @@ func TestPkg_InstallWrappedElectron_Good(t *testing.T) {
 	if !medium.Exists(core.Path(dest, ".core", "view.yaml")) {
 		t.Fatalf("view.yaml missing at %s", dest)
 	}
+	if !medium.Exists(core.Path(dest, "package.json")) || !medium.Exists(core.Path(dest, "main.js")) {
+		t.Fatalf("Electron assets were not copied into %s", dest)
+	}
 
 	var round config.ViewManifest
 	if err := config.LoadManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
@@ -345,6 +359,72 @@ func TestPkg_InstallWrappedElectron_Good(t *testing.T) {
 	}
 	if src, _ := round.Config["source"].(string); src != "wrap:electron:github.com/foo/bar" {
 		t.Errorf("source stamp = %q; want 'wrap:electron:github.com/foo/bar'", src)
+	}
+}
+
+// TestPkg_InstallWrappedElectron_AssetsCopied pins the asset-aware
+// install path independently of the source stamp checks above.
+func TestPkg_InstallWrappedElectron_AssetsCopied(t *testing.T) {
+	home := t.TempDir()
+	srcDir := t.TempDir()
+	medium := coreio.Local
+
+	if err := medium.EnsureDir(core.Path(srcDir, "assets")); err != nil {
+		t.Fatalf("EnsureDir assets: %v", err)
+	}
+	if err := medium.Write(core.Path(srcDir, "assets", "renderer.js"), `window.app = true`); err != nil {
+		t.Fatalf("Write renderer.js: %v", err)
+	}
+
+	manifest := &config.ViewManifest{
+		Code:    "electron-assets",
+		Name:    "Electron Assets",
+		Version: "0.1.0",
+		Config:  map[string]any{"type": "electron"},
+	}
+	dest, err := app.InstallWrappedElectron(medium, manifest, app.PkgInstallOptions{
+		Home:        home,
+		Force:       true,
+		AssetSource: srcDir,
+	})
+	if err != nil {
+		t.Fatalf("InstallWrappedElectron with assets: %v", err)
+	}
+	if !medium.Exists(core.Path(dest, "assets", "renderer.js")) {
+		t.Fatalf("renderer asset missing at %s", core.Path(dest, "assets", "renderer.js"))
+	}
+}
+
+// TestPkg_InstallWrappedWeb_AssetsCopied confirms that a wrapped web
+// install carries the site files alongside the generated manifest.
+func TestPkg_InstallWrappedWeb_AssetsCopied(t *testing.T) {
+	home := t.TempDir()
+	srcDir := t.TempDir()
+	medium := coreio.Local
+
+	if err := medium.Write(core.Path(srcDir, "index.html"), "<html>hello</html>"); err != nil {
+		t.Fatalf("Write index.html: %v", err)
+	}
+	if err := medium.Write(core.Path(srcDir, "app.css"), "body { color: red; }"); err != nil {
+		t.Fatalf("Write app.css: %v", err)
+	}
+
+	manifest := &config.ViewManifest{
+		Code:    "web-assets",
+		Name:    "Web Assets",
+		Version: "0.1.0",
+		Config:  map[string]any{"type": "web", "entry": "index.html"},
+	}
+	dest, err := app.InstallWrappedWeb(medium, manifest, app.PkgInstallOptions{
+		Home:        home,
+		Force:       true,
+		AssetSource: srcDir,
+	})
+	if err != nil {
+		t.Fatalf("InstallWrappedWeb with assets: %v", err)
+	}
+	if !medium.Exists(core.Path(dest, "index.html")) || !medium.Exists(core.Path(dest, "app.css")) {
+		t.Fatalf("web assets were not copied into %s", dest)
 	}
 }
 
@@ -482,6 +562,43 @@ func TestPkg_PkgUpdate_Ugly(t *testing.T) {
 	}
 	if round.Name != "V2" {
 		t.Errorf("after PkgUpdate Name = %q; want V2", round.Name)
+	}
+}
+
+// TestPkg_PkgUpdate_LocalPWA verifies that a wrapped local PWA manifest
+// path (not an HTTP URL) can be refreshed in place.
+func TestPkg_PkgUpdate_LocalPWA(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	srcDir := t.TempDir()
+	manifestPath := core.Path(srcDir, "manifest.json")
+
+	if err := medium.Write(manifestPath, `{"name":"Local V1","short_name":"local-v","start_url":"/"}`); err != nil {
+		t.Fatalf("Write manifest.json: %v", err)
+	}
+	writeInstalled(t, medium, home, "local-v", &config.ViewManifest{
+		Code:    "local-v",
+		Name:    "Local V0",
+		Version: "0.1.0",
+		Config: map[string]any{
+			"source": "wrap:pwa:" + manifestPath,
+		},
+	})
+
+	if err := medium.Write(manifestPath, `{"name":"Local V2","short_name":"local-v","start_url":"/next"}`); err != nil {
+		t.Fatalf("Rewrite manifest.json: %v", err)
+	}
+	if _, err := app.PkgUpdate(context.Background(), medium, home, "local-v"); err != nil {
+		t.Fatalf("PkgUpdate (local PWA): %v", err)
+	}
+
+	var round config.ViewManifest
+	view := core.Path(home, ".core", app.AppsDirName, "local-v", ".core", "view.yaml")
+	if err := config.LoadManifest(medium, view, &round); err != nil {
+		t.Fatalf("reload local PWA after update: %v", err)
+	}
+	if round.Name != "Local V2" {
+		t.Errorf("after local PkgUpdate Name = %q; want Local V2", round.Name)
 	}
 }
 

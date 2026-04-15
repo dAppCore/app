@@ -17,14 +17,19 @@ import (
 func TestConfig_applyConfig_Good(t *testing.T) {
 	root := t.TempDir()
 	must(t, coreio.Local.EnsureDir(root+"/conf"))
-	must(t, coreio.Local.Write(root+"/conf/thumbs.json.tmpl", `{"size": "{{ .size }}"}`))
+	must(t, coreio.Local.Write(root+"/conf/thumbs.json.tmpl", `{"size": "{{ .size }}", "port": "{{ .port }}"}`))
 
 	c := core.New()
+	c.Config().Set("user.thumbnail_size", "128")
+	t.Setenv("THUMBS_PORT", "9090")
 	m := &config.ViewManifest{
 		Config: map[string]any{
 			"thumbnails": map[string]any{
 				"template": "conf/thumbs.json.tmpl",
-				"vars":     map[string]any{"size": "128"},
+				"vars": map[string]any{
+					"size": "{{ .user.thumbnail_size }}",
+					"port": "{{ .env.THUMBS_PORT }}",
+				},
 			},
 		},
 	}
@@ -37,8 +42,8 @@ func TestConfig_applyConfig_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read rendered: %v", err)
 	}
-	if rendered != `{"size": "128"}` {
-		t.Errorf("rendered = %q; want %q", rendered, `{"size": "128"}`)
+	if rendered != `{"size": "128", "port": "9090"}` {
+		t.Errorf("rendered = %q; want %q", rendered, `{"size": "128", "port": "9090"}`)
 	}
 
 	// Source template must be untouched.
@@ -46,8 +51,24 @@ func TestConfig_applyConfig_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read source template: %v", err)
 	}
-	if src != `{"size": "{{ .size }}"}` {
+	if src != `{"size": "{{ .size }}", "port": "{{ .port }}"}` {
 		t.Errorf("source mutated: %q", src)
+	}
+}
+
+// TestConfig_applyConfigWithMode_Good confirms dev mode warns on a
+// missing template instead of aborting the boot.
+func TestConfig_applyConfigWithMode_Good(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Config: map[string]any{
+			"missing": map[string]any{
+				"template": "conf/not-there.tmpl",
+			},
+		},
+	}
+	if err := applyConfigWithMode(c, m, coreio.Local, t.TempDir(), ModeDev); err != nil {
+		t.Fatalf("applyConfigWithMode dev should tolerate missing template; got %v", err)
 	}
 }
 

@@ -538,6 +538,11 @@ type PkgInstallOptions struct {
 	// Config["source"] field. Typical values: "marketplace",
 	// "github.com/user/repo", "https://app.example.com".
 	Source string
+	// AssetSource optionally points at a directory whose contents should
+	// be copied into the installed app root before `.core/view.yaml` is
+	// written. Web and Electron wraps use this so the install contains
+	// the renderer assets as well as the generated manifest.
+	AssetSource string
 }
 
 // InstallWrappedPWA persists a wrapped PWA manifest into the installed
@@ -603,7 +608,6 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 			return dest, coreerr.E("app.installWrap", "remove existing failed", err)
 		}
 	}
-
 	// Record provenance in Config so `core pkg list` can show it.
 	if opts.Source != "" {
 		if manifest.Config == nil {
@@ -611,20 +615,50 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 		}
 		manifest.Config["source"] = opts.Source
 	}
+	if err := WriteWrappedApp(medium, dest, manifest, opts.AssetSource); err != nil {
+		return dest, coreerr.E("app.installWrap", "materialise wrap failed", err)
+	}
+	return dest, nil
+}
+
+// WriteWrappedApp materialises a wrapped app at `dest`, optionally
+// copying a directory of renderer assets first and then writing the
+// generated `.core/view.yaml`.
+func WriteWrappedApp(medium coreio.Medium, dest string, manifest *config.ViewManifest, assetSource string) error {
+	if manifest == nil {
+		return coreerr.E("app.WriteWrappedApp", "nil manifest", nil)
+	}
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if dest == "" {
+		return coreerr.E("app.WriteWrappedApp", "empty dest", nil)
+	}
+	if assetSource != "" {
+		if !medium.IsDir(assetSource) {
+			return coreerr.E(
+				"app.WriteWrappedApp",
+				"asset source is not a directory: "+assetSource,
+				nil,
+			)
+		}
+		if err := copyTree(medium, assetSource, dest); err != nil {
+			return coreerr.E("app.WriteWrappedApp", "copy asset tree failed", err)
+		}
+	}
 
 	path := core.Path(dest, ".core", "view.yaml")
 	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
-		return dest, coreerr.E("app.installWrap", "ensure dir failed", err)
+		return coreerr.E("app.WriteWrappedApp", "ensure dir failed", err)
 	}
-
 	body, err := yaml.Marshal(manifest)
 	if err != nil {
-		return dest, coreerr.E("app.installWrap", "marshal failed", err)
+		return coreerr.E("app.WriteWrappedApp", "marshal failed", err)
 	}
 	if err := medium.Write(path, string(body)); err != nil {
-		return dest, coreerr.E("app.installWrap", "write failed", err)
+		return coreerr.E("app.WriteWrappedApp", "write failed", err)
 	}
-	return dest, nil
+	return nil
 }
 
 // PkgUpdate re-reads an installed package's source (when remembered in
@@ -677,7 +711,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 	// `wrap:pwa:<url>` is the convention recorded by `core pkg wrap
 	// --pwa` — re-fetch the manifest and rewrite the install in place.
 	if url, ok := stripPrefix(source, "wrap:pwa:"); ok {
-		pwa, err := FetchPWAManifest(ctx, url)
+		pwa, err := loadPWASource(ctx, medium, url)
 		if err != nil {
 			return appPath, coreerr.E("app.PkgUpdate", "PWA refetch failed", err)
 		}
@@ -720,9 +754,10 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 			return appPath, coreerr.E("app.PkgUpdate", "web rewrap failed", err)
 		}
 		if _, err := installWrap(medium, updated, PkgInstallOptions{
-			Home:   home,
-			Force:  true,
-			Source: source,
+			Home:        home,
+			Force:       true,
+			Source:      source,
+			AssetSource: dir,
 		}); err != nil {
 			return appPath, err
 		}
@@ -735,6 +770,13 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 	// release-asset download is not idempotent here.
 	if dir, ok := stripPrefix(source, "wrap:electron:"); ok {
 		if !medium.IsDir(dir) {
+			if _, _, _, ok := ParseGitHubRepo(dir); ok {
+				installed, err := installElectronRepoSource(ctx, medium, home, manifest.Code, manifest.Name, manifest.Version, dir, true)
+				if err != nil {
+					return appPath, err
+				}
+				return installed, nil
+			}
 			return appPath, coreerr.E(
 				"app.PkgUpdate",
 				"electron source not a directory: "+dir+" (re-extract the release first)",
@@ -772,9 +814,10 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 			updated.Name = manifest.Name
 		}
 		if _, err := installWrap(medium, updated, PkgInstallOptions{
-			Home:   home,
-			Force:  true,
-			Source: source,
+			Home:        home,
+			Force:       true,
+			Source:      source,
+			AssetSource: dir,
 		}); err != nil {
 			return appPath, err
 		}
@@ -806,6 +849,70 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 	// install path; the CLI can dispatch into MarketplaceUpdate which
 	// owns the git pull / re-verify pipeline.
 	return appPath, nil
+}
+
+// loadPWASource resolves a `wrap:pwa:` source into a PWAManifest. URLs
+// are fetched over HTTP(S); local paths and file:// URLs are read from
+// disk so a wrapped local PWA can be updated without a local web
+// server.
+func loadPWASource(ctx context.Context, medium coreio.Medium, source string) (*PWAManifest, error) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	path := trimLocalPrefix(source)
+	if isLocalSource(source) || medium.Exists(path) {
+		body, err := medium.Read(path)
+		if err != nil {
+			return nil, coreerr.E("app.loadPWASource", "read local manifest failed", err)
+		}
+		var pwa PWAManifest
+		r := core.JSONUnmarshal([]byte(body), &pwa)
+		if !r.OK {
+			cause, _ := r.Value.(error)
+			return nil, coreerr.E("app.loadPWASource", "decode local manifest failed", cause)
+		}
+		return &pwa, nil
+	}
+	return FetchPWAManifest(ctx, source)
+}
+
+// installElectronRepoSource wraps the latest renderer asset from a
+// remote Electron repo and installs it as a CoreApp, recording the repo
+// reference as the package source for future updates.
+func installElectronRepoSource(ctx context.Context, medium coreio.Medium, home, code, name, version, ref string, force bool) (string, error) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if home == "" {
+		home = core.Env("DIR_HOME")
+	}
+	if home == "" {
+		return "", coreerr.E("app.installElectronRepoSource", "cannot resolve home directory", nil)
+	}
+
+	scratch := core.Path(home, ".core", ".wrap", "repo-"+slugify(coalesce(code, ref)))
+	manifest, rendererDir, err := WrapElectronRepo(ctx, medium, ref, WrapElectronRepoOptions{
+		Code:       code,
+		Name:       name,
+		Version:    version,
+		ScratchDir: scratch,
+	})
+	if err != nil {
+		return "", coreerr.E("app.installElectronRepoSource", "wrap repo failed", err)
+	}
+	installed, err := InstallWrappedElectron(medium, manifest, PkgInstallOptions{
+		Home:        home,
+		Force:       force,
+		Source:      "wrap:electron:" + ref,
+		AssetSource: rendererDir,
+	})
+	if medium.IsDir(scratch) {
+		_ = medium.DeleteAll(scratch)
+	}
+	if err != nil {
+		return installed, coreerr.E("app.installElectronRepoSource", "install failed", err)
+	}
+	return installed, nil
 }
 
 // stripPrefix returns (rest, true) when `s` starts with `prefix`. Used

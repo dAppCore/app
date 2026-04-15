@@ -537,103 +537,32 @@ func installElectronListing(ctx context.Context, c *core.Core, listing *Marketpl
 	// Electron forks still produce a usable install. The CLI can walk
 	// the clone with `pkg wrap --electron <dir>` afterwards.
 	host, owner, repo, ok := ParseGitHubRepo(listing.Repo)
-	if !ok {
+	if !ok || !isGitHubReleaseHost(host) {
 		if err := installNativeFromRepo(ctx, c, listing, dest); err != nil {
 			return dest, err
 		}
 		return dest, nil
 	}
-
-	rel, err := FetchElectronRelease(ctx, host, owner, repo)
-	if err != nil {
-		return dest, coreerr.E("app.installElectronListing", "release fetch failed", err)
-	}
-	asset, ok := SelectRendererAsset(rel)
-	if !ok {
-		return dest, coreerr.E(
-			"app.installElectronListing",
-			"listing "+listing.Code+" release "+rel.TagName+" has no renderer-shaped asset",
-			nil,
-		)
-	}
-
-	// Download the asset into a scratch directory under the install
-	// destination so the unpacked renderer is discoverable later (e.g.
-	// during `pkg update`). The extracted tree becomes the install
-	// source, and the synthesised manifest lands at `<dest>/.core/view.yaml`.
-	scratch := core.Path(dest, ".core-wrap", "electron-"+repo)
-	if medium.IsDir(dest) {
-		if !force {
-			return dest, coreerr.E(
-				"app.installElectronListing",
-				"already installed at "+dest+" (use Force to replace)",
-				nil,
-			)
-		}
-		if err := medium.DeleteAll(dest); err != nil {
-			return dest, coreerr.E("app.installElectronListing", "remove existing failed", err)
-		}
-	}
-	if err := medium.EnsureDir(scratch); err != nil {
-		return dest, coreerr.E("app.installElectronListing", "ensure scratch failed", err)
-	}
-
-	archivePath, err := DownloadAsset(ctx, medium, asset, scratch)
-	if err != nil {
-		return dest, coreerr.E("app.installElectronListing", "asset download failed", err)
-	}
-
-	// Auto-extract the archive so we can scan the renderer. Non-archive
-	// downloads fall through — the manifest ends up pointing at the
-	// scratch directory itself and the caller can re-wrap manually.
-	var rendererDir string
-	if isArchivePath(asset.Name) {
-		extracted := ArchiveExtractedDir(scratch, asset.Name)
-		if err := ExtractArchive(medium, archivePath, extracted); err != nil {
-			return dest, coreerr.E("app.installElectronListing", "archive extract failed", err)
-		}
-		rendererDir = extracted
-	} else {
-		rendererDir = scratch
-	}
-
-	// Load the Electron package.json and scan the renderer to build
-	// the wrapped manifest. Missing package.json is tolerated — the
-	// scan still runs and produces a manifest with the permission
-	// flags derived from the renderer sources alone.
-	var pkg ElectronPackageJSON
-	pkgPath := core.Path(rendererDir, "package.json")
-	if medium.Exists(pkgPath) {
-		if body, rerr := medium.Read(pkgPath); rerr == nil {
-			r := core.JSONUnmarshal([]byte(body), &pkg)
-			if !r.OK {
-				// Malformed package.json is non-fatal — the wrap can still
-				// use the listing's code/name/version fallbacks.
-				_ = r
-			}
-		}
-	}
-	scan, err := ScanElectronRenderer(medium, rendererDir)
-	if err != nil {
-		return dest, coreerr.E("app.installElectronListing", "renderer scan failed", err)
-	}
-
-	manifest := WrapElectron(&pkg, scan, WrapElectronOptions{Code: listing.Code})
-	if manifest == nil {
-		return dest, coreerr.E("app.installElectronListing", "WrapElectron returned nil", nil)
-	}
-	if listing.Name != "" {
-		manifest.Name = listing.Name
-	}
-	if listing.Version != "" {
-		manifest.Version = listing.Version
-	}
-
-	installed, err := InstallWrappedElectron(medium, manifest, PkgInstallOptions{
-		Home:   home,
-		Force:  force,
-		Source: "marketplace:" + listing.Code,
+	_ = owner
+	scratch := core.Path(home, ".core", ".wrap", "electron-"+repo)
+	manifest, rendererDir, err := WrapElectronRepo(ctx, medium, listing.Repo, WrapElectronRepoOptions{
+		Code:       listing.Code,
+		Name:       listing.Name,
+		Version:    listing.Version,
+		ScratchDir: scratch,
 	})
+	if err != nil {
+		return dest, coreerr.E("app.installElectronListing", "wrap repo failed", err)
+	}
+	installed, err := InstallWrappedElectron(medium, manifest, PkgInstallOptions{
+		Home:        home,
+		Force:       force,
+		Source:      "marketplace:" + listing.Code,
+		AssetSource: rendererDir,
+	})
+	if medium.IsDir(scratch) {
+		_ = medium.DeleteAll(scratch)
+	}
 	if err != nil {
 		return installed, coreerr.E("app.installElectronListing", "install failed", err)
 	}

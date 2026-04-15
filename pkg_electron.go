@@ -3,6 +3,8 @@
 package app
 
 import (
+	"context"
+
 	core "dappco.re/go/core"
 	"dappco.re/go/core/config"
 	coreio "dappco.re/go/core/io"
@@ -267,6 +269,16 @@ type WrapElectronOptions struct {
 	DataDir string
 }
 
+// WrapElectronRepoOptions tunes WrapElectronRepo. ScratchDir is where
+// the release asset is downloaded and, when archived, extracted before
+// scanning and wrapping.
+type WrapElectronRepoOptions struct {
+	Code       string
+	Name       string
+	Version    string
+	ScratchDir string
+}
+
 // WrapElectron projects an Electron package.json + renderer scan into
 // a CoreApp ViewManifest per RFC §16.2. The returned manifest is
 // unsigned — signing is a later step.
@@ -386,6 +398,114 @@ func WrapElectron(pkg *ElectronPackageJSON, scan *ElectronScanResult, opts WrapE
 	}
 	m.Config = cfg
 	return m
+}
+
+// WrapElectronRepo fetches the latest renderer asset from a GitHub
+// release reference, extracts it when needed, scans the unpacked tree,
+// and returns the wrapped manifest plus the renderer directory that
+// should be copied into the install root.
+func WrapElectronRepo(ctx context.Context, medium coreio.Medium, ref string, opts WrapElectronRepoOptions) (*config.ViewManifest, string, error) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if ref == "" {
+		return nil, "", coreerr.E("app.WrapElectronRepo", "empty repo reference", nil)
+	}
+	if opts.ScratchDir == "" {
+		return nil, "", coreerr.E("app.WrapElectronRepo", "empty scratch dir", nil)
+	}
+
+	host, owner, repo, ok := ParseGitHubRepo(ref)
+	if !ok {
+		return nil, "", coreerr.E("app.WrapElectronRepo", "cannot parse repo reference: "+ref, nil)
+	}
+	if !isGitHubReleaseHost(host) {
+		return nil, "", coreerr.E(
+			"app.WrapElectronRepo",
+			"repo host does not expose GitHub releases: "+host,
+			nil,
+		)
+	}
+	if medium.IsDir(opts.ScratchDir) {
+		if err := medium.DeleteAll(opts.ScratchDir); err != nil {
+			return nil, "", coreerr.E("app.WrapElectronRepo", "clear scratch dir failed", err)
+		}
+	}
+	if err := medium.EnsureDir(opts.ScratchDir); err != nil {
+		return nil, "", coreerr.E("app.WrapElectronRepo", "ensure scratch dir failed", err)
+	}
+
+	rel, err := FetchElectronRelease(ctx, host, owner, repo)
+	if err != nil {
+		return nil, "", coreerr.E("app.WrapElectronRepo", "release fetch failed", err)
+	}
+	asset, ok := SelectRendererAsset(rel)
+	if !ok {
+		return nil, "", coreerr.E(
+			"app.WrapElectronRepo",
+			"release "+rel.TagName+" has no renderer-shaped asset",
+			nil,
+		)
+	}
+
+	archivePath, err := DownloadAsset(ctx, medium, asset, opts.ScratchDir)
+	if err != nil {
+		return nil, "", coreerr.E("app.WrapElectronRepo", "asset download failed", err)
+	}
+
+	rendererDir := opts.ScratchDir
+	if isArchivePath(asset.Name) {
+		rendererDir = ArchiveExtractedDir(opts.ScratchDir, asset.Name)
+		if err := ExtractArchive(medium, archivePath, rendererDir); err != nil {
+			return nil, "", coreerr.E("app.WrapElectronRepo", "archive extract failed", err)
+		}
+	}
+
+	var pkg ElectronPackageJSON
+	pkgPath := core.Path(rendererDir, "package.json")
+	if medium.Exists(pkgPath) {
+		if body, readErr := medium.Read(pkgPath); readErr == nil {
+			r := core.JSONUnmarshal([]byte(body), &pkg)
+			if !r.OK {
+				// A malformed package.json should not block wrapping when
+				// the renderer scan can still infer the permissions.
+				_ = r
+			}
+		}
+	}
+	if pkg.Name == "" && pkg.ProductName == "" {
+		pkg.Name = repo
+	}
+	scan, err := ScanElectronRenderer(medium, rendererDir)
+	if err != nil {
+		return nil, "", coreerr.E("app.WrapElectronRepo", "renderer scan failed", err)
+	}
+
+	manifest := WrapElectron(&pkg, scan, WrapElectronOptions{Code: opts.Code})
+	if manifest == nil {
+		return nil, "", coreerr.E("app.WrapElectronRepo", "WrapElectron returned nil", nil)
+	}
+	if manifest.Code == "" || manifest.Code == "electron-app" {
+		manifest.Code = slugify(coalesce(opts.Code, repo))
+	}
+	if opts.Name != "" {
+		manifest.Name = opts.Name
+	}
+	if opts.Version != "" {
+		manifest.Version = opts.Version
+	}
+	return manifest, rendererDir, nil
+}
+
+// isGitHubReleaseHost returns true for github.com and GitHub Enterprise
+// style hosts. GitLab and other forge hosts are excluded — their
+// release APIs differ, so Electron wrapping falls back elsewhere.
+func isGitHubReleaseHost(host string) bool {
+	host = core.Lower(core.Trim(host))
+	if host == "" {
+		return false
+	}
+	return host == "github.com" || core.Contains(host, "github")
 }
 
 // WriteElectronWrap materialises a wrapped Electron manifest to

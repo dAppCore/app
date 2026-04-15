@@ -83,6 +83,9 @@ func TestPkg_runPkgWrap_Good(t *testing.T) {
 	if !medium.Exists(core.Path(dest, ".core", "view.yaml")) {
 		t.Errorf("view.yaml missing at %s", dest)
 	}
+	if !medium.Exists(core.Path(dest, "index.html")) {
+		t.Errorf("index.html missing at %s after wrap", dest)
+	}
 }
 
 // TestPkg_runPkgWrap_Bad — wrap with neither --pwa nor --electron nor
@@ -280,6 +283,28 @@ func TestPkg_runPkgInstall_TypeOverride(t *testing.T) {
 	if rc != 0 {
 		t.Fatalf("--type web rc = %d; want 0", rc)
 	}
+	appsRoot := core.Path(home, ".core", app.AppsDirName)
+	entries, err := medium.List(appsRoot)
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("no installs under %s after --type web install", appsRoot)
+	}
+	for _, e := range entries {
+		view := core.Path(appsRoot, e.Name(), ".core", "view.yaml")
+		if !medium.Exists(view) {
+			continue
+		}
+		var round config.ViewManifest
+		if err := config.LoadManifest(medium, view, &round); err != nil {
+			continue
+		}
+		if t2, _ := round.Config["type"].(string); t2 == "web" {
+			if !medium.Exists(core.Path(appsRoot, e.Name(), "index.html")) {
+				t.Fatalf("forced web install did not copy index.html into %s", core.Path(appsRoot, e.Name()))
+			}
+			return
+		}
+	}
+	t.Fatal("no web-typed install found after --type web override")
 }
 
 // TestPkg_runPkgInstall_Good — auto-detects a PWA URL and installs it

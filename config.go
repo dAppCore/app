@@ -58,11 +58,17 @@ const TemplateSuffix = ".tmpl"
 //     reads, so MockMedium and MemoryMedium round-trip cleanly in
 //     tests.
 func applyConfig(c *core.Core, m *config.ViewManifest, medium coreio.Medium, root string) error {
+	return applyConfigWithMode(c, m, medium, root, ModeProd)
+}
+
+// applyConfigWithMode mirrors applyConfig but honours the boot mode so
+// dev-mode config misses warn instead of aborting the boot.
+func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Medium, root string, mode Mode) error {
 	if c == nil {
-		return coreerr.E("app.applyConfig", "nil core", nil)
+		return coreerr.E("app.applyConfigWithMode", "nil core", nil)
 	}
 	if m == nil {
-		return coreerr.E("app.applyConfig", "nil manifest", nil)
+		return coreerr.E("app.applyConfigWithMode", "nil manifest", nil)
 	}
 	if len(m.Config) == 0 {
 		return nil
@@ -81,11 +87,16 @@ func applyConfig(c *core.Core, m *config.ViewManifest, medium coreio.Medium, roo
 			if isReservedConfigKey(name) {
 				continue
 			}
-			return coreerr.E(
-				"app.applyConfig",
+			err := coreerr.E(
+				"app.applyConfigWithMode",
 				"config entry '"+name+"' is not a {template, vars} map",
 				nil,
 			)
+			if mode == ModeDev {
+				core.Warn("config entry skipped in dev mode", "name", name, "err", err)
+				continue
+			}
+			return err
 		}
 		if entry.Template == "" {
 			// Reserved keys may have an empty template (legacy config
@@ -93,50 +104,152 @@ func applyConfig(c *core.Core, m *config.ViewManifest, medium coreio.Medium, roo
 			if isReservedConfigKey(name) {
 				continue
 			}
-			return coreerr.E(
-				"app.applyConfig",
+			err := coreerr.E(
+				"app.applyConfigWithMode",
 				"config entry '"+name+"' is missing the template path",
 				nil,
 			)
+			if mode == ModeDev {
+				core.Warn("config entry skipped in dev mode", "name", name, "err", err)
+				continue
+			}
+			return err
 		}
 
 		full := core.Path(root, entry.Template)
 		if !medium.Exists(full) {
-			return coreerr.E(
-				"app.applyConfig",
+			err := coreerr.E(
+				"app.applyConfigWithMode",
 				"config template '"+full+"' (declared by '"+name+"') does not exist",
 				nil,
 			)
+			if mode == ModeDev {
+				core.Warn("config template missing in dev mode", "name", name, "path", full)
+				continue
+			}
+			return err
 		}
 
 		body, err := medium.Read(full)
 		if err != nil {
-			return coreerr.E(
-				"app.applyConfig",
+			err = coreerr.E(
+				"app.applyConfigWithMode",
 				"read template '"+full+"' (declared by '"+name+"') failed",
 				err,
 			)
+			if mode == ModeDev {
+				core.Warn("config template read failed in dev mode", "name", name, "path", full, "err", err)
+				continue
+			}
+			return err
 		}
 
-		rendered := renderTemplate(body, entry.Vars)
+		rendered := renderTemplate(body, resolveTemplateVars(c, entry.Vars))
 
 		dst := destinationOf(full)
 		if err := medium.EnsureDir(core.PathDir(dst)); err != nil {
-			return coreerr.E(
-				"app.applyConfig",
+			err = coreerr.E(
+				"app.applyConfigWithMode",
 				"ensure destination dir for '"+dst+"' failed",
 				err,
 			)
+			if mode == ModeDev {
+				core.Warn("config destination ensure failed in dev mode", "name", name, "path", dst, "err", err)
+				continue
+			}
+			return err
 		}
 		if err := medium.Write(dst, rendered); err != nil {
-			return coreerr.E(
-				"app.applyConfig",
+			err = coreerr.E(
+				"app.applyConfigWithMode",
 				"write rendered template '"+dst+"' failed",
 				err,
 			)
+			if mode == ModeDev {
+				core.Warn("config write failed in dev mode", "name", name, "path", dst, "err", err)
+				continue
+			}
+			return err
 		}
 	}
 	return nil
+}
+
+// resolveTemplateVars expands any vars-map values that are themselves
+// config/env references, for example `{{ .env.PORT }}` or
+// `{{ .user.thumbnail_size }}`.
+func resolveTemplateVars(c *core.Core, vars map[string]any) map[string]any {
+	if len(vars) == 0 {
+		return vars
+	}
+	out := make(map[string]any, len(vars))
+	for key, raw := range vars {
+		out[key] = resolveTemplateVar(c, raw)
+	}
+	return out
+}
+
+// resolveTemplateVar resolves a single vars entry through Core config or
+// environment lookup when the raw value is a simple placeholder. Values
+// that are not placeholders are returned unchanged.
+func resolveTemplateVar(c *core.Core, raw any) any {
+	ref, ok := templateReference(raw)
+	if !ok {
+		return raw
+	}
+	if core.HasPrefix(ref, "env.") {
+		key := ref[len("env."):]
+		if key == "" {
+			return raw
+		}
+		return core.Env(key)
+	}
+	if core.HasPrefix(ref, "config.") {
+		key := ref[len("config."):]
+		if key == "" {
+			return raw
+		}
+		if value, ok := coreConfigValue(c, key); ok {
+			return value
+		}
+		return raw
+	}
+	if value, ok := coreConfigValue(c, ref); ok {
+		return value
+	}
+	return raw
+}
+
+// templateReference extracts `foo.bar` from a raw string like
+// `{{ .foo.bar }}`. Returns false when the value is not a simple
+// placeholder-only string.
+func templateReference(raw any) (string, bool) {
+	s, ok := raw.(string)
+	if !ok {
+		return "", false
+	}
+	s = core.Trim(s)
+	if !core.HasPrefix(s, "{{") || !core.HasSuffix(s, "}}") {
+		return "", false
+	}
+	s = core.Trim(core.TrimSuffix(core.TrimPrefix(s, "{{"), "}}"))
+	s = core.TrimPrefix(s, ".")
+	if s == "" || core.Contains(s, " ") {
+		return "", false
+	}
+	return s, true
+}
+
+// coreConfigValue reads a config value from the active Core instance.
+func coreConfigValue(c *core.Core, key string) (any, bool) {
+	if c == nil || c.Config() == nil || key == "" {
+		return nil, false
+	}
+	r := c.Config().Get(key)
+	if !r.OK {
+		return nil, false
+	}
+	return r.Value, true
 }
 
 // renderTemplate performs `{{ .name }}` placeholder substitution
