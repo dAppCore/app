@@ -99,6 +99,9 @@ type CompileOptions struct {
 //   - empty code or version → error (the runtime cannot boot without
 //     identity).
 //
+//   - empty name → error (RFC §2.1 marks the human-readable identity as
+//     required alongside code + version).
+//
 //   - layout slots whose component value is not a string → error
 //     (config.ViewManifest.Slots is map[string]any for YAML flexibility;
 //     the compiled form is strict).
@@ -108,6 +111,9 @@ func Compile(m *config.ViewManifest, opts CompileOptions) (*CompiledManifest, er
 	}
 	if m.Code == "" {
 		return nil, coreerr.E("app.Compile", "manifest.code is empty", nil)
+	}
+	if m.Name == "" {
+		return nil, coreerr.E("app.Compile", "manifest.name is empty", nil)
 	}
 	if m.Version == "" {
 		return nil, coreerr.E("app.Compile", "manifest.version is empty", nil)

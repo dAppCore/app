@@ -467,7 +467,17 @@ func WrapElectronRepo(ctx context.Context, medium coreio.Medium, ref string, opt
 		}
 	}
 	if pkg.Name == "" && pkg.ProductName == "" {
-		pkg.Name = repo
+		pkg.Name = coalesce(opts.Name, electronReleaseName(rel), repo)
+	}
+	if pkg.ProductName == "" && opts.Name == "" {
+		if name := electronReleaseName(rel); name != "" {
+			pkg.ProductName = name
+		}
+	}
+	if pkg.Version == "" && opts.Version == "" {
+		if version := electronReleaseVersion(rel); version != "" {
+			pkg.Version = version
+		}
 	}
 	scan, err := ScanElectronRenderer(medium, rendererDir)
 	if err != nil {
@@ -488,6 +498,23 @@ func WrapElectronRepo(ctx context.Context, medium coreio.Medium, ref string, opt
 		manifest.Version = opts.Version
 	}
 	return manifest, rendererDir, nil
+}
+
+func electronReleaseName(rel *GitHubRelease) string {
+	if rel == nil {
+		return ""
+	}
+	return core.Trim(rel.Name)
+}
+
+func electronReleaseVersion(rel *GitHubRelease) string {
+	if rel == nil {
+		return ""
+	}
+	tag := core.Trim(rel.TagName)
+	tag = core.TrimPrefix(tag, "v")
+	tag = core.TrimPrefix(tag, "V")
+	return tag
 }
 
 // isGitHubReleaseHost returns true for github.com and GitHub Enterprise

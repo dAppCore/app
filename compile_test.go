@@ -64,8 +64,8 @@ func TestCompile_Compile_Good(t *testing.T) {
 }
 
 // TestCompile_Compile_Bad — nil manifest and missing required fields
-// (code, version) are rejected with a coreerr.E scope so the CLI can
-// print a helpful message.
+// (code, name, version) are rejected with a coreerr.E scope so the CLI
+// can print a helpful message.
 func TestCompile_Compile_Bad(t *testing.T) {
 	if _, err := Compile(nil, CompileOptions{}); err == nil {
 		t.Fatal("Compile(nil) should error")
@@ -74,7 +74,10 @@ func TestCompile_Compile_Bad(t *testing.T) {
 	if _, err := Compile(&config.ViewManifest{Version: "0.1.0"}, CompileOptions{}); err == nil {
 		t.Fatal("Compile without code should error")
 	}
-	if _, err := Compile(&config.ViewManifest{Code: "x"}, CompileOptions{}); err == nil {
+	if _, err := Compile(&config.ViewManifest{Code: "x", Version: "0.1.0"}, CompileOptions{}); err == nil {
+		t.Fatal("Compile without name should error")
+	}
+	if _, err := Compile(&config.ViewManifest{Code: "x", Name: "X"}, CompileOptions{}); err == nil {
 		t.Fatal("Compile without version should error")
 	}
 }
@@ -86,6 +89,7 @@ func TestCompile_Compile_Bad(t *testing.T) {
 func TestCompile_Compile_Ugly(t *testing.T) {
 	m := &config.ViewManifest{
 		Code:    "bad-slot",
+		Name:    "Bad Slot",
 		Version: "0.1.0",
 		Slots: map[string]any{
 			"C": 42, // int, not string — must fail
@@ -97,7 +101,7 @@ func TestCompile_Compile_Ugly(t *testing.T) {
 
 	// Zero-opts happy path — defaults kick in. This pins the default
 	// CompiledBy to CompiledVersion and Now() to a real timestamp.
-	ok := &config.ViewManifest{Code: "ok", Version: "0.1.0"}
+	ok := &config.ViewManifest{Code: "ok", Name: "OK", Version: "0.1.0"}
 	cm, err := Compile(ok, CompileOptions{})
 	if err != nil {
 		t.Fatalf("Compile(zero opts) should succeed: %v", err)
@@ -187,7 +191,7 @@ func TestCompile_WriteCompiled_Bad(t *testing.T) {
 
 	// Nil medium → default Local. Prove we don't crash.
 	dir := t.TempDir()
-	cm, err := Compile(&config.ViewManifest{Code: "x", Version: "0.1.0"}, CompileOptions{})
+	cm, err := Compile(&config.ViewManifest{Code: "x", Name: "X", Version: "0.1.0"}, CompileOptions{})
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}

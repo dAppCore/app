@@ -431,6 +431,34 @@ func ManifestPermissionSummary(m *config.ViewManifest) []string {
 	if m.Permissions.Clipboard {
 		out = append(out, "clipboard")
 	}
+	guiGates := manifestGUIGates(m)
+	for _, gate := range []string{
+		"gui.dialog.open",
+		"gui.dialog.save",
+		"gui.browser.open",
+	} {
+		if truthy(guiGates[gate]) {
+			out = append(out, gate)
+		}
+	}
+	if len(guiGates) > 0 {
+		extra := map[string]bool{}
+		for gate := range guiGates {
+			switch gate {
+			case "gui.notification.send",
+				"gui.clipboard.read",
+				"gui.clipboard.write",
+				"gui.dialog.open",
+				"gui.dialog.save",
+				"gui.browser.open":
+				continue
+			}
+			extra[gate] = true
+		}
+		for _, gate := range sortedKeys(extra) {
+			out = append(out, gate)
+		}
+	}
 	if m.Permissions.Camera {
 		out = append(out, "camera")
 	}

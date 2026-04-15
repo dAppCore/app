@@ -477,7 +477,6 @@ func TestAccess_ActionAccessMode_Good(t *testing.T) {
 		{"gui.notification.send", AccessNotification},
 		{"gui.clipboard.read", AccessClipboardRead},
 		{"gui.clipboard.write", AccessClipboardWrite},
-		{"gui.browser.open", AccessNet},
 		{"device.camera", AccessCamera},
 		{"device.microphone", AccessMicrophone},
 		{"device.location", AccessLocation},
@@ -503,6 +502,7 @@ func TestAccess_ActionAccessMode_Bad(t *testing.T) {
 		"gui.dialog.confirm",
 		"gui.dialog.open",
 		"gui.dialog.save",
+		"gui.browser.open",
 		"i18n.translate",
 		"ipc.pub.publish",
 		"ipc.req.send",
@@ -536,6 +536,9 @@ func TestAccess_CheckActionAccess_Good(t *testing.T) {
 	// Ungated action — the helper returns nil without consulting perms.
 	if err := CheckActionAccess(m, "gui.dialog.confirm", "anything"); err != nil {
 		t.Errorf("ungated action should return nil: %v", err)
+	}
+	if err := CheckActionAccess(m, "gui.browser.open", "https://example.com"); err != nil {
+		t.Errorf("browser-open is entitlement-only and should skip per-arg gating: %v", err)
 	}
 }
 

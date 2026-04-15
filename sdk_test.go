@@ -685,6 +685,49 @@ func TestSdk_SelectActions_NotificationsClipboard(t *testing.T) {
 	}
 }
 
+// TestSdk_SelectActions_GUIWrapPermissions — Electron/PWA wrap-emitted
+// gui_gates only surface the matching actions, and browser-open no
+// longer widens into net.fetch unless `net` was actually declared.
+func TestSdk_SelectActions_GUIWrapPermissions(t *testing.T) {
+	m := &config.ViewManifest{
+		Config: map[string]any{
+			"gui_gates": map[string]any{
+				"gui.dialog.open":  true,
+				"gui.browser.open": true,
+			},
+		},
+	}
+	actions := SelectActions(DefaultSDKActions(), m, false)
+	want := map[string]bool{
+		"gui.dialog.open":  false,
+		"gui.browser.open": false,
+	}
+	gotNetFetch := false
+	gotDialogSave := false
+	for _, a := range actions {
+		if _, ok := want[a.Name]; ok {
+			want[a.Name] = true
+		}
+		if a.Name == "net.fetch" {
+			gotNetFetch = true
+		}
+		if a.Name == "gui.dialog.save" {
+			gotDialogSave = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("expected %q in selected actions", name)
+		}
+	}
+	if gotNetFetch {
+		t.Error("net.fetch should NOT be selected when only gui.browser.open is declared")
+	}
+	if gotDialogSave {
+		t.Error("gui.dialog.save should NOT be selected when only gui.dialog.open is declared")
+	}
+}
+
 // TestSdk_SelectActions_LocationViaRun — `device.location` declared via
 // the legacy permissions.run entry surfaces device.location in the SDK.
 func TestSdk_SelectActions_LocationViaRun(t *testing.T) {

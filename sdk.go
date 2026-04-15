@@ -302,6 +302,7 @@ func DefaultSDKActions() []SDKAction {
 		},
 		{
 			Name:        "gui.dialog.open",
+			Permission:  "gui.dialog.open",
 			Description: "Show a file open dialog",
 			Request: []SDKArg{
 				{Name: "title", Type: "string"},
@@ -311,6 +312,7 @@ func DefaultSDKActions() []SDKAction {
 		},
 		{
 			Name:        "gui.dialog.save",
+			Permission:  "gui.dialog.save",
 			Description: "Show a file save dialog",
 			Request: []SDKArg{
 				{Name: "title", Type: "string"},
@@ -321,7 +323,7 @@ func DefaultSDKActions() []SDKAction {
 		{
 			Name:        "gui.browser.open",
 			Description: "Open a URL in the user's default browser",
-			Permission:  "net",
+			Permission:  "gui.browser.open",
 			Request:     []SDKArg{{Name: "url", Type: "string", Required: true}},
 		},
 		{
@@ -549,15 +551,39 @@ func manifestDeclaresPermission(m *config.ViewManifest, name string) bool {
 		return hasManifestStorePermission(m)
 	case "notifications":
 		return m.Permissions.Notifications
+	case "gui.notification.send":
+		return m.Permissions.Notifications || manifestHasGUIGate(m, "gui.notification.send")
 	case "clipboard":
 		return m.Permissions.Clipboard
+	case "gui.clipboard.read":
+		return m.Permissions.Clipboard || manifestHasGUIGate(m, "gui.clipboard.read")
+	case "gui.clipboard.write":
+		return m.Permissions.Clipboard || manifestHasGUIGate(m, "gui.clipboard.write")
+	case "gui.dialog.open":
+		return manifestHasGUIGate(m, "gui.dialog.open")
+	case "gui.dialog.save":
+		return manifestHasGUIGate(m, "gui.dialog.save")
+	case "gui.browser.open":
+		return manifestHasGUIGate(m, "gui.browser.open") ||
+			len(m.Permissions.Net) > 0 || m.Permissions.Network
 	case "camera":
 		return m.Permissions.Camera
+	case "device.camera":
+		return m.Permissions.Camera
 	case "microphone":
+		return m.Permissions.Microphone
+	case "device.microphone":
 		return m.Permissions.Microphone
 	case "location":
 		// `device.location` lives in the Run-list until ViewPermissions
 		// grows a typed slot — mirror the entitlement gate.
+		for _, entry := range m.Permissions.Run {
+			if entry == "device.location" {
+				return true
+			}
+		}
+		return false
+	case "device.location":
 		for _, entry := range m.Permissions.Run {
 			if entry == "device.location" {
 				return true

@@ -238,8 +238,6 @@ func mergeManifestPermissionExtras(dst *config.ViewManifest, raw any) {
 				dst.Permissions.Notifications = true
 			case "gui.clipboard.read", "gui.clipboard.write":
 				dst.Permissions.Clipboard = true
-			case "gui.browser.open":
-				dst.Permissions.Network = true
 			}
 		}
 	}
@@ -410,4 +408,11 @@ func manifestGUIGates(m *config.ViewManifest) map[string]any {
 	default:
 		return nil
 	}
+}
+
+func manifestHasGUIGate(m *config.ViewManifest, gate string) bool {
+	if gate == "" {
+		return false
+	}
+	return truthy(manifestGUIGates(m)[gate])
 }

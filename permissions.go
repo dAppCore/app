@@ -23,6 +23,9 @@ import (
 //	"gui.notification.*" → requires permissions.notifications (boolean)
 //	"gui.clipboard.read" → requires permissions.clipboard (boolean)
 //	"gui.clipboard.write"→ requires permissions.clipboard (boolean)
+//	"gui.dialog.open"    → requires permissions.gui.dialog.open (bool gate)
+//	"gui.dialog.save"    → requires permissions.gui.dialog.save (bool gate)
+//	"gui.browser.open"   → requires permissions.gui.browser.open (bool gate)
 //	"device.camera"      → requires permissions.camera (boolean)
 //	"device.microphone"  → requires permissions.microphone (boolean)
 //	"device.location"    → requires permissions.location (Run-list legacy entry)
@@ -54,11 +57,9 @@ var actionPermissionMap = []actionGate{
 	{prefix: "gui.notification.send", field: fieldNotification},
 	{prefix: "gui.clipboard.read", field: fieldClipboardRead},
 	{prefix: "gui.clipboard.write", field: fieldClipboardWrite},
-	// `gui.browser.open` hands a URL to the OS browser — the app is
-	// effectively performing a network dispatch on behalf of the user, so
-	// it rides the `net` permission gate. SDK §9.3 marks the action with
-	// Permission="net" to match.
-	{prefix: "gui.browser.open", field: fieldNet},
+	{prefix: "gui.dialog.open", field: fieldDialogOpen},
+	{prefix: "gui.dialog.save", field: fieldDialogSave},
+	{prefix: "gui.browser.open", field: fieldBrowserOpen},
 	{prefix: "device.camera", field: fieldCamera},
 	{prefix: "device.microphone", field: fieldMicrophone},
 	{prefix: "device.location", field: fieldLocation},
@@ -82,6 +83,9 @@ const (
 	fieldNotification
 	fieldClipboardRead
 	fieldClipboardWrite
+	fieldDialogOpen
+	fieldDialogSave
+	fieldBrowserOpen
 	fieldCamera
 	fieldMicrophone
 	fieldLocation
@@ -109,6 +113,12 @@ func (f permissionField) String() string {
 		return "clipboard"
 	case fieldClipboardWrite:
 		return "clipboard"
+	case fieldDialogOpen:
+		return "gui.dialog.open"
+	case fieldDialogSave:
+		return "gui.dialog.save"
+	case fieldBrowserOpen:
+		return "gui.browser.open"
 	case fieldCamera:
 		return "camera"
 	case fieldMicrophone:
@@ -194,6 +204,9 @@ func newCheckerForManifest(m *config.ViewManifest, mode Mode) core.EntitlementCh
 	p := m.Permissions
 	storeDeclared := hasManifestStorePermission(m)
 	writeDeclared := len(manifestWriteList(m)) > 0
+	dialogOpenDeclared := manifestHasGUIGate(m, "gui.dialog.open")
+	dialogSaveDeclared := manifestHasGUIGate(m, "gui.dialog.save")
+	browserOpenDeclared := manifestHasGUIGate(m, "gui.browser.open")
 	code := m.Code
 	// Dev-mode dedup — a single Warn per (code, action) so a 500ms
 	// hot-reload loop polling the same handler does not produce one
@@ -220,6 +233,17 @@ func newCheckerForManifest(m *config.ViewManifest, mode Mode) core.EntitlementCh
 		// catch-all Filesystem flag.
 		if !declared && gate.field == fieldWrite {
 			declared = writeDeclared
+		}
+		if !declared && gate.field == fieldDialogOpen {
+			declared = dialogOpenDeclared
+		}
+		if !declared && gate.field == fieldDialogSave {
+			declared = dialogSaveDeclared
+		}
+		if !declared && gate.field == fieldBrowserOpen {
+			// Backwards-compat: older manifests that treated browser-open
+			// as part of the broader `net` capability still pass.
+			declared = browserOpenDeclared || hasPermission(p, fieldNet)
 		}
 		if declared {
 			return core.Entitlement{Allowed: true, Unlimited: true}
@@ -296,6 +320,10 @@ func hasPermission(p config.ViewPermissions, field permissionField) bool {
 		return p.Camera
 	case fieldMicrophone:
 		return p.Microphone
+	case fieldDialogOpen, fieldDialogSave, fieldBrowserOpen:
+		// GUI gate booleans currently live under Config["gui_gates"], so
+		// the manifest-aware closure handles them separately.
+		return false
 	case fieldLocation:
 		// ViewPermissions has no location bool yet — the wrap pipeline
 		// stashes the capability in Run as `device.location` so the

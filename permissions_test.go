@@ -622,11 +622,122 @@ func TestPermissions_UngatedActions_Ugly(t *testing.T) {
 	}
 }
 
-// TestPermissions_BrowserOpenGate_Good — `gui.browser.open` rides the
-// `net` permission because it hands a URL to the OS browser (the app is
-// doing network dispatch on behalf of the user). A manifest that
-// declares net[] lets the action through.
+// TestPermissions_DialogGates_Good — Electron-wrapped apps declare
+// explicit gui dialog gates. When present, both dialog actions are
+// entitled in prod mode.
+func TestPermissions_DialogGates_Good(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Config: map[string]any{
+			"gui_gates": map[string]any{
+				"gui.dialog.open": true,
+				"gui.dialog.save": true,
+			},
+		},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("gui.dialog.open"); !e.Allowed {
+		t.Errorf("gui.dialog.open should be allowed with gui_gates declared; reason=%q", e.Reason)
+	}
+	if e := c.Entitled("gui.dialog.save"); !e.Allowed {
+		t.Errorf("gui.dialog.save should be allowed with gui_gates declared; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_DialogGates_Bad — without explicit gui dialog gates,
+// both actions are denied in prod mode.
+func TestPermissions_DialogGates_Bad(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("gui.dialog.open"); e.Allowed {
+		t.Errorf("gui.dialog.open should be denied without gui_gates; reason=%q", e.Reason)
+	}
+	if e := c.Entitled("gui.dialog.save"); e.Allowed {
+		t.Errorf("gui.dialog.save should be denied without gui_gates; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_BrowserOpenGate_Good — `gui.browser.open` is its own
+// entitlement. A wrapped manifest declaring the explicit gui gate lets
+// the action through without widening the app into full `net.fetch`.
 func TestPermissions_BrowserOpenGate_Good(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Config: map[string]any{
+			"gui_gates": map[string]any{
+				"gui.browser.open": true,
+			},
+		},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("gui.browser.open"); !e.Allowed {
+		t.Errorf("gui.browser.open should be allowed with gui_gates declared; reason=%q", e.Reason)
+	}
+	if e := c.Entitled("net.fetch"); e.Allowed {
+		t.Errorf("gui.browser.open should NOT widen into net.fetch; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_BrowserOpenGate_RoundTrip keeps the YAML
+// marshal→unmarshal path honest: a persisted gui.browser.open gate must
+// survive reload without turning into the broader `network` capability.
+func TestPermissions_BrowserOpenGate_RoundTrip(t *testing.T) {
+	body, err := yamlMarshalBytes(&config.ViewManifest{
+		Code:    "browser-wrap",
+		Name:    "Browser Wrap",
+		Version: "0.1.0",
+		Config: map[string]any{
+			"gui_gates": map[string]any{
+				"gui.browser.open": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("yamlMarshalBytes: %v", err)
+	}
+
+	var round config.ViewManifest
+	if err := UnmarshalViewManifest(body, &round); err != nil {
+		t.Fatalf("UnmarshalViewManifest: %v", err)
+	}
+	if round.Permissions.Network {
+		t.Fatal("gui.browser.open should not hydrate into permissions.network")
+	}
+
+	c := core.New()
+	if err := permissions(c, &round, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("gui.browser.open"); !e.Allowed {
+		t.Errorf("gui.browser.open should stay allowed after round-trip; reason=%q", e.Reason)
+	}
+	if e := c.Entitled("net.fetch"); e.Allowed {
+		t.Errorf("round-tripped gui.browser.open should NOT allow net.fetch; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_BrowserOpenGate_Bad — without either the explicit gui
+// gate or a legacy `net` declaration, `gui.browser.open` is denied in
+// prod mode.
+func TestPermissions_BrowserOpenGate_Bad(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	if e := c.Entitled("gui.browser.open"); e.Allowed {
+		t.Errorf("gui.browser.open should be denied without gui.browser.open; reason=%q", e.Reason)
+	}
+}
+
+// TestPermissions_BrowserOpenGate_Ugly — legacy manifests that still
+// declare `net` for browser-open continue to work for compatibility.
+func TestPermissions_BrowserOpenGate_Ugly(t *testing.T) {
 	c := core.New()
 	m := &config.ViewManifest{
 		Permissions: config.ViewPermissions{Net: []string{"*"}},
@@ -635,27 +746,14 @@ func TestPermissions_BrowserOpenGate_Good(t *testing.T) {
 		t.Fatalf("permissions: %v", err)
 	}
 	if e := c.Entitled("gui.browser.open"); !e.Allowed {
-		t.Errorf("gui.browser.open should be allowed with net declared; reason=%q", e.Reason)
+		t.Errorf("legacy net declaration should still allow gui.browser.open; reason=%q", e.Reason)
 	}
 }
 
-// TestPermissions_BrowserOpenGate_Bad — without `net`, `gui.browser.open`
-// is denied in prod mode so a wrapped Electron app that forgets to map
-// shell.openExternal cannot silently exfiltrate via the browser.
-func TestPermissions_BrowserOpenGate_Bad(t *testing.T) {
-	c := core.New()
-	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
-		t.Fatalf("permissions: %v", err)
-	}
-	if e := c.Entitled("gui.browser.open"); e.Allowed {
-		t.Errorf("gui.browser.open should be denied without net; reason=%q", e.Reason)
-	}
-}
-
-// TestPermissions_BrowserOpenGate_Ugly — dev mode warns instead of
-// denying, so a developer iterating without net declared still sees the
-// action fire but the reason surfaces the would-be denial.
-func TestPermissions_BrowserOpenGate_Ugly(t *testing.T) {
+// TestPermissions_BrowserOpenGate_Dev — dev mode warns instead of
+// denying, so a developer iterating without the explicit gate still sees
+// the action fire but the reason surfaces the would-be denial.
+func TestPermissions_BrowserOpenGate_Dev(t *testing.T) {
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeDev); err != nil {
 		t.Fatalf("permissions: %v", err)
