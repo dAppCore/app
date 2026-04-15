@@ -72,6 +72,45 @@ func Sign(medium coreio.Medium, path string, priv ed25519.PrivateKey) error {
 	return nil
 }
 
+// DefaultPrivateKeyPath returns the conventional location of the user's
+// default signing key — `$DIR_HOME/.core/keys/default.key`. Used by
+// `core-app sign --sign-default` and the wrap CLI when no explicit
+// `--key` flag is supplied.
+//
+//	path := app.DefaultPrivateKeyPath() // "/Users/me/.core/keys/default.key"
+func DefaultPrivateKeyPath() string {
+	home := core.Env("DIR_HOME")
+	if home == "" {
+		return ""
+	}
+	return core.Path(home, ".core", "keys", DefaultKeyName)
+}
+
+// LoadDefaultPrivateKey reads the user's default signing key from
+// `$DIR_HOME/.core/keys/default.key`. Equivalent to calling
+// LoadPrivateKey with DefaultPrivateKeyPath but produces a more
+// helpful error when the user has not yet run `core-app keygen`.
+//
+//	priv, err := app.LoadDefaultPrivateKey(coreio.Local)
+func LoadDefaultPrivateKey(medium coreio.Medium) (ed25519.PrivateKey, error) {
+	path := DefaultPrivateKeyPath()
+	if path == "" {
+		return nil, coreerr.E("app.LoadDefaultPrivateKey", "DIR_HOME is empty — cannot resolve default key", nil)
+	}
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if !medium.Exists(path) {
+		return nil, coreerr.E(
+			"app.LoadDefaultPrivateKey",
+			"default key not found — run `core-app keygen --dir "+
+				core.PathDir(path)+" --name "+core.TrimSuffix(DefaultKeyName, ".key")+"`",
+			nil,
+		)
+	}
+	return LoadPrivateKey(medium, path)
+}
+
 // LoadPrivateKey reads a hex-encoded ed25519 private key from the
 // supplied path. Matches the `.key` counterpart of the `.pub` trust files
 // consumed by resolveTrustedKeys.

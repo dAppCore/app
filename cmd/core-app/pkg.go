@@ -96,15 +96,16 @@ func runPkgList(_ []string) int {
 //
 //	pkgWrapArgs{PWAURL: "https://app.example.com"}
 type pkgWrapArgs struct {
-	PWAURL      string
-	ElectronDir string // --electron may be a local dir (repo fetch is future work)
-	WebDir      string
-	Code        string
-	Name        string
-	Version     string
-	Dest        string // optional — defaults to $DIR_HOME/.core/apps/<code>/
-	Install     bool   // true → persist under DIR_HOME; false → dump to Dest only
-	Sign        string // path to a private .key file (optional)
+	PWAURL        string
+	ElectronDir   string // --electron may be a local dir or a github.com/owner/repo reference
+	WebDir        string
+	Code          string
+	Name          string
+	Version       string
+	Dest          string // optional — defaults to $DIR_HOME/.core/apps/<code>/
+	Install       bool   // true → persist under DIR_HOME; false → dump to Dest only
+	Sign          string // path to a private .key file (optional)
+	UseDefaultKey bool   // sign with $DIR_HOME/.core/keys/default.key
 }
 
 // runPkgWrap parses flags and dispatches to the right wrap path.
@@ -174,8 +175,10 @@ func runPkgWrap(args []string) int {
 			}
 			i++
 			opts.Sign = args[i]
+		case "--sign-default":
+			opts.UseDefaultKey = true
 		case "--help", "-h":
-			core.Println("core-app pkg wrap [--pwa URL | --electron DIR | --web DIR] [--code S] [--dest D] [--sign K]")
+			core.Println("core-app pkg wrap [--pwa URL | --electron DIR|REPO | --web DIR] [--code S] [--dest D] [--sign K | --sign-default]")
 			return 0
 		default:
 			core.Error("pkg wrap: unknown flag", "flag", args[i])
@@ -221,26 +224,69 @@ func runPkgWrapPWA(opts pkgWrapArgs) int {
 	if opts.Name != "" {
 		manifest.Name = opts.Name
 	}
-	if opts.Sign != "" {
-		if err := signManifestFile(opts.Sign, manifest); err != nil {
-			core.Error("pkg wrap --pwa: sign failed", "err", err)
-			return 1
-		}
+	if err := applyWrapSignature(opts, manifest); err != nil {
+		core.Error("pkg wrap --pwa: sign failed", "err", err)
+		return 1
 	}
 	return persistWrap(manifest, opts)
 }
 
-// runPkgWrapElectron handles `pkg wrap --electron DIR`. Scans the
-// directory for Electron API patterns and writes a wrapped manifest.
-// The --electron REPO form (download renderer assets from GitHub
-// releases) is future work; today the CLI expects a local path.
+// runPkgWrapElectron handles `pkg wrap --electron <DIR|REPO>`. Two
+// modes are supported:
 //
-//	core-app pkg wrap --electron ./my-electron-app
+//   - DIR (local path with package.json + renderer): scan the
+//     directory for Electron API patterns and write a wrapped
+//     manifest in-place.
+//
+//   - REPO (`github.com/owner/repo` etc.): fetch the latest GitHub
+//     release, download the first renderer-shaped asset to a scratch
+//     directory, then run the directory mode against the unpacked
+//     contents (the wrapper does NOT extract — that's for a follow-up
+//     iteration once we depend on archive/zip / tar). For now the
+//     download succeeds and we surface the asset path so the user can
+//     point the next invocation at the unpacked directory.
+//
+//     core-app pkg wrap --electron ./my-electron-app
+//     core-app pkg wrap --electron github.com/foo/bar
 func runPkgWrapElectron(opts pkgWrapArgs) int {
 	dir := opts.ElectronDir
 	medium := coreio.Local
+
+	if isRepoSpec(dir) {
+		host, owner, repo, ok := app.ParseGitHubRepo(dir)
+		if !ok {
+			core.Error("pkg wrap --electron: cannot parse repo reference", "ref", dir)
+			return 1
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		rel, err := app.FetchElectronRelease(ctx, host, owner, repo)
+		if err != nil {
+			core.Error("pkg wrap --electron: release fetch failed",
+				"host", host, "owner", owner, "repo", repo, "err", err)
+			return 1
+		}
+		asset, ok := app.SelectRendererAsset(rel)
+		if !ok {
+			core.Error("pkg wrap --electron: no renderer-shaped asset in release",
+				"tag", rel.TagName)
+			return 1
+		}
+		scratch := core.Path("./.core-wrap", "electron-"+repo)
+		path, err := app.DownloadAsset(ctx, medium, asset, scratch)
+		if err != nil {
+			core.Error("pkg wrap --electron: asset download failed", "err", err)
+			return 1
+		}
+		core.Info("renderer asset downloaded — extract and re-run with --electron <dir>",
+			"asset", asset.Name,
+			"path", path,
+			"tag", rel.TagName)
+		return 0
+	}
+
 	if !medium.IsDir(dir) {
-		core.Error("pkg wrap --electron: not a directory", "dir", dir)
+		core.Error("pkg wrap --electron: not a directory or repo reference", "arg", dir)
 		return 1
 	}
 
@@ -266,13 +312,30 @@ func runPkgWrapElectron(opts pkgWrapArgs) int {
 	if opts.Version != "" {
 		manifest.Version = opts.Version
 	}
-	if opts.Sign != "" {
-		if err := signManifestFile(opts.Sign, manifest); err != nil {
-			core.Error("pkg wrap --electron: sign failed", "err", err)
-			return 1
-		}
+	if err := applyWrapSignature(opts, manifest); err != nil {
+		core.Error("pkg wrap --electron: sign failed", "err", err)
+		return 1
 	}
 	return persistWrap(manifest, opts)
+}
+
+// isRepoSpec returns true when the --electron argument looks like a
+// GitHub repo reference rather than a local directory path. The check
+// is permissive — anything starting with `github.com/`, `gitlab.com/`,
+// `git@`, `https://` or `http://` is treated as a repo.
+//
+//	isRepoSpec("github.com/foo/bar") // true
+//	isRepoSpec("./my-app")           // false
+func isRepoSpec(s string) bool {
+	for _, p := range []string{
+		"github.com/", "gitlab.com/", "bitbucket.org/",
+		"git@", "https://", "http://",
+	} {
+		if core.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // runPkgWrapWeb handles `pkg wrap --web DIR`. Produces a CoreApp that
@@ -289,11 +352,9 @@ func runPkgWrapWeb(opts pkgWrapArgs) int {
 		core.Error("pkg wrap --web: failed", "err", err)
 		return 1
 	}
-	if opts.Sign != "" {
-		if err := signManifestFile(opts.Sign, manifest); err != nil {
-			core.Error("pkg wrap --web: sign failed", "err", err)
-			return 1
-		}
+	if err := applyWrapSignature(opts, manifest); err != nil {
+		core.Error("pkg wrap --web: sign failed", "err", err)
+		return 1
 	}
 	return persistWrap(manifest, opts)
 }
@@ -350,32 +411,121 @@ func persistWrap(manifest *config.ViewManifest, opts pkgWrapArgs) int {
 	return 0
 }
 
-// runPkgInstall handles `pkg install CODE`. Resolves the listing from
-// the local marketplace cache (under `$DIR_HOME/.core/marketplace/`)
-// and delegates to app.MarketplaceInstall.
+// runPkgInstall handles `pkg install <source>`. Auto-detects the
+// install kind from the argument:
 //
-//	core-app pkg install photo-browser
+//	core-app pkg install https://app.example.com           # PWA
+//	core-app pkg install github.com/owner/repo             # Electron
+//	core-app pkg install photo-browser                     # marketplace listing
+//	core-app pkg install core/photo-browser                # marketplace listing (vendor/code)
+//
+// PWA installs do not need a marketplace cache. Marketplace installs
+// require `core-app marketplace fetch` first.
 func runPkgInstall(args []string) int {
 	if len(args) == 0 {
-		core.Error("pkg install: CODE is required")
+		core.Error("pkg install: <source> is required")
 		return 64
 	}
-	code := args[0]
+	src := args[0]
 
 	home := core.Env("DIR_HOME")
 	if home == "" {
 		core.Error("pkg install: cannot resolve DIR_HOME")
 		return 1
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	spec := app.ParseInstallSpec(src)
+	switch spec.Type {
+	case app.PackageTypePWA:
+		return runPkgInstallPWA(ctx, home, spec.URL)
+	case app.PackageTypeElectron:
+		return runPkgInstallElectron(ctx, spec.Repo)
+	default:
+		// Native marketplace listing (vendor/code or plain code).
+		return runPkgInstallMarketplace(ctx, home, spec.Code)
+	}
+}
+
+// runPkgInstallElectron is the install-side counterpart to
+// runPkgWrapElectron's repo branch — it fetches the latest GitHub
+// release, downloads the renderer asset to a scratch directory and
+// reports the path so the user can extract+rewrap. Full extraction
+// (zip/tar) is intentionally future work; the install command is here
+// so the auto-detected dispatch produces a useful side effect rather
+// than a "not yet wired" message.
+//
+//	rc := runPkgInstallElectron(ctx, "github.com/owner/repo")
+func runPkgInstallElectron(ctx context.Context, ref string) int {
+	host, owner, repo, ok := app.ParseGitHubRepo(ref)
+	if !ok {
+		core.Error("pkg install: cannot parse repo reference", "ref", ref)
+		return 1
+	}
+	rel, err := app.FetchElectronRelease(ctx, host, owner, repo)
+	if err != nil {
+		core.Error("pkg install: release fetch failed",
+			"host", host, "owner", owner, "repo", repo, "err", err)
+		return 1
+	}
+	asset, ok := app.SelectRendererAsset(rel)
+	if !ok {
+		core.Error("pkg install: no renderer-shaped asset in release",
+			"tag", rel.TagName)
+		return 1
+	}
+	scratch := core.Path("./.core-wrap", "electron-"+repo)
+	path, err := app.DownloadAsset(ctx, coreio.Local, asset, scratch)
+	if err != nil {
+		core.Error("pkg install: asset download failed", "err", err)
+		return 1
+	}
+	core.Info("renderer asset downloaded — extract and run `pkg wrap --electron <dir>`",
+		"asset", asset.Name, "path", path, "tag", rel.TagName)
+	return 0
+}
+
+// runPkgInstallPWA fetches the manifest at `url`, wraps it, and persists
+// the result under `<home>/.core/apps/<code>/`. No marketplace cache
+// required — the URL itself is the source.
+//
+//	rc := runPkgInstallPWA(ctx, home, "https://app.example.com")
+func runPkgInstallPWA(ctx context.Context, home, url string) int {
+	pwa, err := app.FetchPWAManifest(ctx, url)
+	if err != nil {
+		core.Error("pkg install --pwa: fetch failed", "url", url, "err", err)
+		return 1
+	}
+	manifest := app.WrapPWA(pwa, app.WrapPWAOptions{TargetURL: url})
+	if manifest == nil {
+		core.Error("pkg install --pwa: WrapPWA returned nil")
+		return 1
+	}
+	dest, err := app.InstallWrappedPWA(coreio.Local, manifest, app.PkgInstallOptions{
+		Home:   home,
+		Force:  true,
+		Source: "wrap:pwa:" + url,
+	})
+	if err != nil {
+		core.Error("pkg install --pwa: install failed", "err", err)
+		return 1
+	}
+	core.Info("installed", "code", manifest.Code, "type", "pwa", "dest", dest)
+	return 0
+}
+
+// runPkgInstallMarketplace resolves a listing from the local
+// marketplace cache and delegates to app.MarketplaceInstall.
+//
+//	rc := runPkgInstallMarketplace(ctx, home, "photo-browser")
+func runPkgInstallMarketplace(ctx context.Context, home, code string) int {
 	root := core.Path(home, ".core", "marketplace")
 	if !coreio.Local.IsDir(root) {
 		core.Error("pkg install: marketplace cache missing — run `marketplace fetch` first", "path", root)
 		return 1
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	c := core.New()
 	dest, err := app.MarketplaceInstall(ctx, c, app.MarketplaceInstallOptions{
 		Root:  root,
@@ -427,7 +577,9 @@ func runPkgUpdate(args []string) int {
 		core.Error("pkg update: cannot resolve DIR_HOME")
 		return 1
 	}
-	dest, err := app.PkgUpdate(coreio.Local, home, args[0])
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dest, err := app.PkgUpdate(ctx, coreio.Local, home, args[0])
 	if err != nil {
 		core.Error("pkg update: failed", "name", args[0], "err", err)
 		return 1
@@ -474,6 +626,36 @@ func signManifestFile(keyPath string, manifest *config.ViewManifest) error {
 		return err
 	}
 	return app.SignManifest(manifest, priv)
+}
+
+// signManifestDefault loads `$DIR_HOME/.core/keys/default.key` and
+// applies the signature to `manifest`. Used by `pkg wrap --sign-default`.
+//
+//	err := signManifestDefault(manifest)
+func signManifestDefault(manifest *config.ViewManifest) error {
+	if manifest == nil {
+		return core.NewError("signManifestDefault: nil manifest")
+	}
+	priv, err := app.LoadDefaultPrivateKey(coreio.Local)
+	if err != nil {
+		return err
+	}
+	return app.SignManifest(manifest, priv)
+}
+
+// applyWrapSignature is the shared body that handles both `--sign KEY`
+// and `--sign-default`. Returns a non-nil error when the manifest could
+// not be signed; the caller maps this to the relevant CLI error.
+//
+//	if err := applyWrapSignature(opts, manifest); err != nil { ... }
+func applyWrapSignature(opts pkgWrapArgs, manifest *config.ViewManifest) error {
+	if opts.Sign != "" {
+		return signManifestFile(opts.Sign, manifest)
+	}
+	if opts.UseDefaultKey {
+		return signManifestDefault(manifest)
+	}
+	return nil
 }
 
 // sourceTag returns a short tag for the origin (pwa / electron / web)

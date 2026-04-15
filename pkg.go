@@ -3,6 +3,8 @@
 package app
 
 import (
+	"context"
+
 	core "dappco.re/go/core"
 	"dappco.re/go/core/config"
 	coreio "dappco.re/go/core/io"
@@ -250,16 +252,17 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 }
 
 // PkgUpdate re-reads an installed package's source (when remembered in
-// Config["source"]) and re-wraps it. For now this only handles web
-// directories — PWA and Electron updates need the fetch machinery in
-// PkgInstall and are intentionally future work.
+// Config["source"]) and re-wraps it. PWA sources (`wrap:pwa:<url>` or
+// `marketplace:<code>` resolved as PWA) trigger a fresh fetch + wrap;
+// other source types return the install path so the caller can decide
+// what to do.
 //
 // The function returns the fully-qualified destination path on success
 // even when only the manifest was touched, so the caller can surface a
 // consistent "updated at <path>" message.
 //
-//	path, err := app.PkgUpdate(coreio.Local, "/Users/me", "my-web-app")
-func PkgUpdate(medium coreio.Medium, home, name string) (string, error) {
+//	path, err := app.PkgUpdate(ctx, coreio.Local, "/Users/me", "my-web-app")
+func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (string, error) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -291,9 +294,90 @@ func PkgUpdate(medium coreio.Medium, home, name string) (string, error) {
 		return "", coreerr.E("app.PkgUpdate", "no source recorded for "+name, nil)
 	}
 
-	// For now, updating a PWA, Electron or marketplace package is a
-	// caller concern — the subcommand CLI knows how to re-invoke the
-	// right fetch path. This function returns the install path and a
-	// typed sentinel so the caller can report progress.
+	// `wrap:pwa:<url>` is the convention recorded by `core pkg wrap
+	// --pwa` — re-fetch the manifest and rewrite the install in place.
+	if url, ok := stripPrefix(source, "wrap:pwa:"); ok {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		pwa, err := FetchPWAManifest(ctx, url)
+		if err != nil {
+			return appPath, coreerr.E("app.PkgUpdate", "PWA refetch failed", err)
+		}
+		updated := WrapPWA(pwa, WrapPWAOptions{
+			TargetURL: url,
+			Code:      manifest.Code,
+			Version:   manifest.Version,
+		})
+		if updated == nil {
+			return appPath, coreerr.E("app.PkgUpdate", "WrapPWA returned nil", nil)
+		}
+		_, err = installWrap(medium, updated, PkgInstallOptions{
+			Home:   home,
+			Force:  true,
+			Source: source,
+		})
+		if err != nil {
+			return appPath, err
+		}
+		return appPath, nil
+	}
+
+	// Non-PWA sources (`wrap:web:`, `wrap:electron:`, `marketplace:`)
+	// hand back the install path; the CLI can re-invoke the original
+	// fetch path with the recorded source argument.
 	return appPath, nil
+}
+
+// stripPrefix returns (rest, true) when `s` starts with `prefix`. Used
+// by PkgUpdate to peel `wrap:pwa:` etc. without bringing strings.
+//
+//	rest, ok := stripPrefix("wrap:pwa:https://x", "wrap:pwa:") // "https://x", true
+func stripPrefix(s, prefix string) (string, bool) {
+	if !core.HasPrefix(s, prefix) {
+		return "", false
+	}
+	return s[len(prefix):], true
+}
+
+// PkgInstallSpec describes a single `core pkg install` argument. The
+// Source string is whatever the user typed (`vendor/repo`, a full URL,
+// or a marketplace code) and Type is the auto-detected kind.
+//
+//	spec := app.ParseInstallSpec("https://app.example.com")
+//	spec.Type // PackageTypePWA
+type PkgInstallSpec struct {
+	Source string      // raw user input
+	Type   PackageType // auto-detected kind
+	URL    string      // populated for PWA / web-fetch installs
+	Repo   string      // populated for github.com/owner/name electron installs
+	Code   string      // populated for marketplace lookups
+}
+
+// ParseInstallSpec inspects the `core pkg install <source>` argument
+// and produces a typed PkgInstallSpec the installer can dispatch on.
+// Matches RFC §16.4 detection table for non-local sources (URL → PWA,
+// github.com/... → Electron, plain code → marketplace lookup).
+//
+//	spec := app.ParseInstallSpec("github.com/bitwarden/clients")
+//	if spec.Type == app.PackageTypeElectron { /* fetch release */ }
+func ParseInstallSpec(in string) PkgInstallSpec {
+	src := core.Trim(in)
+	if src == "" {
+		return PkgInstallSpec{Type: PackageTypeUnknown}
+	}
+	spec := PkgInstallSpec{Source: src}
+
+	switch {
+	case core.HasPrefix(src, "https://"), core.HasPrefix(src, "http://"):
+		spec.Type = PackageTypePWA
+		spec.URL = src
+	case core.HasPrefix(src, "github.com/"), core.HasPrefix(src, "gitlab.com/"), core.HasPrefix(src, "git@"):
+		spec.Type = PackageTypeElectron
+		spec.Repo = src
+	default:
+		spec.Type = PackageTypeNative // marketplace listing — type confirmed at install time
+		spec.Code = src
+	}
+	return spec
 }

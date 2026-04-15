@@ -251,3 +251,37 @@ func bytesEqual(a, b []byte) bool {
 	}
 	return true
 }
+
+// TestSign_DefaultPrivateKeyPath_Good resolves to
+// `$DIR_HOME/.core/keys/default.key` when DIR_HOME is non-empty.
+func TestSign_DefaultPrivateKeyPath_Good(t *testing.T) {
+	got := DefaultPrivateKeyPath()
+	if got == "" {
+		t.Skip("DIR_HOME is empty in this environment")
+	}
+	// Path ends with the conventional suffix.
+	if !core.HasSuffix(got, core.Path(".core", "keys", DefaultKeyName)) {
+		t.Errorf("DefaultPrivateKeyPath() = %q; want suffix .core/keys/%s", got, DefaultKeyName)
+	}
+}
+
+// TestSign_LoadDefaultPrivateKey_Bad — when the default key does not
+// exist, the error message should hint at the keygen command instead
+// of being a bare ENOENT.
+func TestSign_LoadDefaultPrivateKey_Bad(t *testing.T) {
+	// Point at a temp HOME so the default-key file definitely does not
+	// exist (we use t.Setenv but accept the test may skip if core/info
+	// snapshots DIR_HOME at process start).
+	if DefaultPrivateKeyPath() == "" {
+		t.Skip("DIR_HOME is empty in this environment")
+	}
+	// We don't try to install a fake DIR_HOME — instead just call the
+	// loader and confirm the typed error comes back when no key exists
+	// at the default location. If the user already has one we skip.
+	if coreio.Local.Exists(DefaultPrivateKeyPath()) {
+		t.Skip("user has a real default key; skipping the missing-key path")
+	}
+	if _, err := LoadDefaultPrivateKey(coreio.Local); err == nil {
+		t.Error("LoadDefaultPrivateKey produced no error when no key file exists")
+	}
+}

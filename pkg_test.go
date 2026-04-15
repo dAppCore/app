@@ -3,6 +3,9 @@
 package app_test
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"dappco.re/go/app"
@@ -251,7 +254,7 @@ func TestPkg_PkgUpdate_Good(t *testing.T) {
 			"source": "marketplace:u",
 		},
 	})
-	path, err := app.PkgUpdate(medium, home, "u")
+	path, err := app.PkgUpdate(context.Background(), medium, home, "u")
 	if err != nil {
 		t.Fatalf("PkgUpdate: %v", err)
 	}
@@ -265,13 +268,14 @@ func TestPkg_PkgUpdate_Good(t *testing.T) {
 func TestPkg_PkgUpdate_Bad(t *testing.T) {
 	home := t.TempDir()
 	medium := coreio.Local
-	if _, err := app.PkgUpdate(medium, "", "x"); err == nil {
+	ctx := context.Background()
+	if _, err := app.PkgUpdate(ctx, medium, "", "x"); err == nil {
 		t.Error("empty home produced no error")
 	}
-	if _, err := app.PkgUpdate(medium, home, ""); err == nil {
+	if _, err := app.PkgUpdate(ctx, medium, home, ""); err == nil {
 		t.Error("empty name produced no error")
 	}
-	if _, err := app.PkgUpdate(medium, home, "missing"); err == nil {
+	if _, err := app.PkgUpdate(ctx, medium, home, "missing"); err == nil {
 		t.Error("missing package produced no error")
 	}
 	// Installed with no recorded source — PkgUpdate should refuse.
@@ -280,8 +284,110 @@ func TestPkg_PkgUpdate_Bad(t *testing.T) {
 		Name:    "X",
 		Version: "0.1.0",
 	})
-	if _, err := app.PkgUpdate(medium, home, "no-source"); err == nil {
+	if _, err := app.PkgUpdate(ctx, medium, home, "no-source"); err == nil {
 		t.Error("no-source package produced no error")
+	}
+}
+
+// TestPkg_PkgUpdate_Ugly verifies a wrapped PWA install whose source is
+// `wrap:pwa:<url>` triggers a fresh fetch + rewrap when the upstream
+// manifest changes.
+func TestPkg_PkgUpdate_Ugly(t *testing.T) {
+	current := `{"name":"V1","short_name":"v","start_url":"/"}`
+	srv := newPWAManifestServer(t, &current)
+	defer srv.Close()
+
+	home := t.TempDir()
+	medium := coreio.Local
+	source := "wrap:pwa:" + srv.URL + "/manifest.json"
+
+	// Plant an installed PWA that recorded its source.
+	writeInstalled(t, medium, home, "v", &config.ViewManifest{
+		Code:    "v",
+		Name:    "V0",
+		Version: "0.1.0",
+		Config: map[string]any{
+			"source": source,
+		},
+	})
+
+	// Upstream changed → bump the served name.
+	current = `{"name":"V2","short_name":"v","start_url":"/"}`
+
+	if _, err := app.PkgUpdate(context.Background(), medium, home, "v"); err != nil {
+		t.Fatalf("PkgUpdate (PWA refresh): %v", err)
+	}
+
+	var round config.ViewManifest
+	path := core.Path(home, ".core", app.AppsDirName, "v", ".core", "view.yaml")
+	if err := config.LoadManifest(medium, path, &round); err != nil {
+		t.Fatalf("reload after update: %v", err)
+	}
+	if round.Name != "V2" {
+		t.Errorf("after PkgUpdate Name = %q; want V2", round.Name)
+	}
+}
+
+// TestPkg_ParseInstallSpec_Good covers each of the three detection
+// branches: HTTPS URL → PWA, github.com/owner/repo → Electron, plain
+// code → marketplace native lookup.
+func TestPkg_ParseInstallSpec_Good(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantType app.PackageType
+		wantURL  string
+		wantRepo string
+		wantCode string
+	}{
+		{"https://app.example.com", app.PackageTypePWA, "https://app.example.com", "", ""},
+		{"http://localhost:8080/app", app.PackageTypePWA, "http://localhost:8080/app", "", ""},
+		{"github.com/owner/repo", app.PackageTypeElectron, "", "github.com/owner/repo", ""},
+		{"gitlab.com/owner/repo", app.PackageTypeElectron, "", "gitlab.com/owner/repo", ""},
+		{"plain-code", app.PackageTypeNative, "", "", "plain-code"},
+		{"core/photo-browser", app.PackageTypeNative, "", "", "core/photo-browser"},
+	}
+	for _, tc := range cases {
+		spec := app.ParseInstallSpec(tc.in)
+		if spec.Type != tc.wantType {
+			t.Errorf("ParseInstallSpec(%q).Type = %v; want %v", tc.in, spec.Type, tc.wantType)
+		}
+		if spec.URL != tc.wantURL {
+			t.Errorf("ParseInstallSpec(%q).URL = %q; want %q", tc.in, spec.URL, tc.wantURL)
+		}
+		if spec.Repo != tc.wantRepo {
+			t.Errorf("ParseInstallSpec(%q).Repo = %q; want %q", tc.in, spec.Repo, tc.wantRepo)
+		}
+		if spec.Code != tc.wantCode {
+			t.Errorf("ParseInstallSpec(%q).Code = %q; want %q", tc.in, spec.Code, tc.wantCode)
+		}
+	}
+}
+
+// TestPkg_ParseInstallSpec_Bad — empty input returns an unknown spec.
+func TestPkg_ParseInstallSpec_Bad(t *testing.T) {
+	spec := app.ParseInstallSpec("")
+	if spec.Type != app.PackageTypeUnknown {
+		t.Errorf("empty input Type = %v; want PackageTypeUnknown", spec.Type)
+	}
+	spec = app.ParseInstallSpec("   ")
+	if spec.Type != app.PackageTypeUnknown {
+		t.Errorf("whitespace input Type = %v; want PackageTypeUnknown", spec.Type)
+	}
+}
+
+// TestPkg_ParseInstallSpec_Ugly handles git@ remote-style references and
+// odd whitespace around otherwise valid input.
+func TestPkg_ParseInstallSpec_Ugly(t *testing.T) {
+	spec := app.ParseInstallSpec("git@github.com:owner/repo.git")
+	if spec.Type != app.PackageTypeElectron {
+		t.Errorf("git@ ref Type = %v; want PackageTypeElectron", spec.Type)
+	}
+	spec = app.ParseInstallSpec("  https://x.example.com/  ")
+	if spec.Type != app.PackageTypePWA {
+		t.Errorf("trim-then-detect Type = %v; want PackageTypePWA", spec.Type)
+	}
+	if spec.URL != "https://x.example.com/" {
+		t.Errorf("trim-then-detect URL = %q; want trimmed URL", spec.URL)
 	}
 }
 
@@ -302,4 +408,21 @@ func writeInstalled(t *testing.T, medium coreio.Medium, home, code string, manif
 	if err := medium.Write(path, string(body)); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
+}
+
+// newPWAManifestServer spins up an httptest server that always serves
+// the contents of the supplied pointer as `application/manifest+json`.
+// The pointer indirection lets tests mutate the served body between
+// requests (e.g. to test PkgUpdate's re-fetch behaviour).
+//
+//	body := `{"name":"V1"}`
+//	srv := newPWAManifestServer(t, &body)
+//	defer srv.Close()
+//	body = `{"name":"V2"}` // next fetch sees V2
+func newPWAManifestServer(t *testing.T, body *string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/manifest+json")
+		_, _ = w.Write([]byte(*body))
+	}))
 }

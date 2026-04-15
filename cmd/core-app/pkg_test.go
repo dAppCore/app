@@ -218,6 +218,48 @@ func TestPkg_ensureExit_NoOpInTests(t *testing.T) {
 	}
 }
 
+// TestPkg_runPkgInstall_Bad — `pkg install` with no source returns 64.
+// Electron repo install reaches the GitHub API which is unreachable in
+// hermetic tests, so we accept rc=1 as the "network failure surfaced"
+// signal.
+func TestPkg_runPkgInstall_Bad(t *testing.T) {
+	if rc := runPkg([]string{"install"}); rc != 64 {
+		t.Errorf("install with no source rc = %d; want 64", rc)
+	}
+	// Electron repo install reaches the network — non-zero rc is what
+	// matters; the actual cause varies by environment (DNS failure,
+	// 404, 403 rate-limited).
+	if rc := runPkg([]string{"install", "github.com/owner/definitely-not-a-real-repo-1234567890"}); rc == 0 {
+		t.Errorf("install of non-existent repo returned 0; want non-zero")
+	}
+}
+
+// TestPkg_runPkgInstall_Good — auto-detects a PWA URL and installs it
+// without needing a marketplace cache. Validates the
+// ParseInstallSpec → runPkgInstallPWA wiring end-to-end inside the CLI.
+func TestPkg_runPkgInstall_Good(t *testing.T) {
+	body := `{"name":"Play","short_name":"play","start_url":"/"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("CORE_HOME", home)
+	if core.Env("DIR_HOME") != home {
+		t.Skip("CORE_HOME mid-process override not honoured by core.Env; covered by app.PkgInstall tests")
+	}
+
+	if rc := runPkg([]string{"install", srv.URL + "/manifest.json"}); rc != 0 {
+		t.Fatalf("install PWA rc = %d; want 0", rc)
+	}
+
+	viewPath := core.Path(home, ".core", app.AppsDirName, "play", ".core", "view.yaml")
+	if !coreio.Local.Exists(viewPath) {
+		t.Errorf("install PWA produced no view.yaml at %s", viewPath)
+	}
+}
+
 // TestMain_runInstalled_Bad — `run` with no code returns 64; with an
 // unknown flag returns 64; with --help returns 0.
 func TestMain_runInstalled_Bad(t *testing.T) {

@@ -29,6 +29,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"os"
 
 	"dappco.re/go/app"
@@ -206,17 +207,19 @@ func parseArgs(args []string) (app.Mode, string) {
 
 // compileArgs captures the flags understood by the `compile` subcommand.
 type compileArgs struct {
-	Start string
-	Key   string
+	Start         string
+	Key           string
+	UseDefaultKey bool
 }
 
 // runCompile reads `.core/view.yaml`, optionally signs the in-memory
-// manifest when --key is supplied, compiles to a CompiledManifest and
-// writes `core.json` at the project root.
+// manifest when --key or --default is supplied, compiles to a
+// CompiledManifest and writes `core.json` at the project root.
 //
 //	core-app compile
 //	core-app compile ./photo-browser
 //	core-app compile --key ~/.core/keys/app.key
+//	core-app compile --default              # use $DIR_HOME/.core/keys/default.key
 func runCompile(args []string) int {
 	opts := compileArgs{Start: "./"}
 	for i := 0; i < len(args); i++ {
@@ -228,10 +231,13 @@ func runCompile(args []string) int {
 			}
 			i++
 			opts.Key = args[i]
+		case "--default":
+			opts.UseDefaultKey = true
 		case "--help", "-h":
-			core.Println("core-app compile [--key PATH] [project-dir]")
-			core.Println("  --key     hex-encoded ed25519 private key (re-sign before compile)")
-			core.Println("  project   project root holding .core/view.yaml (default: ./)")
+			core.Println("core-app compile [--key PATH | --default] [project-dir]")
+			core.Println("  --key      hex-encoded ed25519 private key (re-sign before compile)")
+			core.Println("  --default  re-sign with $DIR_HOME/.core/keys/default.key")
+			core.Println("  project    project root holding .core/view.yaml (default: ./)")
 			return 0
 		default:
 			if core.HasPrefix(args[i], "-") {
@@ -258,11 +264,21 @@ func runCompile(args []string) int {
 
 	root := core.PathDir(core.PathDir(path))
 
-	if opts.Key != "" {
-		priv, err := app.LoadPrivateKey(medium, opts.Key)
-		if err != nil {
-			core.Error("compile: private key load failed", "path", opts.Key, "err", err)
-			return 1
+	if opts.Key != "" || opts.UseDefaultKey {
+		var priv ed25519.PrivateKey
+		var err error
+		if opts.UseDefaultKey {
+			priv, err = app.LoadDefaultPrivateKey(medium)
+			if err != nil {
+				core.Error("compile: default key load failed", "err", err)
+				return 1
+			}
+		} else {
+			priv, err = app.LoadPrivateKey(medium, opts.Key)
+			if err != nil {
+				core.Error("compile: private key load failed", "path", opts.Key, "err", err)
+				return 1
+			}
 		}
 		if err := app.Sign(medium, path, priv); err != nil {
 			core.Error("compile: sign failed", "path", path, "err", err)
@@ -297,8 +313,9 @@ func runCompile(args []string) int {
 
 // signArgs captures the flags understood by the `sign` subcommand.
 type signArgs struct {
-	Start string
-	Key   string
+	Start         string
+	Key           string
+	UseDefaultKey bool
 }
 
 // runSign signs `.core/view.yaml` in place using the private key at the
@@ -306,6 +323,7 @@ type signArgs struct {
 // the mistake before publication.
 //
 //	core-app sign --key ~/.core/keys/app.key
+//	core-app sign --default                 # use $DIR_HOME/.core/keys/default.key
 //	core-app sign --key app.key ./photo-browser
 func runSign(args []string) int {
 	opts := signArgs{Start: "./"}
@@ -318,10 +336,13 @@ func runSign(args []string) int {
 			}
 			i++
 			opts.Key = args[i]
+		case "--default":
+			opts.UseDefaultKey = true
 		case "--help", "-h":
-			core.Println("core-app sign --key PATH [project-dir]")
-			core.Println("  --key     hex-encoded ed25519 private key (.key file)")
-			core.Println("  project   project root holding .core/view.yaml (default: ./)")
+			core.Println("core-app sign [--key PATH | --default] [project-dir]")
+			core.Println("  --key      hex-encoded ed25519 private key (.key file)")
+			core.Println("  --default  use $DIR_HOME/.core/keys/default.key")
+			core.Println("  project    project root holding .core/view.yaml (default: ./)")
 			return 0
 		default:
 			if core.HasPrefix(args[i], "-") {
@@ -332,8 +353,8 @@ func runSign(args []string) int {
 		}
 	}
 
-	if opts.Key == "" {
-		core.Error("sign: --key is required")
+	if opts.Key == "" && !opts.UseDefaultKey {
+		core.Error("sign: --key or --default is required")
 		return 64
 	}
 
@@ -345,10 +366,21 @@ func runSign(args []string) int {
 		return 1
 	}
 
-	priv, err := app.LoadPrivateKey(medium, opts.Key)
-	if err != nil {
-		core.Error("sign: private key load failed", "path", opts.Key, "err", err)
-		return 1
+	var priv ed25519.PrivateKey
+	if opts.UseDefaultKey {
+		var err error
+		priv, err = app.LoadDefaultPrivateKey(medium)
+		if err != nil {
+			core.Error("sign: default key load failed", "err", err)
+			return 1
+		}
+	} else {
+		var err error
+		priv, err = app.LoadPrivateKey(medium, opts.Key)
+		if err != nil {
+			core.Error("sign: private key load failed", "path", opts.Key, "err", err)
+			return 1
+		}
 	}
 
 	if err := app.Sign(medium, path, priv); err != nil {
