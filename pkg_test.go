@@ -400,6 +400,47 @@ func TestPkg_ParseInstallSpec_Ugly(t *testing.T) {
 	}
 }
 
+// TestPkg_DisplaySource_Good — every documented prefix is stripped
+// to the human-friendly form per RFC §16.3 (`pkg list` example).
+func TestPkg_DisplaySource_Good(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want string
+	}{
+		{"wrap:pwa:https://play.example.com", "https://play.example.com"},
+		{"wrap:electron:github.com/foo/bar", "github.com/foo/bar"},
+		{"wrap:web:./my-webapp", "./my-webapp"},
+		{"marketplace:photo-browser", "marketplace"},
+	}
+	for _, tc := range cases {
+		got := app.PkgEntry{Source: tc.raw}.DisplaySource()
+		if got != tc.want {
+			t.Errorf("DisplaySource(%q) = %q; want %q", tc.raw, got, tc.want)
+		}
+	}
+}
+
+// TestPkg_DisplaySource_Bad — undocumented prefixes pass through
+// untouched so an operator can spot a stale install rather than
+// having the value silently rewritten.
+func TestPkg_DisplaySource_Bad(t *testing.T) {
+	got := app.PkgEntry{Source: "weird:custom:value"}.DisplaySource()
+	if got != "weird:custom:value" {
+		t.Errorf("DisplaySource(weird) = %q; want pass-through", got)
+	}
+}
+
+// TestPkg_DisplaySource_Ugly — empty Source and the legacy `local:`
+// stamp both render as "local" so `pkg list` always shows a value.
+func TestPkg_DisplaySource_Ugly(t *testing.T) {
+	if got := (app.PkgEntry{}).DisplaySource(); got != "local" {
+		t.Errorf("DisplaySource(empty) = %q; want local", got)
+	}
+	if got := (app.PkgEntry{Source: "local:/srv/app"}).DisplaySource(); got != "local" {
+		t.Errorf("DisplaySource(local:) = %q; want local", got)
+	}
+}
+
 // writeInstalled is a helper that plants a view.yaml under
 // `<home>/.core/apps/<code>/.core/view.yaml` so PkgList can find it.
 //

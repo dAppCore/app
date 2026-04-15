@@ -101,19 +101,23 @@ func runPkgList(args []string) int {
 
 	if asJSON {
 		// Project to a serialisable shape so the JSON output is stable
-		// regardless of internal field reordering in PkgEntry.
+		// regardless of internal field reordering in PkgEntry. Both the
+		// raw and display forms of the source are included so JSON
+		// consumers can drive `pkg update` (raw) and a human-readable
+		// table (display) without re-parsing the value.
 		type row struct {
-			Name    string `json:"name"`
-			Type    string `json:"type"`
-			Version string `json:"version"`
-			Source  string `json:"source"`
-			Path    string `json:"path"`
+			Name          string `json:"name"`
+			Type          string `json:"type"`
+			Version       string `json:"version"`
+			Source        string `json:"source"`
+			DisplaySource string `json:"display_source"`
+			Path          string `json:"path"`
 		}
 		rows := make([]row, 0, len(entries))
 		for _, e := range entries {
 			rows = append(rows, row{
 				Name: e.Name, Type: e.Type.String(), Version: e.Version,
-				Source: e.Source, Path: e.Path,
+				Source: e.Source, DisplaySource: e.DisplaySource(), Path: e.Path,
 			})
 		}
 		r := core.JSONMarshal(rows)
@@ -130,11 +134,53 @@ func runPkgList(args []string) int {
 		core.Println("(no packages installed)")
 		return 0
 	}
-	core.Println("NAME\tTYPE\tVERSION\tSOURCE")
+	// Align columns so the output matches the RFC §16.3 example. Each
+	// column is padded to its widest cell + a 2-space gutter so the eye
+	// can scan a hundred packages without losing the row alignment.
+	const gutter = 2
+	headers := []string{"NAME", "TYPE", "VERSION", "SOURCE"}
+	widths := []int{len(headers[0]), len(headers[1]), len(headers[2]), len(headers[3])}
 	for _, e := range entries {
-		core.Println(e.Name + "\t" + e.Type.String() + "\t" + e.Version + "\t" + e.Source)
+		cells := []string{e.Name, e.Type.String(), e.Version, e.DisplaySource()}
+		for i, cell := range cells {
+			if len(cell) > widths[i] {
+				widths[i] = len(cell)
+			}
+		}
+	}
+	core.Println(formatRow(headers, widths, gutter))
+	for _, e := range entries {
+		cells := []string{e.Name, e.Type.String(), e.Version, e.DisplaySource()}
+		core.Println(formatRow(cells, widths, gutter))
 	}
 	return 0
+}
+
+// formatRow lays out a single row using the supplied column widths
+// plus a per-column gutter. The last cell is emitted without trailing
+// padding so a terminal with a narrow window does not wrap on
+// invisible whitespace.
+//
+//	formatRow([]string{"a", "b"}, []int{4, 3}, 2) // "a     b"
+//
+// If a cell is wider than its declared column width the gutter is
+// still applied so the next column does not abut the over-long cell.
+func formatRow(cells []string, widths []int, gutter int) string {
+	out := core.NewBuilder()
+	for i, cell := range cells {
+		out.WriteString(cell)
+		if i == len(cells)-1 {
+			break
+		}
+		pad := widths[i] - len(cell) + gutter
+		if pad < gutter {
+			pad = gutter
+		}
+		for j := 0; j < pad; j++ {
+			out.WriteByte(' ')
+		}
+	}
+	return out.String()
 }
 
 // pkgWrapArgs captures every flag the `pkg wrap` subverb understands.

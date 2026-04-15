@@ -25,14 +25,52 @@ const AppsDirName = "apps"
 //
 //	entries, _ := app.PkgList(coreio.Local, homeDir)
 //	for _, e := range entries {
-//	    fmt.Println(e.Name, e.Type, e.Version, e.Source)
+//	    fmt.Println(e.Name, e.Type, e.Version, e.DisplaySource())
 //	}
+//
+// Source is the raw provenance tag (`wrap:pwa:<url>`,
+// `marketplace:<code>`, `local:<path>`, …) so `pkg update` can dispatch
+// on the correct strategy. Use DisplaySource() when surfacing the
+// value to a human — it strips the `wrap:TYPE:` prefix per RFC §16.3.
 type PkgEntry struct {
 	Name    string      // manifest.code — the user-facing slug
 	Type    PackageType // native | pwa | electron | web
 	Version string      // manifest.version
-	Source  string      // marketplace | https://... | github.com/...
+	Source  string      // marketplace:CODE | wrap:pwa:URL | wrap:electron:REF | local:PATH
 	Path    string      // absolute install path (<home>/.core/apps/<code>)
+}
+
+// DisplaySource returns the human-facing rendering of Source per the
+// RFC §16.3 `pkg list` example:
+//
+//	marketplace:photo-browser            → "marketplace"
+//	wrap:pwa:https://play.example.com    → "https://play.example.com"
+//	wrap:electron:github.com/foo/bar     → "github.com/foo/bar"
+//	wrap:web:./my-webapp                 → "./my-webapp"
+//	local:/srv/app                       → "local"
+//	(unknown / empty)                    → "local"
+//
+// The raw Source is preserved so `pkg update` keeps its dispatch
+// information; this method exists purely to format the value.
+//
+//	fmt.Println(e.DisplaySource()) // "https://play.example.com"
+func (e PkgEntry) DisplaySource() string {
+	switch {
+	case e.Source == "":
+		return "local"
+	case core.HasPrefix(e.Source, "wrap:pwa:"):
+		return e.Source[len("wrap:pwa:"):]
+	case core.HasPrefix(e.Source, "wrap:electron:"):
+		return e.Source[len("wrap:electron:"):]
+	case core.HasPrefix(e.Source, "wrap:web:"):
+		return e.Source[len("wrap:web:"):]
+	case core.HasPrefix(e.Source, "marketplace:"):
+		return "marketplace"
+	case core.HasPrefix(e.Source, "local:"):
+		return "local"
+	default:
+		return e.Source
+	}
 }
 
 // PkgList returns every installed package by scanning

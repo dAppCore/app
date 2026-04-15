@@ -357,3 +357,41 @@ func TestMain_runInstalled_Ugly(t *testing.T) {
 		t.Errorf("missing-code rc = %d; want 1", rc)
 	}
 }
+
+// TestPkg_formatRow_Good — typical case: cells shorter than their
+// columns get padded out to the column width plus the configured
+// gutter; the final cell carries no trailing whitespace.
+func TestPkg_formatRow_Good(t *testing.T) {
+	got := formatRow([]string{"a", "b", "c"}, []int{4, 3, 2}, 2)
+	want := "a     b    c"
+	if got != want {
+		t.Errorf("formatRow = %q; want %q", got, want)
+	}
+}
+
+// TestPkg_formatRow_Bad — cells longer than their declared widths
+// must not be truncated; the row layout assumes widths come from the
+// caller's max-pass and a longer cell is a programming error, not a
+// runtime input. The function should still emit the cell literally
+// so the operator can spot the mismatch.
+func TestPkg_formatRow_Bad(t *testing.T) {
+	// Width=2 but cell is 5 chars. Output keeps the cell intact.
+	got := formatRow([]string{"hello", "x"}, []int{2, 1}, 2)
+	if got != "hello  x" {
+		t.Errorf("formatRow long-cell = %q; want %q", got, "hello  x")
+	}
+}
+
+// TestPkg_formatRow_Ugly — empty cells, single-cell rows, and a zero
+// gutter all produce stable output (no panic, no extra padding).
+func TestPkg_formatRow_Ugly(t *testing.T) {
+	if got := formatRow(nil, nil, 0); got != "" {
+		t.Errorf("formatRow(nil) = %q; want empty", got)
+	}
+	if got := formatRow([]string{"only"}, []int{4}, 2); got != "only" {
+		t.Errorf("single-cell formatRow = %q; want only", got)
+	}
+	if got := formatRow([]string{"a", "b"}, []int{1, 1}, 0); got != "ab" {
+		t.Errorf("zero-gutter formatRow = %q; want ab", got)
+	}
+}
