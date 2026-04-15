@@ -265,3 +265,55 @@ func TestYaml_yamlMarshalBytes_Good_RFCCompat(t *testing.T) {
 		}
 	}
 }
+
+// TestYaml_yamlMarshalBytes_Ugly_GUICompatDedup — when a manifest
+// carries the RFC-native gui.* gates plus their typed compatibility
+// booleans, the encoder emits the specific keys only once and suppresses
+// the legacy shorthand duplicates (`clipboard`, `notifications`,
+// `network`).
+func TestYaml_yamlMarshalBytes_Ugly_GUICompatDedup(t *testing.T) {
+	in := &config.ViewManifest{
+		Code:    "gui-dedup",
+		Name:    "GUI Dedup",
+		Version: "0.1.0",
+		Permissions: config.ViewPermissions{
+			Clipboard:     true,
+			Notifications: true,
+			Network:       true,
+			Net:           []string{"*"},
+		},
+		Config: map[string]any{
+			"gui_gates": map[string]any{
+				"gui.notification.send": true,
+				"gui.clipboard.read":    true,
+				"gui.clipboard.write":   true,
+			},
+		},
+	}
+
+	body, err := yamlMarshalBytes(in)
+	if err != nil {
+		t.Fatalf("yamlMarshalBytes failed: %v", err)
+	}
+	out := string(body)
+
+	for _, want := range []string{
+		"gui.notification.send: true",
+		"gui.clipboard.read: true",
+		"gui.clipboard.write: true",
+		"- '*'",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("yaml output missing %q:\n%s", want, out)
+		}
+	}
+	for _, forbidden := range []string{
+		"notifications: true",
+		"clipboard: true",
+		"network: true",
+	} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("yaml output should suppress %q when a narrower RFC key exists:\n%s", forbidden, out)
+		}
+	}
+}

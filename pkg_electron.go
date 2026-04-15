@@ -316,20 +316,14 @@ func WrapElectron(pkg *ElectronPackageJSON, scan *ElectronScanResult, opts WrapE
 	if scan != nil {
 		if scan.FS {
 			m.Permissions.Read = []string{dataDir}
-			// ViewPermissions has no per-path write list yet; set the
-			// Filesystem catch-all when we detect fs usage so the
-			// permission gate doesn't deny write access at runtime.
-			m.Permissions.Filesystem = true
 		}
 		if scan.Net {
 			// RFC §16.2 — `require('net')` → `net: ["*"]` wildcard
 			// declaration (the spec table lists the explicit literal so a
-			// wrapped Electron app keeps unrestricted network access).
-			// Network=true mirrors the boolean catch-all so legacy
-			// permission gates that consult ViewPermissions.Network still
-			// see the capability without re-walking the Net slice.
+			// wrapped Electron app keeps unrestricted network access)
+			// without widening the manifest to the legacy `network: true`
+			// catch-all.
 			m.Permissions.Net = []string{"*"}
-			m.Permissions.Network = true
 		}
 		// RFC §16.2 — `require('fs')` → `write: ["./data/"]` per-path
 		// declaration. ViewPermissions has no typed write list yet so the

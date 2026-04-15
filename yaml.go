@@ -303,16 +303,19 @@ func manifestPermissionsForYAML(m *config.ViewManifest) map[string]any {
 		return nil
 	}
 	perms := map[string]any{}
-	if m.Permissions.Clipboard {
+	guiGates := manifestGUIGates(m)
+	if m.Permissions.Clipboard &&
+		!truthy(guiGates["gui.clipboard.read"]) &&
+		!truthy(guiGates["gui.clipboard.write"]) {
 		perms["clipboard"] = true
 	}
 	if m.Permissions.Filesystem {
 		perms["filesystem"] = true
 	}
-	if m.Permissions.Network {
+	if m.Permissions.Network && !permissionListContains(m.Permissions.Net, "*") {
 		perms["network"] = true
 	}
-	if m.Permissions.Notifications {
+	if m.Permissions.Notifications && !truthy(guiGates["gui.notification.send"]) {
 		perms["notifications"] = true
 	}
 	if m.Permissions.Camera {
@@ -336,8 +339,8 @@ func manifestPermissionsForYAML(m *config.ViewManifest) map[string]any {
 	if v, ok := manifestConfigValue(m, "store"); ok {
 		perms["store"] = v
 	}
-	if gates := manifestGUIGates(m); len(gates) > 0 {
-		for key, value := range gates {
+	if len(guiGates) > 0 {
+		for key, value := range guiGates {
 			perms[key] = value
 		}
 	}

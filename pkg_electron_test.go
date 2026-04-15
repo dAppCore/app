@@ -157,26 +157,25 @@ func TestPkgElectron_WrapElectron_Good(t *testing.T) {
 	if m.Version != "4.1.0" {
 		t.Errorf("Version = %q", m.Version)
 	}
-	// FS → read list + filesystem catch-all.
+	// FS → narrow read/write declarations under the data dir only.
 	if len(m.Permissions.Read) != 1 || m.Permissions.Read[0] != "./data/" {
 		t.Errorf("Permissions.Read = %v", m.Permissions.Read)
 	}
-	if !m.Permissions.Filesystem {
-		t.Error("Permissions.Filesystem = false; want true (fs detected)")
+	if m.Permissions.Filesystem {
+		t.Error("Permissions.Filesystem = true; want false (RFC §16.2 keeps fs scoped to ./data/)")
 	}
 	// RFC §16.2 — `require('fs')` should also produce a write list so
-	// the entitlement gate honours per-path writes (access.go consults
-	// Config["write"] before falling back to the Filesystem catch-all).
+	// the entitlement gate honours per-path writes without widening the
+	// manifest to the filesystem catch-all.
 	writeList, ok := m.Config["write"].([]any)
 	if !ok || len(writeList) != 1 || writeList[0] != "./data/" {
 		t.Errorf("Config[write] = %v; want [./data/] (RFC §16.2)", m.Config["write"])
 	}
-	if !m.Permissions.Network {
-		t.Error("Permissions.Network = false; want true (net detected)")
+	if m.Permissions.Network {
+		t.Error("Permissions.Network = true; want false (wildcard net list is the RFC surface)")
 	}
 	// RFC §16.2 — `require('net')` should produce `net: ["*"]`
-	// (wildcard). Network=true is the legacy catch-all; the explicit
-	// Net slice is the spec-compliant declaration.
+	// (wildcard) without the legacy `network: true` companion.
 	if len(m.Permissions.Net) != 1 || m.Permissions.Net[0] != "*" {
 		t.Errorf("Permissions.Net = %v; want [*] (RFC §16.2 wildcard)", m.Permissions.Net)
 	}
@@ -185,6 +184,18 @@ func TestPkgElectron_WrapElectron_Good(t *testing.T) {
 	}
 	if !m.Permissions.Notifications {
 		t.Error("Permissions.Notifications = false; want true")
+	}
+	if err := app.CheckAccess(m, app.AccessRead, "./data/state.json"); err != nil {
+		t.Errorf("AccessRead ./data/state.json denied: %v", err)
+	}
+	if err := app.CheckAccess(m, app.AccessWrite, "./data/state.json"); err != nil {
+		t.Errorf("AccessWrite ./data/state.json denied: %v", err)
+	}
+	if err := app.CheckAccess(m, app.AccessRead, "./secrets.txt"); err == nil {
+		t.Error("AccessRead outside ./data/ should be denied")
+	}
+	if err := app.CheckAccess(m, app.AccessWrite, "./secrets.txt"); err == nil {
+		t.Error("AccessWrite outside ./data/ should be denied")
 	}
 	// Config carries the Electron-specific shape.
 	if m.Config["type"] != "electron" {
