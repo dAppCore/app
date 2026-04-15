@@ -373,6 +373,118 @@ func TestCompile_Compile_Config_Ugly(t *testing.T) {
 	}
 }
 
+// TestCompile_WriteCompiled_CompatibilityFields_Good confirms the
+// RFC-facing core.json layout hoists compatibility fields back out of
+// Config instead of hiding them all under `config`.
+func TestCompile_WriteCompiled_CompatibilityFields_Good(t *testing.T) {
+	dir := t.TempDir()
+	m := &config.ViewManifest{
+		Code:    "compat",
+		Name:    "Compat",
+		Version: "0.1.0",
+		Config: map[string]any{
+			"store":    true,
+			"write":    []any{"./cache/"},
+			"services": []any{"store", "notification"},
+			"type":     "pwa",
+			"url":      "https://play.example.com/",
+			"source":   "wrap:pwa:https://play.example.com/",
+		},
+	}
+	cm, err := Compile(m, CompileOptions{})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if err := WriteCompiled(coreio.Local, dir, cm); err != nil {
+		t.Fatalf("WriteCompiled: %v", err)
+	}
+
+	body, err := coreio.Local.Read(core.Path(dir, CompiledFileName))
+	if err != nil {
+		t.Fatalf("Read core.json: %v", err)
+	}
+	var raw map[string]any
+	if r := core.JSONUnmarshal([]byte(body), &raw); !r.OK {
+		t.Fatalf("Decode core.json: %v", r.Value)
+	}
+
+	perms, ok := raw["permissions"].(map[string]any)
+	if !ok {
+		t.Fatalf("permissions = %T; want object", raw["permissions"])
+	}
+	if perms["store"] != true {
+		t.Errorf("permissions.store = %v; want true", perms["store"])
+	}
+	writeList, ok := perms["write"].([]any)
+	if !ok || len(writeList) != 1 || writeList[0] != "./cache/" {
+		t.Errorf("permissions.write = %v; want [./cache/]", perms["write"])
+	}
+	if raw["type"] != "pwa" {
+		t.Errorf("type = %v; want pwa", raw["type"])
+	}
+	if raw["url"] != "https://play.example.com/" {
+		t.Errorf("url = %v; want https://play.example.com/", raw["url"])
+	}
+	services, ok := raw["services"].([]any)
+	if !ok || len(services) != 2 {
+		t.Fatalf("services = %v; want [store notification]", raw["services"])
+	}
+	cfg, ok := raw["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("config = %T; want object", raw["config"])
+	}
+	if cfg["source"] != "wrap:pwa:https://play.example.com/" {
+		t.Errorf("config.source = %v; want wrap source", cfg["source"])
+	}
+	if _, ok := cfg["store"]; ok {
+		t.Error("config.store should be hoisted into permissions")
+	}
+	if _, ok := cfg["services"]; ok {
+		t.Error("config.services should be hoisted to the top level")
+	}
+}
+
+// TestCompile_LoadCompiled_CompatibilityFields_Good confirms
+// LoadCompiled accepts the RFC-facing core.json shape and folds the
+// compatibility fields back into the in-memory Config / Permissions
+// form the runtime uses today.
+func TestCompile_LoadCompiled_CompatibilityFields_Good(t *testing.T) {
+	dir := t.TempDir()
+	path := core.Path(dir, CompiledFileName)
+	body := `{
+		"code":"compat-load",
+		"name":"Compat Load",
+		"version":"0.1.0",
+		"compiled_at":"2026-04-15T00:00:00Z",
+		"compiled_by":"test",
+		"type":"pwa",
+		"url":"https://play.example.com/",
+		"services":["store"],
+		"permissions":{"read":["./"],"write":["./cache/"],"store":true}
+	}`
+	if err := coreio.Local.Write(path, body); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	cm, err := LoadCompiled(coreio.Local, dir)
+	if err != nil {
+		t.Fatalf("LoadCompiled: %v", err)
+	}
+	if cm.Config["store"] != true {
+		t.Errorf("Config[store] = %v; want true", cm.Config["store"])
+	}
+	if cm.Config["type"] != "pwa" {
+		t.Errorf("Config[type] = %v; want pwa", cm.Config["type"])
+	}
+	if cm.Config["url"] != "https://play.example.com/" {
+		t.Errorf("Config[url] = %v; want https://play.example.com/", cm.Config["url"])
+	}
+	writeList, ok := cm.Config["write"].([]any)
+	if !ok || len(writeList) != 1 || writeList[0] != "./cache/" {
+		t.Errorf("Config[write] = %v; want [./cache/]", cm.Config["write"])
+	}
+}
+
 // TestCompile_copyConfig_Good — copyConfig returns an independent map
 // with the same keys so mutations on the source don't reach the copy.
 func TestCompile_copyConfig_Good(t *testing.T) {

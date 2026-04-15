@@ -434,7 +434,7 @@ func runPkgWrapPWA(opts pkgWrapArgs) int {
 		return 1
 	}
 	manifest := app.WrapPWA(pwa, app.WrapPWAOptions{
-		TargetURL: opts.PWAURL,
+		TargetURL: app.ResolvePWAAppURL(opts.PWAURL, pwa),
 		Code:      opts.Code,
 		Version:   opts.Version,
 	})
@@ -842,7 +842,9 @@ func runPkgInstallLocalAs(home, path string, kind app.PackageType) int {
 			core.Error("pkg install local: decode manifest.json failed", "path", manifestPath, "err", r.Value)
 			return 1
 		}
-		manifest := app.WrapPWA(&pwa, app.WrapPWAOptions{TargetURL: pwa.StartURL})
+		manifest := app.WrapPWA(&pwa, app.WrapPWAOptions{
+			TargetURL: app.ResolvePWAAppURL(manifestPath, &pwa),
+		})
 		if manifest == nil {
 			core.Error("pkg install local: WrapPWA returned nil")
 			return 1
@@ -970,7 +972,9 @@ func runPkgInstallPWA(ctx context.Context, home, url string) int {
 		core.Error("pkg install --pwa: fetch failed", "url", url, "err", err)
 		return 1
 	}
-	manifest := app.WrapPWA(pwa, app.WrapPWAOptions{TargetURL: url})
+	manifest := app.WrapPWA(pwa, app.WrapPWAOptions{
+		TargetURL: app.ResolvePWAAppURL(url, pwa),
+	})
 	if manifest == nil {
 		core.Error("pkg install --pwa: WrapPWA returned nil")
 		return 1

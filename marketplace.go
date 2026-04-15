@@ -432,7 +432,10 @@ func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInsta
 		if err != nil {
 			return dest, err
 		}
-		m := WrapPWA(pwa, WrapPWAOptions{TargetURL: listing.URL, Code: listing.Code})
+		m := WrapPWA(pwa, WrapPWAOptions{
+			TargetURL: ResolvePWAAppURL(listing.URL, pwa),
+			Code:      listing.Code,
+		})
 		if m == nil {
 			return dest, coreerr.E("app.MarketplaceInstall", "WrapPWA returned nil", nil)
 		}
@@ -864,7 +867,10 @@ func MarketplaceUpdate(ctx context.Context, c *core.Core, opts MarketplaceUpdate
 		if err != nil {
 			return dest, err
 		}
-		manifest := WrapPWA(pwa, WrapPWAOptions{TargetURL: listing.URL, Code: listing.Code})
+		manifest := WrapPWA(pwa, WrapPWAOptions{
+			TargetURL: ResolvePWAAppURL(listing.URL, pwa),
+			Code:      listing.Code,
+		})
 		if manifest == nil {
 			return dest, coreerr.E("app.MarketplaceUpdate", "WrapPWA returned nil", nil)
 		}

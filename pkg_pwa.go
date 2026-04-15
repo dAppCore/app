@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"time"
 
 	core "dappco.re/go/core"
@@ -56,7 +57,7 @@ const pwaFetchTimeout = 15 * time.Second
 
 // FetchPWAManifest performs an HTTP GET against the supplied URL and
 // decodes the body as a PWAManifest. Used by `core pkg wrap --pwa <url>`
-// when the caller points at a live manifest rather than a local file.
+// when the caller points at either a live manifest URL or an app URL.
 //
 //	manifest, err := app.FetchPWAManifest(ctx, "https://app.example.com/manifest.json")
 //
@@ -67,45 +68,51 @@ const pwaFetchTimeout = 15 * time.Second
 //
 //   - Trims whitespace from the URL so CLI shells pasting trailing
 //     spaces don't 400.
+//
+//   - When the supplied URL is an app root rather than a direct
+//     manifest URL, the helper also probes `manifest.json` and
+//     `manifest.webmanifest` beneath that URL so the RFC §16 examples
+//     (`core pkg wrap --pwa https://app.example.com`) work without the
+//     caller knowing the exact manifest path upfront.
 func FetchPWAManifest(ctx context.Context, url string) (*PWAManifest, error) {
 	url = core.Trim(url)
 	if url == "" {
 		return nil, coreerr.E("app.FetchPWAManifest", "empty URL", nil)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, coreerr.E("app.FetchPWAManifest", "request build failed", err)
-	}
-	req.Header.Set("Accept", "application/manifest+json, application/json")
+	candidates := pwaManifestCandidates(url)
+	var lastErr error
 
-	client := &http.Client{Timeout: pwaFetchTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, coreerr.E("app.FetchPWAManifest", "HTTP GET failed", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
+	for i, candidate := range candidates {
+		body, err := fetchPWAURL(ctx, candidate)
+		if err != nil {
+			lastErr = err
+			// A direct manifest URL should fail loudly; an app URL can
+			// fall through to the conventional manifest paths.
+			if i == 0 && looksLikePWAManifestURL(url) {
+				break
+			}
+			continue
+		}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, coreerr.E(
-			"app.FetchPWAManifest",
-			"non-2xx status: "+core.Sprint(resp.StatusCode),
-			nil,
-		)
+		manifest, err := decodePWAManifest(body)
+		if err == nil {
+			return manifest, nil
+		}
+		lastErr = err
+
+		// The caller already pointed at something that looks like a
+		// manifest file; no point probing fallback locations after a
+		// hard decode failure.
+		if i == 0 && looksLikePWAManifestURL(url) {
+			break
+		}
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, coreerr.E("app.FetchPWAManifest", "read body failed", err)
+	if lastErr == nil {
+		lastErr = coreerr.E("app.FetchPWAManifest", "no manifest candidates resolved", nil)
 	}
-
-	var m PWAManifest
-	r := core.JSONUnmarshal(body, &m)
-	if !r.OK {
-		cause, _ := r.Value.(error)
-		return nil, coreerr.E("app.FetchPWAManifest", "decode manifest.json failed", cause)
-	}
-	return &m, nil
+	return nil, coreerr.E("app.FetchPWAManifest", "manifest fetch failed for "+url, lastErr)
 }
 
 // WrapPWAOptions tunes WrapPWA. A zero value is fine — the canonical
@@ -179,10 +186,10 @@ func WrapPWA(src *PWAManifest, opts WrapPWAOptions) *config.ViewManifest {
 		Layout:  "C", // PWA single-surface app — Centre slot only
 	}
 
-	// Network permission derived from the app URL. Host:443 is the
-	// default since PWAs are HTTPS by spec.
-	if host := hostOfURL(url); host != "" {
-		m.Permissions.Net = []string{host + ":443"}
+	// Network permission derived from the resolved app URL, preserving
+	// any explicit port and defaulting to the scheme's conventional port.
+	if hostPort := hostPortOfURL(url); hostPort != "" {
+		m.Permissions.Net = []string{hostPort}
 	}
 
 	// Map standard PWA permission strings to CoreApp permission slots.
@@ -236,6 +243,19 @@ func WrapPWA(src *PWAManifest, opts WrapPWAOptions) *config.ViewManifest {
 	}
 
 	return m
+}
+
+// ResolvePWAAppURL turns a caller-supplied PWA source URL into the app
+// entry-point URL that should be recorded in the wrapped manifest. When
+// the source URL already points at a manifest file, the PWA's
+// `start_url` is resolved relative to that file. When the source URL is
+// an app root, the same relative-resolution logic yields the final app
+// entry point beneath that root.
+func ResolvePWAAppURL(sourceURL string, manifest *PWAManifest) string {
+	if manifest == nil {
+		return core.Trim(sourceURL)
+	}
+	return resolvePWAStartURL(sourceURL, manifest.StartURL)
 }
 
 // pwaWindowMode maps a PWA `display` field to a CoreApp window mode.
@@ -338,6 +358,144 @@ func applyPWAPermissionMapping(m *config.ViewManifest, perms []string) {
 	}
 }
 
+// fetchPWAURL performs one HTTP GET and returns the response body.
+// Kept separate from FetchPWAManifest so the caller can try multiple
+// candidate URLs (root, /manifest.json, /manifest.webmanifest)
+// without duplicating the request plumbing.
+func fetchPWAURL(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, coreerr.E("app.fetchPWAURL", "request build failed", err)
+	}
+	req.Header.Set("Accept", "application/manifest+json, application/json")
+
+	client := &http.Client{Timeout: pwaFetchTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, coreerr.E("app.fetchPWAURL", "HTTP GET failed", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, coreerr.E(
+			"app.fetchPWAURL",
+			"non-2xx status: "+core.Sprint(resp.StatusCode),
+			nil,
+		)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, coreerr.E("app.fetchPWAURL", "read body failed", err)
+	}
+	return body, nil
+}
+
+// decodePWAManifest narrows a JSON body into the subset of the Web App
+// Manifest we care about. At least one identity-bearing field must be
+// present so a random HTML page or API response is not misclassified as
+// a valid PWA manifest.
+func decodePWAManifest(body []byte) (*PWAManifest, error) {
+	var m PWAManifest
+	r := core.JSONUnmarshal(body, &m)
+	if !r.OK {
+		cause, _ := r.Value.(error)
+		return nil, coreerr.E("app.decodePWAManifest", "decode manifest body failed", cause)
+	}
+	if m.StartURL == "" && m.Name == "" && m.ShortName == "" {
+		return nil, coreerr.E("app.decodePWAManifest", "body is not a web app manifest", nil)
+	}
+	return &m, nil
+}
+
+// pwaManifestCandidates returns the URL list FetchPWAManifest should
+// try in order. A direct manifest URL is tried as-is; an app URL also
+// gets conventional manifest paths appended so callers can hand us the
+// site root instead of the exact manifest file path.
+func pwaManifestCandidates(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	out := []string{raw}
+	if looksLikePWAManifestURL(raw) {
+		return out
+	}
+	for _, name := range []string{"manifest.json", "manifest.webmanifest"} {
+		if next, ok := joinManifestURL(raw, name); ok {
+			appendUniqueString(&out, next)
+		}
+	}
+	return out
+}
+
+// looksLikePWAManifestURL reports whether the URL already names a
+// manifest resource rather than an app/document root.
+func looksLikePWAManifestURL(raw string) bool {
+	parsed, err := neturl.Parse(core.Trim(raw))
+	if err != nil {
+		return false
+	}
+	path := core.Lower(parsed.Path)
+	return core.HasSuffix(path, ".webmanifest") ||
+		core.HasSuffix(path, ".json") ||
+		core.Contains(path, "/manifest")
+}
+
+// joinManifestURL resolves `name` relative to the supplied app URL,
+// treating the URL as a directory-like base when it does not already
+// end in `/`.
+func joinManifestURL(base, name string) (string, bool) {
+	if base == "" || name == "" {
+		return "", false
+	}
+	u, err := neturl.Parse(base)
+	if err != nil {
+		return "", false
+	}
+	if u.Path == "" {
+		u.Path = "/"
+	} else if !core.HasSuffix(u.Path, "/") {
+		u.Path += "/"
+	}
+	ref, err := neturl.Parse(name)
+	if err != nil {
+		return "", false
+	}
+	return u.ResolveReference(ref).String(), true
+}
+
+// resolvePWAStartURL turns the caller-supplied target URL and the PWA
+// manifest's start_url into the app entry-point URL we record in the
+// wrapped CoreApp manifest. Relative start_url values are resolved
+// against the caller's URL, whether that URL is the app root or the
+// manifest file path itself.
+func resolvePWAStartURL(targetURL, startURL string) string {
+	targetURL = core.Trim(targetURL)
+	startURL = core.Trim(startURL)
+	if startURL == "" {
+		return targetURL
+	}
+
+	ref, err := neturl.Parse(startURL)
+	if err == nil && ref.IsAbs() {
+		return ref.String()
+	}
+	if targetURL == "" {
+		return startURL
+	}
+	base, err := neturl.Parse(targetURL)
+	if err != nil {
+		return startURL
+	}
+	if ref == nil {
+		ref, err = neturl.Parse(startURL)
+		if err != nil {
+			return startURL
+		}
+	}
+	return base.ResolveReference(ref).String()
+}
+
 // slugify turns a display name into a kebab-case ASCII slug suitable
 // for `code` identifiers. Keeps alphanumerics and hyphens, lower-cases,
 // and collapses runs of other characters into single hyphens.
@@ -373,21 +531,46 @@ func slugify(in string) string {
 	return out
 }
 
-// hostOfURL returns the host[:port] portion of an HTTP/HTTPS URL with
-// no scheme or path. Returns an empty string for malformed input so the
-// caller can decide on a fallback.
+// hostPortOfURL returns the host:port portion of an app URL. Explicit
+// ports are preserved; otherwise the conventional port for the scheme
+// is filled in (`https` → 443, `http` → 80).
 //
-//	hostOfURL("https://app.example.com/manifest.json") // "app.example.com"
-func hostOfURL(url string) string {
-	if url == "" {
+//	hostPortOfURL("https://app.example.com/manifest.json") // "app.example.com:443"
+//	hostPortOfURL("http://localhost:3000/app")            // "localhost:3000"
+func hostPortOfURL(raw string) string {
+	raw = core.Trim(raw)
+	if raw == "" {
 		return ""
 	}
-	u := core.TrimPrefix(url, "https://")
-	u = core.TrimPrefix(u, "http://")
-	if idx := indexOf(u, "/"); idx > 0 {
-		u = u[:idx]
+	u, err := neturl.Parse(raw)
+	if err != nil {
+		return ""
 	}
-	return u
+	if u.Host == "" {
+		// Bare host/path without a scheme — default to HTTPS to match
+		// the RFC examples and the PWA expectation.
+		u, err = neturl.Parse("https://" + raw)
+		if err != nil {
+			return ""
+		}
+	}
+	host := u.Hostname()
+	if host == "" {
+		return ""
+	}
+	port := u.Port()
+	if port == "" {
+		switch core.Lower(u.Scheme) {
+		case "http":
+			port = "80"
+		case "https", "":
+			port = "443"
+		}
+	}
+	if port == "" {
+		return host
+	}
+	return host + ":" + port
 }
 
 // indexOf returns the first index of needle in haystack, or -1. Small

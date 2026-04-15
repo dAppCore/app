@@ -715,7 +715,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 			return appPath, coreerr.E("app.PkgUpdate", "PWA refetch failed", err)
 		}
 		updated := WrapPWA(pwa, WrapPWAOptions{
-			TargetURL: url,
+			TargetURL: ResolvePWAAppURL(url, pwa),
 			Code:      manifest.Code,
 			Version:   manifest.Version,
 		})

@@ -262,6 +262,31 @@ func TestPkgPwa_WrapPWA_Ugly(t *testing.T) {
 	}
 }
 
+// TestPkgPwa_WrapPWA_StartURLResolution_Good confirms the wrapper
+// resolves a relative start_url against the caller-supplied URL and
+// preserves an explicit non-default port in the derived net
+// permission.
+func TestPkgPwa_WrapPWA_StartURLResolution_Good(t *testing.T) {
+	src := &app.PWAManifest{
+		Name:     "Port App",
+		StartURL: "/app",
+	}
+	resolved := app.ResolvePWAAppURL("http://localhost:3000/manifest.json", src)
+	if resolved != "http://localhost:3000/app" {
+		t.Fatalf("ResolvePWAAppURL = %q; want http://localhost:3000/app", resolved)
+	}
+	m := app.WrapPWA(src, app.WrapPWAOptions{TargetURL: resolved})
+	if m == nil {
+		t.Fatal("WrapPWA returned nil")
+	}
+	if got := m.Config["url"]; got != resolved {
+		t.Errorf("Config[url] = %v; want http://localhost:3000/app", got)
+	}
+	if len(m.Permissions.Net) != 1 || m.Permissions.Net[0] != "localhost:3000" {
+		t.Errorf("Permissions.Net = %v; want [localhost:3000]", m.Permissions.Net)
+	}
+}
+
 // TestPkgPwa_WritePWAWrap_Good confirms the wrapped manifest lands on
 // disk at `<dest>/.core/view.yaml` and parses back cleanly.
 func TestPkgPwa_WritePWAWrap_Good(t *testing.T) {
@@ -326,6 +351,34 @@ func TestPkgPwa_FetchPWAManifest_Good(t *testing.T) {
 	}
 	if m.ThemeColor != "#111111" {
 		t.Errorf("ThemeColor = %q; want '#111111'", m.ThemeColor)
+	}
+}
+
+// TestPkgPwa_FetchPWAManifest_RootURL_Good confirms the fetch path also
+// accepts an app URL and falls back to the conventional manifest.json
+// path beneath it.
+func TestPkgPwa_FetchPWAManifest_RootURL_Good(t *testing.T) {
+	body := `{"name":"Root Play","short_name":"root-play","start_url":"/"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html><head><title>Play</title></head></html>"))
+		case "/manifest.json":
+			w.Header().Set("Content-Type", "application/manifest+json")
+			_, _ = w.Write([]byte(body))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	m, err := app.FetchPWAManifest(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("FetchPWAManifest(root URL): %v", err)
+	}
+	if m.Name != "Root Play" {
+		t.Errorf("Name = %q; want Root Play", m.Name)
 	}
 }
 

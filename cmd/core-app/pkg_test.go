@@ -118,6 +118,35 @@ func TestPkg_runPkgWrap_Ugly(t *testing.T) {
 	}
 }
 
+// TestPkg_runPkgWrap_PWAAppURL_Good confirms the CLI accepts an app URL
+// rather than requiring the caller to know the exact manifest.json
+// path.
+func TestPkg_runPkgWrap_PWAAppURL_Good(t *testing.T) {
+	body := `{"name":"Play","short_name":"play","start_url":"/"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html/>"))
+		case "/manifest.json":
+			w.Header().Set("Content-Type", "application/manifest+json")
+			_, _ = w.Write([]byte(body))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	dest := t.TempDir()
+	rc := runPkg([]string{"wrap", "--pwa", srv.URL, "--dest", dest})
+	if rc != 0 {
+		t.Fatalf("wrap --pwa app URL rc = %d; want 0", rc)
+	}
+	if !coreio.Local.Exists(core.Path(dest, ".core", "view.yaml")) {
+		t.Errorf("view.yaml missing at %s after wrap --pwa app URL", dest)
+	}
+}
+
 // TestPkg_runMarketplace_Good — `marketplace search QUERY` runs
 // against a planted local index and returns 0 even if no results.
 func TestPkg_runMarketplace_Good(t *testing.T) {
