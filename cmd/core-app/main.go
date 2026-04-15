@@ -20,6 +20,9 @@
 //	core-app marketplace search Q # search the local marketplace cache
 //	core-app marketplace install CODE
 //	                              # install a marketplace listing
+//	core-app sdk generate         # generate client SDKs from .core/view.yaml
+//	core-app sdk generate --lang ts --out ./sdk
+//	                              # generate only the TypeScript SDK
 //
 // This binary is the thin CLI shell around app.Boot, app.Compile and
 // app.Sign. Real orchestration lives in the app package; main is here to
@@ -56,6 +59,8 @@ func main() {
 			os.Exit(runPkg(args[1:]))
 		case "marketplace":
 			os.Exit(runMarketplace(args[1:]))
+		case "sdk":
+			os.Exit(runSDK(args[1:]))
 		case "run":
 			os.Exit(runInstalled(args[1:]))
 		}
@@ -185,6 +190,7 @@ func parseArgs(args []string) (app.Mode, string) {
 			core.Println("  compile      compile .core/view.yaml → core.json")
 			core.Println("  sign         sign .core/view.yaml with a private key")
 			core.Println("  keygen       generate a paired ed25519 keypair")
+			core.Println("  sdk          generate client SDKs (openapi, ts, go, php)")
 			core.Println("  run CODE     boot an installed package by code")
 			core.Println("  pkg ...      manage packages (list, wrap, install, remove, update)")
 			core.Println("  marketplace  search/install/fetch from the marketplace")

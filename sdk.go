@@ -1,0 +1,777 @@
+// SPDX-License-Identifier: EUPL-1.2
+
+package app
+
+import (
+	core "dappco.re/go/core"
+	"dappco.re/go/core/config"
+	coreio "dappco.re/go/core/io"
+	coreerr "dappco.re/go/core/log"
+)
+
+// SDKLanguage selects which client SDK the generator emits. Each language
+// corresponds to a different set of files written under the SDK output
+// directory; see SDKGenerate for the layout convention.
+//
+//	core-app sdk generate --lang ts
+//	core-app sdk generate --lang openapi
+type SDKLanguage int
+
+const (
+	// SDKLanguageOpenAPI emits an OpenAPI 3.1 spec covering the manifest's
+	// declared Action surface. The spec is the source of truth for every
+	// downstream codegen and lives at `<out>/openapi.json`.
+	SDKLanguageOpenAPI SDKLanguage = iota
+	// SDKLanguageTypeScript emits a TypeScript module exporting typed
+	// wrappers over the Action surface (`fs.read`, `store.get`, …). The
+	// module ships at `<out>/index.ts`.
+	SDKLanguageTypeScript
+	// SDKLanguageGo emits a Go package mirroring the TypeScript surface so
+	// CoreApp authors writing Go services can dispatch Actions with the
+	// same typed API they used in the frontend. Lives at `<out>/sdk.go`.
+	SDKLanguageGo
+	// SDKLanguagePHP emits a PHP class with method-per-action helpers for
+	// CorePHP consumers (Laravel facade pattern). Lives at `<out>/Sdk.php`.
+	SDKLanguagePHP
+)
+
+// String returns the lowercase token that callers pass on the CLI and
+// that the marketplace index records when surfacing SDK availability.
+//
+//	app.SDKLanguageTypeScript.String() // "ts"
+func (l SDKLanguage) String() string {
+	switch l {
+	case SDKLanguageOpenAPI:
+		return "openapi"
+	case SDKLanguageTypeScript:
+		return "ts"
+	case SDKLanguageGo:
+		return "go"
+	case SDKLanguagePHP:
+		return "php"
+	default:
+		return "unknown"
+	}
+}
+
+// ParseSDKLanguage maps a CLI token back to an SDKLanguage. Returns
+// (zero, false) for unknown values so the caller can print a useful
+// "supported languages" error rather than silently defaulting.
+//
+//	lang, ok := app.ParseSDKLanguage("ts")
+func ParseSDKLanguage(s string) (SDKLanguage, bool) {
+	switch core.Lower(core.Trim(s)) {
+	case "openapi", "oas", "swagger":
+		return SDKLanguageOpenAPI, true
+	case "ts", "typescript":
+		return SDKLanguageTypeScript, true
+	case "go", "golang":
+		return SDKLanguageGo, true
+	case "php":
+		return SDKLanguagePHP, true
+	}
+	return 0, false
+}
+
+// SDKAction describes a single Named Action exposed to consumers. The
+// field set mirrors what a typed binding needs: the dotted action name,
+// a free-form description, the permission it gates against, and the
+// expected request / response argument shapes.
+//
+//	a := app.SDKAction{
+//	    Name: "fs.read", Permission: "read",
+//	    Description: "Read a file from the sandbox",
+//	    Request: []app.SDKArg{{Name: "path", Type: "string", Required: true}},
+//	    Response: []app.SDKArg{{Name: "content", Type: "string"}},
+//	}
+type SDKAction struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Permission  string   `json:"permission,omitempty"`
+	Request     []SDKArg `json:"request,omitempty"`
+	Response    []SDKArg `json:"response,omitempty"`
+}
+
+// SDKArg names one parameter (request or response) of a Named Action.
+// Type is the JSON Schema primitive name (`string`, `integer`, `boolean`,
+// `object`); the generator does not yet emit nested object schemas — the
+// RFC §9 contract is parameter-flat by design.
+type SDKArg struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Required    bool   `json:"required,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// SDKGenerateOptions tunes the generator. The zero value emits all four
+// languages into `<root>/.core/sdk/<lang>/` next to the manifest source.
+//
+//	opts := app.SDKGenerateOptions{
+//	    Languages: []app.SDKLanguage{app.SDKLanguageTypeScript},
+//	    OutDir:    "/tmp/sdk",
+//	}
+type SDKGenerateOptions struct {
+	// Languages selects which client SDKs to emit. Empty means all four.
+	Languages []SDKLanguage
+	// OutDir overrides the default `<root>/.core/sdk/` location.
+	OutDir string
+	// Actions overrides the default action surface (the Core primitive
+	// list from RFC §9.3 filtered by manifest permissions). Hosts that
+	// register additional Actions feed them in here so the generated
+	// SDK covers their custom surface too.
+	Actions []SDKAction
+	// IncludeAllPrimitives ignores the manifest's permission gates and
+	// emits the full Core primitive surface. Useful for IDE integrations
+	// that show the full action catalogue regardless of what an app
+	// happens to declare.
+	IncludeAllPrimitives bool
+}
+
+// DefaultSDKActions returns the Core primitive Actions described in
+// RFC §9.3. Returned by value so callers can mutate without aliasing
+// the package-level constant.
+//
+//	primitives := app.DefaultSDKActions()
+//	primitives = append(primitives, customAction)
+func DefaultSDKActions() []SDKAction {
+	return []SDKAction{
+		{
+			Name: "fs.read", Permission: "read",
+			Description: "Read a file from the sandbox",
+			Request:     []SDKArg{{Name: "path", Type: "string", Required: true}},
+			Response:    []SDKArg{{Name: "content", Type: "string"}},
+		},
+		{
+			Name: "fs.write", Permission: "write",
+			Description: "Write a file in the sandbox",
+			Request: []SDKArg{
+				{Name: "path", Type: "string", Required: true},
+				{Name: "content", Type: "string", Required: true},
+			},
+		},
+		{
+			Name: "fs.list", Permission: "read",
+			Description: "List a directory in the sandbox",
+			Request:     []SDKArg{{Name: "path", Type: "string", Required: true}},
+			Response:    []SDKArg{{Name: "entries", Type: "array"}},
+		},
+		{
+			Name: "fs.delete", Permission: "write",
+			Description: "Delete a file in the sandbox",
+			Request:     []SDKArg{{Name: "path", Type: "string", Required: true}},
+		},
+		{
+			Name: "store.get", Permission: "store",
+			Description: "Read a value from the object store",
+			Request: []SDKArg{
+				{Name: "group", Type: "string", Required: true},
+				{Name: "key", Type: "string", Required: true},
+			},
+			Response: []SDKArg{{Name: "value", Type: "string"}},
+		},
+		{
+			Name: "store.set", Permission: "store",
+			Description: "Write a value to the object store",
+			Request: []SDKArg{
+				{Name: "group", Type: "string", Required: true},
+				{Name: "key", Type: "string", Required: true},
+				{Name: "value", Type: "string", Required: true},
+			},
+		},
+		{
+			Name: "store.delete", Permission: "store",
+			Description: "Delete a value from the object store",
+			Request: []SDKArg{
+				{Name: "group", Type: "string", Required: true},
+				{Name: "key", Type: "string", Required: true},
+			},
+		},
+		{
+			Name: "net.fetch", Permission: "net",
+			Description: "Perform an HTTP request",
+			Request: []SDKArg{
+				{Name: "url", Type: "string", Required: true},
+				{Name: "method", Type: "string"},
+				{Name: "body", Type: "string"},
+			},
+			Response: []SDKArg{
+				{Name: "status", Type: "integer"},
+				{Name: "body", Type: "string"},
+			},
+		},
+		{
+			Name: "net.ws", Permission: "net",
+			Description: "Open a WebSocket connection",
+			Request:     []SDKArg{{Name: "url", Type: "string", Required: true}},
+		},
+		{
+			Name: "process.run", Permission: "run",
+			Description: "Execute an external command",
+			Request: []SDKArg{
+				{Name: "command", Type: "string", Required: true},
+				{Name: "args", Type: "array"},
+			},
+			Response: []SDKArg{
+				{Name: "stdout", Type: "string"},
+				{Name: "stderr", Type: "string"},
+				{Name: "exit", Type: "integer"},
+			},
+		},
+		{
+			Name:        "gui.window.create",
+			Description: "Create a new desktop window",
+			Request: []SDKArg{
+				{Name: "title", Type: "string"},
+				{Name: "width", Type: "integer"},
+				{Name: "height", Type: "integer"},
+			},
+		},
+		{
+			Name:        "gui.dialog.confirm",
+			Description: "Show a confirmation dialog",
+			Request:     []SDKArg{{Name: "message", Type: "string", Required: true}},
+			Response:    []SDKArg{{Name: "confirmed", Type: "boolean"}},
+		},
+		{
+			Name:        "gui.notification.send",
+			Description: "Show a system notification",
+			Request: []SDKArg{
+				{Name: "title", Type: "string", Required: true},
+				{Name: "body", Type: "string"},
+			},
+		},
+		{
+			Name:        "gui.clipboard.write",
+			Description: "Write text to the system clipboard",
+			Request:     []SDKArg{{Name: "text", Type: "string", Required: true}},
+		},
+		{
+			Name:        "i18n.translate",
+			Description: "Translate a string",
+			Request: []SDKArg{
+				{Name: "key", Type: "string", Required: true},
+				{Name: "locale", Type: "string"},
+			},
+			Response: []SDKArg{{Name: "translated", Type: "string"}},
+		},
+		{
+			Name: "brain.recall", Permission: "net",
+			Description: "Search OpenBrain memories",
+			Request:     []SDKArg{{Name: "query", Type: "string", Required: true}},
+			Response:    []SDKArg{{Name: "memories", Type: "array"}},
+		},
+	}
+}
+
+// SelectActions returns the subset of `actions` whose Permission matches
+// what the manifest declares (or every action with Permission==""). When
+// `includeAll` is true the filter is skipped and every action is
+// returned — useful for IDE integrations that want the full catalogue.
+//
+//	allowed := app.SelectActions(app.DefaultSDKActions(), &manifest, false)
+//
+// Rules:
+//
+//   - An action with empty Permission is always included (GUI dialogs,
+//     i18n, etc. — RFC §9.3 marks them as "—" / no permission required).
+//
+//   - An action whose Permission matches the manifest's declared field is
+//     included.
+//
+//   - Anything else is filtered out so the generated SDK only exposes
+//     calls the runtime would actually accept.
+func SelectActions(actions []SDKAction, m *config.ViewManifest, includeAll bool) []SDKAction {
+	if includeAll || m == nil {
+		out := make([]SDKAction, len(actions))
+		copy(out, actions)
+		return out
+	}
+	out := make([]SDKAction, 0, len(actions))
+	for _, a := range actions {
+		if a.Permission == "" || manifestDeclaresPermission(m, a.Permission) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// manifestDeclaresPermission reports whether the manifest's permission
+// declarations include the named field. Mirrors hasPermission but takes
+// a permission name string so it can drive both the entitlement gate
+// and the SDK selector.
+//
+//	manifestDeclaresPermission(m, "read") // true when m.Permissions.Read is non-empty
+func manifestDeclaresPermission(m *config.ViewManifest, name string) bool {
+	if m == nil {
+		return false
+	}
+	switch name {
+	case "read":
+		return len(m.Permissions.Read) > 0 || m.Permissions.Filesystem
+	case "write":
+		return m.Permissions.Filesystem
+	case "net":
+		return len(m.Permissions.Net) > 0 || m.Permissions.Network
+	case "run":
+		return len(m.Permissions.Run) > 0
+	case "store":
+		return hasManifestStorePermission(m)
+	}
+	return false
+}
+
+// SDKGenerate emits one or more language SDKs derived from the manifest.
+// Files are written via the supplied medium so MockMedium and
+// MemoryMedium tests round-trip cleanly.
+//
+//	err := app.SDKGenerate(coreio.Local, root, &manifest, app.SDKGenerateOptions{
+//	    Languages: []app.SDKLanguage{app.SDKLanguageTypeScript},
+//	})
+//
+// Layout (default):
+//
+//	<root>/.core/sdk/openapi/openapi.json
+//	<root>/.core/sdk/ts/index.ts
+//	<root>/.core/sdk/go/sdk.go
+//	<root>/.core/sdk/php/Sdk.php
+//
+// Rules:
+//
+//   - Empty Languages → emit all four.
+//
+//   - Empty OutDir → write under `<root>/.core/sdk/`.
+//
+//   - Empty Actions → use DefaultSDKActions filtered by manifest
+//     permissions (or unfiltered if IncludeAllPrimitives=true).
+func SDKGenerate(medium coreio.Medium, root string, m *config.ViewManifest, opts SDKGenerateOptions) error {
+	if m == nil {
+		return coreerr.E("app.SDKGenerate", "nil manifest", nil)
+	}
+	if root == "" {
+		return coreerr.E("app.SDKGenerate", "empty root", nil)
+	}
+	if medium == nil {
+		medium = coreio.Local
+	}
+
+	languages := opts.Languages
+	if len(languages) == 0 {
+		languages = []SDKLanguage{
+			SDKLanguageOpenAPI,
+			SDKLanguageTypeScript,
+			SDKLanguageGo,
+			SDKLanguagePHP,
+		}
+	}
+
+	actions := opts.Actions
+	if len(actions) == 0 {
+		actions = SelectActions(DefaultSDKActions(), m, opts.IncludeAllPrimitives)
+	}
+
+	outDir := opts.OutDir
+	if outDir == "" {
+		outDir = core.Path(root, ".core", "sdk")
+	}
+
+	for _, lang := range languages {
+		body, file, err := renderSDK(lang, m, actions)
+		if err != nil {
+			return coreerr.E("app.SDKGenerate", "render "+lang.String()+" failed", err)
+		}
+		dest := core.Path(outDir, lang.String(), file)
+		if err := medium.EnsureDir(core.PathDir(dest)); err != nil {
+			return coreerr.E("app.SDKGenerate", "ensure dir "+core.PathDir(dest)+" failed", err)
+		}
+		if err := medium.Write(dest, body); err != nil {
+			return coreerr.E("app.SDKGenerate", "write "+dest+" failed", err)
+		}
+	}
+	return nil
+}
+
+// renderSDK dispatches to the per-language renderer and returns the
+// emitted body plus the destination file name. Kept as a single
+// dispatcher so the SDKGenerate write loop stays declarative.
+//
+//	body, file, err := renderSDK(app.SDKLanguageTypeScript, &manifest, actions)
+func renderSDK(lang SDKLanguage, m *config.ViewManifest, actions []SDKAction) (string, string, error) {
+	switch lang {
+	case SDKLanguageOpenAPI:
+		body, err := RenderOpenAPI(m, actions)
+		return body, "openapi.json", err
+	case SDKLanguageTypeScript:
+		return RenderTypeScript(m, actions), "index.ts", nil
+	case SDKLanguageGo:
+		return RenderGo(m, actions), "sdk.go", nil
+	case SDKLanguagePHP:
+		return RenderPHP(m, actions), "Sdk.php", nil
+	}
+	return "", "", coreerr.E("app.renderSDK", "unsupported language: "+lang.String(), nil)
+}
+
+// RenderOpenAPI produces an OpenAPI 3.1 document describing the manifest's
+// Action surface. Each action becomes a POST endpoint under
+// `/actions/{action.name}` with the request body shaped from SDKArg.
+//
+//	body, err := app.RenderOpenAPI(&manifest, actions)
+//	_ = os.WriteFile("openapi.json", []byte(body), 0o644)
+//
+// The returned JSON is pretty-printed via the same indenter
+// WriteCompiled uses so a diff review of generated specs stays readable.
+func RenderOpenAPI(m *config.ViewManifest, actions []SDKAction) (string, error) {
+	if m == nil {
+		return "", coreerr.E("app.RenderOpenAPI", "nil manifest", nil)
+	}
+	doc := openAPIDoc(m, actions)
+	r := core.JSONMarshal(doc)
+	if !r.OK {
+		cause, _ := r.Value.(error)
+		return "", coreerr.E("app.RenderOpenAPI", "marshal failed", cause)
+	}
+	raw, _ := r.Value.([]byte)
+	return indentJSON(raw), nil
+}
+
+// openAPIDoc builds the OpenAPI map skeleton. Returned as a generic map
+// so the caller can serialise without reaching for a heavier OpenAPI
+// type library.
+//
+//	doc := openAPIDoc(&manifest, actions)
+//	r := core.JSONMarshal(doc)
+func openAPIDoc(m *config.ViewManifest, actions []SDKAction) map[string]any {
+	paths := map[string]any{}
+	for _, a := range actions {
+		paths["/actions/"+a.Name] = map[string]any{
+			"post": map[string]any{
+				"summary":      a.Description,
+				"operationId":  operationIDOf(a.Name),
+				"tags":         []string{tagOf(a.Name)},
+				"x-permission": permissionForOpenAPI(a.Permission),
+				"requestBody": map[string]any{
+					"required": len(a.Request) > 0,
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": jsonSchemaFromArgs(a.Request),
+						},
+					},
+				},
+				"responses": map[string]any{
+					"200": map[string]any{
+						"description": "OK",
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": jsonSchemaFromArgs(a.Response),
+							},
+						},
+					},
+					"403": map[string]any{
+						"description": "Permission denied",
+					},
+				},
+			},
+		}
+	}
+	return map[string]any{
+		"openapi": "3.1.0",
+		"info": map[string]any{
+			"title":       m.Name,
+			"version":     m.Version,
+			"description": "Auto-generated CoreApp SDK for " + m.Code,
+			"x-coreapp": map[string]any{
+				"code":    m.Code,
+				"version": m.Version,
+			},
+		},
+		"paths": paths,
+	}
+}
+
+// jsonSchemaFromArgs produces a JSON Schema object whose properties
+// mirror the SDKArg slice. Required arguments end up in the `required`
+// list. Empty input yields an empty object schema (no properties), which
+// the spec accepts.
+//
+//	schema := jsonSchemaFromArgs(args)
+func jsonSchemaFromArgs(args []SDKArg) map[string]any {
+	if len(args) == 0 {
+		return map[string]any{"type": "object"}
+	}
+	props := map[string]any{}
+	required := []string{}
+	for _, arg := range args {
+		props[arg.Name] = map[string]any{
+			"type":        arg.Type,
+			"description": arg.Description,
+		}
+		if arg.Required {
+			required = append(required, arg.Name)
+		}
+	}
+	out := map[string]any{
+		"type":       "object",
+		"properties": props,
+	}
+	if len(required) > 0 {
+		out["required"] = required
+	}
+	return out
+}
+
+// permissionForOpenAPI returns the permission name as a JSON-friendly
+// value or `null` (omitted) when the action does not gate. Used by
+// downstream API gateways that surface the manifest entitlement to
+// callers without re-parsing the manifest themselves.
+//
+//	v := permissionForOpenAPI("read") // "read"
+//	v := permissionForOpenAPI("")     // "none"
+func permissionForOpenAPI(p string) string {
+	if p == "" {
+		return "none"
+	}
+	return p
+}
+
+// operationIDOf turns a dotted action name into a camelCase operationId
+// suitable for OpenAPI tooling. `fs.read` → `fsRead`; `gui.dialog.confirm`
+// → `guiDialogConfirm`.
+//
+//	operationIDOf("fs.read") // "fsRead"
+func operationIDOf(action string) string {
+	if action == "" {
+		return ""
+	}
+	out := core.NewBuilder()
+	upperNext := false
+	for _, r := range action {
+		if r == '.' || r == '_' || r == '-' {
+			upperNext = true
+			continue
+		}
+		if upperNext {
+			if r >= 'a' && r <= 'z' {
+				r -= 'a' - 'A'
+			}
+			upperNext = false
+		}
+		out.WriteRune(r)
+	}
+	return out.String()
+}
+
+// tagOf returns the leading segment of a dotted action name so OpenAPI
+// tooling can group endpoints by feature (`fs`, `store`, `net`, `gui`).
+//
+//	tagOf("fs.read") // "fs"
+func tagOf(action string) string {
+	if i := indexOf(action, "."); i > 0 {
+		return action[:i]
+	}
+	return action
+}
+
+// RenderTypeScript emits an ES module exporting one typed wrapper
+// function per action. The generated module imports the global `Core`
+// runtime (provided by the host's CoreTS layer) so the developer just
+// imports the SDK and calls into the typed surface.
+//
+//	const ts = app.RenderTypeScript(&manifest, actions)
+//	_ = os.WriteFile("index.ts", []byte(ts), 0o644)
+//
+// The output deliberately avoids bringing in JSDoc generation for the
+// permission notes — the description appears as a TS comment block above
+// each function so editor tooltips surface it.
+func RenderTypeScript(m *config.ViewManifest, actions []SDKAction) string {
+	b := core.NewBuilder()
+	b.WriteString("// SPDX-License-Identifier: EUPL-1.2\n")
+	b.WriteString("// Auto-generated by core-app sdk generate. Do not edit by hand.\n")
+	b.WriteString("// CoreApp: " + m.Code + " v" + m.Version + "\n\n")
+	b.WriteString("// Core is the global runtime injected by CoreGUI / CoreTS.\n")
+	b.WriteString("// Each generated function calls Core.Action(name, opts) and\n")
+	b.WriteString("// returns the parsed response.\n")
+	b.WriteString("declare const Core: {\n")
+	b.WriteString("  Action(name: string, opts?: Record<string, unknown>): Promise<any>;\n")
+	b.WriteString("};\n\n")
+
+	for _, a := range actions {
+		b.WriteString("/**\n")
+		if a.Description != "" {
+			b.WriteString(" * " + a.Description + "\n")
+		}
+		if a.Permission != "" {
+			b.WriteString(" * @permission " + a.Permission + "\n")
+		}
+		b.WriteString(" */\n")
+		b.WriteString("export interface " + tsTypeName(a.Name, "Request") + " {\n")
+		for _, arg := range a.Request {
+			b.WriteString("  " + arg.Name)
+			if !arg.Required {
+				b.WriteString("?")
+			}
+			b.WriteString(": " + tsTypeOf(arg.Type) + ";\n")
+		}
+		b.WriteString("}\n\n")
+
+		if len(a.Response) > 0 {
+			b.WriteString("export interface " + tsTypeName(a.Name, "Response") + " {\n")
+			for _, arg := range a.Response {
+				b.WriteString("  " + arg.Name + ": " + tsTypeOf(arg.Type) + ";\n")
+			}
+			b.WriteString("}\n\n")
+		}
+
+		fnName := tsFnName(a.Name)
+		b.WriteString("export async function " + fnName + "(opts: " + tsTypeName(a.Name, "Request") + ")")
+		if len(a.Response) > 0 {
+			b.WriteString(": Promise<" + tsTypeName(a.Name, "Response") + "> {\n")
+			b.WriteString("  return Core.Action(\"" + a.Name + "\", opts) as Promise<" + tsTypeName(a.Name, "Response") + ">;\n")
+		} else {
+			b.WriteString(": Promise<void> {\n")
+			b.WriteString("  await Core.Action(\"" + a.Name + "\", opts);\n")
+		}
+		b.WriteString("}\n\n")
+	}
+	return b.String()
+}
+
+// tsFnName turns an action name into a camelCase TypeScript function
+// identifier — the same rule as operationIDOf.
+//
+//	tsFnName("fs.read") // "fsRead"
+func tsFnName(action string) string { return operationIDOf(action) }
+
+// tsTypeName builds an interface name like `FsReadRequest` /
+// `FsReadResponse` from a dotted action name and a suffix.
+//
+//	tsTypeName("fs.read", "Request") // "FsReadRequest"
+func tsTypeName(action, suffix string) string {
+	pascal := operationIDOf(action)
+	if pascal == "" {
+		return suffix
+	}
+	if pascal[0] >= 'a' && pascal[0] <= 'z' {
+		pascal = string(pascal[0]-('a'-'A')) + pascal[1:]
+	}
+	return pascal + suffix
+}
+
+// tsTypeOf maps the JSON Schema-ish type name into TypeScript.
+//
+//	tsTypeOf("integer") // "number"
+//	tsTypeOf("array")   // "unknown[]"
+func tsTypeOf(t string) string {
+	switch core.Lower(t) {
+	case "string":
+		return "string"
+	case "integer", "number":
+		return "number"
+	case "boolean", "bool":
+		return "boolean"
+	case "array":
+		return "unknown[]"
+	case "object":
+		return "Record<string, unknown>"
+	default:
+		return "unknown"
+	}
+}
+
+// RenderGo emits a Go SDK package with one function per Action. The
+// generated code uses a small CoreClient interface so consumers can
+// inject the in-process Core (for tests) or a remote dispatcher (for
+// CLI tools talking over IPC).
+//
+//	const goSrc = app.RenderGo(&manifest, actions)
+//	_ = os.WriteFile("sdk.go", []byte(goSrc), 0o644)
+func RenderGo(m *config.ViewManifest, actions []SDKAction) string {
+	b := core.NewBuilder()
+	b.WriteString("// SPDX-License-Identifier: EUPL-1.2\n\n")
+	b.WriteString("// Code generated by core-app sdk generate. DO NOT EDIT.\n")
+	b.WriteString("// CoreApp: " + m.Code + " v" + m.Version + "\n\n")
+	b.WriteString("package sdk\n\n")
+	b.WriteString("import \"context\"\n\n")
+	b.WriteString("// CoreClient is the small surface SDK wrappers depend on.\n")
+	b.WriteString("// Implementations: in-process Core (test), Wails IPC (desktop),\n")
+	b.WriteString("// HTTP gateway (remote).\n")
+	b.WriteString("type CoreClient interface {\n")
+	b.WriteString("\tAction(ctx context.Context, name string, opts map[string]any) (map[string]any, error)\n")
+	b.WriteString("}\n\n")
+
+	b.WriteString("// SDK wraps a CoreClient with typed action helpers.\n")
+	b.WriteString("type SDK struct{ client CoreClient }\n\n")
+	b.WriteString("// New constructs an SDK around the supplied CoreClient.\n")
+	b.WriteString("func New(c CoreClient) *SDK { return &SDK{client: c} }\n\n")
+
+	for _, a := range actions {
+		fn := goFnName(a.Name)
+		b.WriteString("// " + fn + " calls the \"" + a.Name + "\" Named Action.\n")
+		if a.Description != "" {
+			b.WriteString("// " + a.Description + "\n")
+		}
+		if a.Permission != "" {
+			b.WriteString("// Permission: " + a.Permission + "\n")
+		}
+		b.WriteString("func (s *SDK) " + fn + "(ctx context.Context, opts map[string]any) (map[string]any, error) {\n")
+		b.WriteString("\treturn s.client.Action(ctx, \"" + a.Name + "\", opts)\n")
+		b.WriteString("}\n\n")
+	}
+	return b.String()
+}
+
+// goFnName converts a dotted action name into PascalCase suitable for a
+// Go method.
+//
+//	goFnName("fs.read") // "FsRead"
+func goFnName(action string) string {
+	camel := operationIDOf(action)
+	if camel == "" {
+		return ""
+	}
+	if camel[0] >= 'a' && camel[0] <= 'z' {
+		return string(camel[0]-('a'-'A')) + camel[1:]
+	}
+	return camel
+}
+
+// RenderPHP emits a PHP class with one method per Action. Designed for
+// CorePHP consumers wiring up a Laravel facade — the constructor takes
+// any object with an `action(string $name, array $opts): array` method
+// (CorePHP's `Core` class fits the bill).
+//
+//	const php = app.RenderPHP(&manifest, actions)
+//	_ = os.WriteFile("Sdk.php", []byte(php), 0o644)
+func RenderPHP(m *config.ViewManifest, actions []SDKAction) string {
+	b := core.NewBuilder()
+	b.WriteString("<?php\n")
+	b.WriteString("// SPDX-License-Identifier: EUPL-1.2\n")
+	b.WriteString("// Auto-generated by core-app sdk generate. Do not edit by hand.\n")
+	b.WriteString("// CoreApp: " + m.Code + " v" + m.Version + "\n\n")
+	b.WriteString("declare(strict_types=1);\n\n")
+	b.WriteString("namespace Core\\Sdk;\n\n")
+	b.WriteString("/**\n * Generated CoreApp SDK for " + m.Code + ".\n */\n")
+	b.WriteString("class Sdk\n{\n")
+	b.WriteString("    public function __construct(private object $core) {}\n\n")
+
+	for _, a := range actions {
+		fn := phpFnName(a.Name)
+		b.WriteString("    /**\n")
+		if a.Description != "" {
+			b.WriteString("     * " + a.Description + "\n")
+		}
+		if a.Permission != "" {
+			b.WriteString("     * @permission " + a.Permission + "\n")
+		}
+		b.WriteString("     */\n")
+		b.WriteString("    public function " + fn + "(array $opts = []): array\n")
+		b.WriteString("    {\n")
+		b.WriteString("        return $this->core->action('" + a.Name + "', $opts);\n")
+		b.WriteString("    }\n\n")
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
+// phpFnName mirrors tsFnName for PHP — camelCase per PSR-12.
+//
+//	phpFnName("fs.read") // "fsRead"
+func phpFnName(action string) string { return operationIDOf(action) }

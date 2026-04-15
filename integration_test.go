@@ -104,8 +104,8 @@ func TestIntegration_Boot_Good(t *testing.T) {
 		app.WithMode(app.ModeProd),
 		app.WithMedium(medium),
 		app.WithPublicKey(hex.EncodeToString(pub)),
-		app.WithoutKeyLoad(),                  // keep the test hermetic
-		app.WithWorkspaceHome(t.TempDir()),    // workspace under temp
+		app.WithoutKeyLoad(),               // keep the test hermetic
+		app.WithWorkspaceHome(t.TempDir()), // workspace under temp
 	)
 	if err != nil {
 		t.Fatalf("Boot failed in prod mode: %v", err)

@@ -204,15 +204,18 @@ func stringOf(v any) string {
 
 // isReservedConfigKey reports whether a manifest Config entry is one
 // of the framework-owned keys (services list, package source tag,
-// PWA-wrap theme block etc.) that should not be parsed as a template
-// entry. Keeps applyConfig from rejecting wraps the package writes.
+// PWA-wrap theme block, conclave isolation tag etc.) that should not be
+// parsed as a template entry. Keeps applyConfig from rejecting wraps the
+// package writes.
 //
 //	isReservedConfigKey("services") // true
+//	isReservedConfigKey("isolation") // true (set by NewConclave)
 func isReservedConfigKey(name string) bool {
 	switch name {
 	case "services", "source", "type", "url", "display",
 		"short_name", "theme", "locale", "icon", "shim", "gui_gates",
-		"ipc_channels", "main", "entry":
+		"ipc_channels", "main", "entry",
+		"isolation", "write_paths":
 		return true
 	}
 	return false

@@ -58,7 +58,7 @@ func TestMarketplaceVerify_VerifyListing_Bad(t *testing.T) {
 	dest := t.TempDir()
 	medium := coreio.Local
 
-	_, priv, _ := ed25519.GenerateKey(nil) // signing key
+	_, priv, _ := ed25519.GenerateKey(nil)     // signing key
 	otherPub, _, _ := ed25519.GenerateKey(nil) // pinned key (different)
 
 	manifest := config.ViewManifest{

@@ -323,13 +323,14 @@ func runPkgWrapElectron(opts pkgWrapArgs) int {
 			core.Error("pkg wrap --electron: asset download failed", "err", err)
 			return 1
 		}
-		// Auto-extract zip archives so the user can immediately scan
-		// the unpacked renderer with `pkg wrap --electron <dir>`.
-		// .tar / .tgz handling will follow when go-archive lands.
-		if core.HasSuffix(core.Lower(path), ".zip") {
-			extracted := core.Path(scratch, core.TrimSuffix(asset.Name, ".zip"))
-			if err := app.ExtractZip(medium, path, extracted); err != nil {
-				core.Error("pkg wrap --electron: zip extract failed", "err", err)
+		// Auto-extract every supported archive shape (.zip, .tar,
+		// .tar.gz, .tgz) so the user can immediately scan the unpacked
+		// renderer with `pkg wrap --electron <dir>`.
+		if isExtractable(path) {
+			extracted := app.ArchiveExtractedDir(scratch, asset.Name)
+			if err := app.ExtractArchive(medium, path, extracted); err != nil {
+				core.Error("pkg wrap --electron: archive extract failed",
+					"asset", asset.Name, "err", err)
 				return 1
 			}
 			core.Info("renderer asset extracted — re-run with --electron <dir>",
@@ -568,12 +569,14 @@ func runPkgInstallElectron(ctx context.Context, ref string) int {
 		core.Error("pkg install: asset download failed", "err", err)
 		return 1
 	}
-	// Auto-extract zip archives so the user can immediately re-invoke
-	// the installer against the unpacked renderer directory.
-	if core.HasSuffix(core.Lower(path), ".zip") {
-		extracted := core.Path(scratch, core.TrimSuffix(asset.Name, ".zip"))
-		if err := app.ExtractZip(coreio.Local, path, extracted); err != nil {
-			core.Error("pkg install: zip extract failed", "err", err)
+	// Auto-extract every supported archive shape so the user can
+	// immediately re-invoke the installer against the unpacked
+	// renderer directory.
+	if isExtractable(path) {
+		extracted := app.ArchiveExtractedDir(scratch, asset.Name)
+		if err := app.ExtractArchive(coreio.Local, path, extracted); err != nil {
+			core.Error("pkg install: archive extract failed",
+				"asset", asset.Name, "err", err)
 			return 1
 		}
 		core.Info("renderer asset extracted — run `pkg wrap --electron <dir>` next",
@@ -583,6 +586,23 @@ func runPkgInstallElectron(ctx context.Context, ref string) int {
 	core.Info("renderer asset downloaded — extract and run `pkg wrap --electron <dir>`",
 		"asset", asset.Name, "path", path, "tag", rel.TagName)
 	return 0
+}
+
+// isExtractable reports whether the path's suffix is one of the
+// supported archive formats. Centralised so the CLI dispatch and the
+// tests can share the same predicate without duplicating the suffix
+// list.
+//
+//	isExtractable("renderer.tar.gz") // true
+//	isExtractable("Renderer.7Z")     // false
+func isExtractable(path string) bool {
+	low := core.Lower(path)
+	for _, suffix := range []string{".zip", ".tar.gz", ".tgz", ".tar"} {
+		if core.HasSuffix(low, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // runPkgInstallPWA fetches the manifest at `url`, wraps it, and persists
