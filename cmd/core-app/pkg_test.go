@@ -395,3 +395,395 @@ func TestPkg_formatRow_Ugly(t *testing.T) {
 		t.Errorf("zero-gutter formatRow = %q; want ab", got)
 	}
 }
+
+// TestPkg_sourceTag_Good — wrap args with each kind of source emit the
+// expected `kind:value` tag the wrap pipeline records under
+// Config["source"].
+func TestPkg_sourceTag_Good(t *testing.T) {
+	if got := (pkgWrapArgs{PWAURL: "https://x"}).sourceTag(); got != "pwa:https://x" {
+		t.Errorf("PWA sourceTag = %q; want %q", got, "pwa:https://x")
+	}
+	if got := (pkgWrapArgs{ElectronDir: "github.com/foo/bar"}).sourceTag(); got != "electron:github.com/foo/bar" {
+		t.Errorf("Electron sourceTag = %q; want %q", got, "electron:github.com/foo/bar")
+	}
+	if got := (pkgWrapArgs{WebDir: "./foo"}).sourceTag(); got != "web:./foo" {
+		t.Errorf("Web sourceTag = %q; want %q", got, "web:./foo")
+	}
+}
+
+// TestPkg_sourceTag_Bad — empty wrap args fall through to the
+// "unknown" sentinel rather than emitting a degenerate tag.
+func TestPkg_sourceTag_Bad(t *testing.T) {
+	if got := (pkgWrapArgs{}).sourceTag(); got != "unknown" {
+		t.Errorf("empty wrap sourceTag = %q; want %q", got, "unknown")
+	}
+}
+
+// TestPkg_sourceTag_Ugly — when more than one source is set the PWA
+// path wins (matches the runPkgWrap dispatch order — PWA, then
+// electron, then web).
+func TestPkg_sourceTag_Ugly(t *testing.T) {
+	args := pkgWrapArgs{
+		PWAURL:      "https://primary",
+		ElectronDir: "github.com/secondary/x",
+		WebDir:      "./tertiary",
+	}
+	if got := args.sourceTag(); got != "pwa:https://primary" {
+		t.Errorf("multi-source sourceTag = %q; want %q (PWA precedence)", got, "pwa:https://primary")
+	}
+}
+
+// TestPkg_loadElectronPackageJSON_Good — a valid package.json round-trips
+// through the loader into an ElectronPackageJSON.
+func TestPkg_loadElectronPackageJSON_Good(t *testing.T) {
+	dir := t.TempDir()
+	medium := coreio.Local
+	body := `{"name":"my-app","version":"1.2.3"}`
+	if err := medium.Write(core.Path(dir, "package.json"), body); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	pkg, err := loadElectronPackageJSON(medium, dir)
+	if err != nil {
+		t.Fatalf("loadElectronPackageJSON: %v", err)
+	}
+	if pkg == nil {
+		t.Fatal("nil package returned without error")
+	}
+	if pkg.Name != "my-app" {
+		t.Errorf("Name = %q; want %q", pkg.Name, "my-app")
+	}
+	if pkg.Version != "1.2.3" {
+		t.Errorf("Version = %q; want %q", pkg.Version, "1.2.3")
+	}
+}
+
+// TestPkg_loadElectronPackageJSON_Bad — missing package.json and
+// malformed JSON both return errors with no partial result.
+func TestPkg_loadElectronPackageJSON_Bad(t *testing.T) {
+	dir := t.TempDir()
+	medium := coreio.Local
+
+	// No package.json present.
+	if _, err := loadElectronPackageJSON(medium, dir); err == nil {
+		t.Error("missing package.json produced no error")
+	}
+
+	// Malformed JSON.
+	if err := medium.Write(core.Path(dir, "package.json"), `{not valid json`); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if _, err := loadElectronPackageJSON(medium, dir); err == nil {
+		t.Error("malformed JSON produced no error")
+	}
+}
+
+// TestPkg_loadElectronPackageJSON_Ugly — an empty JSON object is valid
+// (no name, no version) and decodes cleanly. The wrap pipeline will
+// fall back to defaults when fields are missing.
+func TestPkg_loadElectronPackageJSON_Ugly(t *testing.T) {
+	dir := t.TempDir()
+	medium := coreio.Local
+	if err := medium.Write(core.Path(dir, "package.json"), `{}`); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	pkg, err := loadElectronPackageJSON(medium, dir)
+	if err != nil {
+		t.Fatalf("loadElectronPackageJSON: %v", err)
+	}
+	if pkg == nil {
+		t.Fatal("nil package returned for empty JSON")
+	}
+	if pkg.Name != "" || pkg.Version != "" {
+		t.Errorf("expected zero values for empty JSON; got Name=%q Version=%q", pkg.Name, pkg.Version)
+	}
+}
+
+// TestPkg_signManifestFile_Good signs an in-memory manifest using a
+// key file on disk. Round-trip through verify is checked at the
+// app.SignManifest level — here we just confirm the wiring lands a
+// non-empty Sign field.
+func TestPkg_signManifestFile_Good(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := core.Path(dir, "app.key")
+	priv, _, err := app.Keygen(coreio.Local, dir, "app")
+	if err != nil {
+		t.Fatalf("Keygen: %v", err)
+	}
+	if priv != keyPath {
+		t.Logf("Keygen returned %q (expected %q)", priv, keyPath)
+		keyPath = priv
+	}
+
+	manifest := &config.ViewManifest{
+		Code: "sf-good", Name: "SF Good", Version: "0.1.0",
+	}
+	if err := signManifestFile(keyPath, manifest); err != nil {
+		t.Fatalf("signManifestFile: %v", err)
+	}
+	if manifest.Sign == "" {
+		t.Error("Sign field empty after signManifestFile")
+	}
+}
+
+// TestPkg_signManifestFile_Bad — nil manifest, missing key file and a
+// malformed key file all surface errors.
+func TestPkg_signManifestFile_Bad(t *testing.T) {
+	if err := signManifestFile("anywhere", nil); err == nil {
+		t.Error("nil manifest produced no error")
+	}
+	if err := signManifestFile(core.Path(t.TempDir(), "missing.key"),
+		&config.ViewManifest{Code: "x"}); err == nil {
+		t.Error("missing key file produced no error")
+	}
+	bad := core.Path(t.TempDir(), "bad.key")
+	if err := coreio.Local.Write(bad, "not-hex"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := signManifestFile(bad, &config.ViewManifest{Code: "x"}); err == nil {
+		t.Error("malformed key file produced no error")
+	}
+}
+
+// TestPkg_signManifestFile_Ugly — a key file with trailing whitespace
+// still loads (mirrors LoadPrivateKey tolerance for editor-added
+// newlines).
+func TestPkg_signManifestFile_Ugly(t *testing.T) {
+	dir := t.TempDir()
+	priv, _, err := app.Keygen(coreio.Local, dir, "trim-app")
+	if err != nil {
+		t.Fatalf("Keygen: %v", err)
+	}
+	body, _ := coreio.Local.Read(priv)
+	dirty := core.Path(t.TempDir(), "trim-app.key")
+	if err := coreio.Local.Write(dirty, body+"\n\n   \n"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	manifest := &config.ViewManifest{Code: "trim", Name: "Trim", Version: "0.1.0"}
+	if err := signManifestFile(dirty, manifest); err != nil {
+		t.Fatalf("signManifestFile with trailing whitespace: %v", err)
+	}
+	if manifest.Sign == "" {
+		t.Error("Sign field empty after tolerant load")
+	}
+}
+
+// TestPkg_signManifestDefault_Bad — nil manifest is rejected up front,
+// before LoadDefaultPrivateKey is called.
+func TestPkg_signManifestDefault_Bad(t *testing.T) {
+	if err := signManifestDefault(nil); err == nil {
+		t.Error("nil manifest produced no error")
+	}
+}
+
+// TestPkg_applyWrapSignature_Good — the `--sign KEY` path delegates to
+// signManifestFile and stamps the manifest's Sign field.
+func TestPkg_applyWrapSignature_Good(t *testing.T) {
+	dir := t.TempDir()
+	keyPath, _, err := app.Keygen(coreio.Local, dir, "wrap-good")
+	if err != nil {
+		t.Fatalf("Keygen: %v", err)
+	}
+	manifest := &config.ViewManifest{Code: "aw-good", Name: "AW Good", Version: "0.1.0"}
+	if err := applyWrapSignature(pkgWrapArgs{Sign: keyPath}, manifest); err != nil {
+		t.Fatalf("applyWrapSignature: %v", err)
+	}
+	if manifest.Sign == "" {
+		t.Error("Sign field empty after applyWrapSignature")
+	}
+}
+
+// TestPkg_applyWrapSignature_Bad — a `--sign KEY` flag pointing at a
+// non-existent file surfaces the underlying load error.
+func TestPkg_applyWrapSignature_Bad(t *testing.T) {
+	manifest := &config.ViewManifest{Code: "aw-bad", Name: "AW Bad", Version: "0.1.0"}
+	if err := applyWrapSignature(
+		pkgWrapArgs{Sign: core.Path(t.TempDir(), "missing.key")},
+		manifest,
+	); err == nil {
+		t.Error("missing key file produced no error")
+	}
+}
+
+// TestPkg_applyWrapSignature_Ugly — the no-signature path (neither
+// `--sign` nor `--sign-default` set) is a no-op.
+func TestPkg_applyWrapSignature_Ugly(t *testing.T) {
+	manifest := &config.ViewManifest{Code: "aw-ugly", Name: "AW Ugly", Version: "0.1.0"}
+	if err := applyWrapSignature(pkgWrapArgs{}, manifest); err != nil {
+		t.Fatalf("no-signature path returned error: %v", err)
+	}
+	if manifest.Sign != "" {
+		t.Errorf("Sign field mutated by no-op path: %q", manifest.Sign)
+	}
+}
+
+// TestPkg_isRepoSpec_Good — known scheme / host prefixes flag the
+// source as a remote repo so the wrap pipeline can dispatch into the
+// release-fetch path. Covers github / gitlab / bitbucket / git@ /
+// http(s) — see RFC §16.4 detection table.
+func TestPkg_isRepoSpec_Good(t *testing.T) {
+	cases := []string{
+		"github.com/foo/bar",
+		"gitlab.com/foo/bar",
+		"bitbucket.org/foo/bar",
+		"git@forge.lthn.ai:core/app.git",
+		"https://app.example.com",
+		"http://app.example.com",
+	}
+	for _, in := range cases {
+		if !isRepoSpec(in) {
+			t.Errorf("isRepoSpec(%q) = false; want true", in)
+		}
+	}
+}
+
+// TestPkg_isRepoSpec_Bad — local-looking sources are not repo specs.
+func TestPkg_isRepoSpec_Bad(t *testing.T) {
+	cases := []string{"./foo", "../foo", "/abs/path", "foo", ""}
+	for _, in := range cases {
+		if isRepoSpec(in) {
+			t.Errorf("isRepoSpec(%q) = true; want false", in)
+		}
+	}
+}
+
+// TestPkg_isRepoSpec_Ugly — case-sensitive: "GitHub.com" with capitals
+// is treated as a local-looking string. The detector intentionally
+// matches the lowercase scheme to avoid surprising false positives.
+func TestPkg_isRepoSpec_Ugly(t *testing.T) {
+	if isRepoSpec("GitHub.com/foo/bar") {
+		t.Error("isRepoSpec is unexpectedly case-insensitive")
+	}
+}
+
+// TestPkg_isExtractable_Good — recognises the archive extensions the
+// Electron fetch pipeline downloads from GitHub releases.
+func TestPkg_isExtractable_Good(t *testing.T) {
+	cases := []string{
+		"app.zip", "app.tar", "app.tar.gz", "app.tgz",
+		"DEEP/PATH/Foo.zip",
+	}
+	for _, in := range cases {
+		if !isExtractable(in) {
+			t.Errorf("isExtractable(%q) = false; want true", in)
+		}
+	}
+}
+
+// TestPkg_isExtractable_Bad — non-archive extensions are not
+// extractable. Detector should not pull `.dmg`, `.exe`, or other
+// platform binaries that would only confuse the extractor.
+func TestPkg_isExtractable_Bad(t *testing.T) {
+	cases := []string{"app.dmg", "app.exe", "app", "", "app.txt"}
+	for _, in := range cases {
+		if isExtractable(in) {
+			t.Errorf("isExtractable(%q) = true; want false", in)
+		}
+	}
+}
+
+// TestPkg_isExtractable_Ugly — case-insensitive: an upper-case
+// `.ZIP` is recognised because the detector lowercases first.
+func TestPkg_isExtractable_Ugly(t *testing.T) {
+	if !isExtractable("ASSET.ZIP") {
+		t.Error("isExtractable should be case-insensitive (.ZIP)")
+	}
+	if !isExtractable("Asset.Tar.Gz") {
+		t.Error("isExtractable should be case-insensitive (.Tar.Gz)")
+	}
+}
+
+// TestPkg_runPkgInstallPWA_Good drives the URL → wrap → install path
+// against a mock manifest server and confirms the install lands at the
+// expected place with the wrap source recorded.
+func TestPkg_runPkgInstallPWA_Good(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"name":"Play","short_name":"play","start_url":"/"}`))
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+
+	if rc := runPkgInstallPWA(t.Context(), home, srv.URL+"/manifest.json"); rc != 0 {
+		t.Fatalf("runPkgInstallPWA rc = %d; want 0", rc)
+	}
+
+	medium := coreio.Local
+	view := core.Path(home, ".core", app.AppsDirName, "play", ".core", "view.yaml")
+	if !medium.Exists(view) {
+		t.Fatalf("view.yaml missing at %s", view)
+	}
+	var round config.ViewManifest
+	if err := config.LoadManifest(medium, view, &round); err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	src, _ := round.Config["source"].(string)
+	if !core.HasPrefix(src, "wrap:pwa:") {
+		t.Errorf("Config[source] = %q; want wrap:pwa: prefix", src)
+	}
+}
+
+// TestPkg_runPkgInstallPWA_Bad — a server returning malformed JSON
+// causes the wrap step to fail; an unreachable URL fails the fetch.
+// Both surface non-zero exit codes.
+func TestPkg_runPkgInstallPWA_Bad(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{not valid json`))
+	}))
+	defer srv.Close()
+
+	if rc := runPkgInstallPWA(t.Context(), t.TempDir(), srv.URL+"/manifest.json"); rc == 0 {
+		t.Error("runPkgInstallPWA on malformed manifest returned 0; want non-zero")
+	}
+	// Unreachable URL — fetch fails.
+	if rc := runPkgInstallPWA(t.Context(), t.TempDir(), "http://127.0.0.1:1/missing"); rc == 0 {
+		t.Error("runPkgInstallPWA on unreachable URL returned 0; want non-zero")
+	}
+}
+
+// TestPkg_runPkgInstallPWA_Ugly — a manifest with no name still
+// installs successfully because WrapPWA derives a code from the
+// start_url host. The wrap pipeline never errors on missing optional
+// fields; the install path proves it.
+func TestPkg_runPkgInstallPWA_Ugly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"start_url":"https://anonymous.example.com/app"}`))
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	if rc := runPkgInstallPWA(t.Context(), home, srv.URL+"/manifest.json"); rc != 0 {
+		t.Fatalf("runPkgInstallPWA rc = %d; want 0", rc)
+	}
+}
+
+// TestPkg_runPkgInstallMarketplace_Bad — without a marketplace cache
+// directory the install path errors out with a useful "run fetch
+// first" message. We exercise the missing-cache branch since the
+// happy path requires git on PATH.
+func TestPkg_runPkgInstallMarketplace_Bad(t *testing.T) {
+	home := t.TempDir()
+	if rc := runPkgInstallMarketplace(t.Context(), home, "photo-browser"); rc == 0 {
+		t.Error("missing marketplace cache should produce non-zero rc")
+	}
+}
+
+// TestPkg_runPkgInstallMarketplace_Ugly — install against an existing
+// cache that has no matching entry surfaces the resolve failure
+// without writing anything to the apps tree.
+func TestPkg_runPkgInstallMarketplace_Ugly(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+
+	root := core.Path(home, ".core", "marketplace")
+	if err := medium.EnsureDir(root); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(core.Path(root, app.MarketplaceIndexFileName),
+		`{"version":1,"categories":[]}`); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	if rc := runPkgInstallMarketplace(t.Context(), home, "definitely-not-listed"); rc == 0 {
+		t.Error("missing listing should produce non-zero rc")
+	}
+}

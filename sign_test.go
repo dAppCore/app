@@ -265,6 +265,67 @@ func TestSign_DefaultPrivateKeyPath_Good(t *testing.T) {
 	}
 }
 
+// TestSign_SignManifest_Good — the in-memory ViewManifest is mutated
+// with a base64 ed25519 signature that round-trips through the paired
+// public key. Mirrors what wrap pipelines (PWA, Electron, Web) call
+// before persisting the manifest to disk.
+func TestSign_SignManifest_Good(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	m := &config.ViewManifest{
+		Code:    "sign-manifest-good",
+		Name:    "Sign Manifest Good",
+		Version: "0.1.0",
+	}
+
+	if err := SignManifest(m, priv); err != nil {
+		t.Fatalf("SignManifest: %v", err)
+	}
+	if m.Sign == "" {
+		t.Fatal("Sign field empty after SignManifest")
+	}
+	if err := verifyWithKey(m, pub); err != nil {
+		t.Fatalf("paired key did not verify signed manifest: %v", err)
+	}
+}
+
+// TestSign_SignManifest_Bad — a wrong-length private key is rejected
+// before the manifest is mutated. The Sign field stays empty.
+func TestSign_SignManifest_Bad(t *testing.T) {
+	m := &config.ViewManifest{Code: "sign-manifest-bad"}
+
+	if err := SignManifest(m, ed25519.PrivateKey{1, 2, 3}); err == nil {
+		t.Fatal("short private key should error")
+	}
+	if m.Sign != "" {
+		t.Errorf("Sign field mutated on error path: %q", m.Sign)
+	}
+}
+
+// TestSign_SignManifest_Ugly — re-signing an already-signed manifest
+// overwrites the Sign field with a fresh value. The signable bytes
+// hash the manifest content with Sign cleared, so re-signing produces
+// the same signature for the same key + content but the function must
+// still tolerate a non-empty starting Sign.
+func TestSign_SignManifest_Ugly(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	m := &config.ViewManifest{
+		Code:    "sign-manifest-ugly",
+		Name:    "Sign Manifest Ugly",
+		Version: "0.1.0",
+		Sign:    "stale-signature-from-a-previous-key",
+	}
+
+	if err := SignManifest(m, priv); err != nil {
+		t.Fatalf("SignManifest: %v", err)
+	}
+	if m.Sign == "stale-signature-from-a-previous-key" {
+		t.Fatal("Sign field still holds the stale value after re-signing")
+	}
+	if err := verifyWithKey(m, pub); err != nil {
+		t.Fatalf("re-signed manifest does not verify: %v", err)
+	}
+}
+
 // TestSign_LoadDefaultPrivateKey_Bad — when the default key does not
 // exist, the error message should hint at the keygen command instead
 // of being a bare ENOENT.

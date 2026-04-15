@@ -190,3 +190,113 @@ func writeYAML(t *testing.T, m coreio.Medium, path, body string) {
 		t.Fatalf("Write: %v", err)
 	}
 }
+
+// TestApp_WithCore_Good — an app pre-built Core instance is reused by
+// Boot rather than constructed fresh. Hosts (CoreGUI, core-agent) that
+// already own a container use this to graft an app onto their service
+// surface.
+func TestApp_WithCore_Good(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, coreio.Local, dir+"/.core/view.yaml", `
+code: with-core-good
+name: With Core Good
+version: 0.1.0
+`)
+
+	c := core.New()
+	inst, err := app.Boot(context.Background(), dir,
+		app.WithMode(app.ModeDev),
+		app.WithMedium(coreio.Local),
+		app.WithCore(c),
+		app.WithoutWorkspace(),
+	)
+	if err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	if inst.Core != c {
+		t.Error("Boot did not reuse the supplied Core instance")
+	}
+}
+
+// TestApp_WithCore_Bad — passing a nil Core falls through to the
+// default constructor. The functional option is permissive so callers
+// can pass the result of an optional getter without a guard.
+func TestApp_WithCore_Bad(t *testing.T) {
+	opts := app.NewOptions(app.WithCore(nil))
+	if opts.Core != nil {
+		t.Errorf("WithCore(nil) set Core = %v; want nil so Boot constructs a fresh container", opts.Core)
+	}
+}
+
+// TestApp_WithCore_Ugly — last-write-wins under functional options:
+// the second WithCore overrides the first.
+func TestApp_WithCore_Ugly(t *testing.T) {
+	c1 := core.New()
+	c2 := core.New()
+	opts := app.NewOptions(app.WithCore(c1), app.WithCore(c2))
+	if opts.Core != c2 {
+		t.Errorf("WithCore last-write-wins broken: got %v want %v", opts.Core, c2)
+	}
+}
+
+// TestApp_WithoutWorkspace_Good — Boot with WithoutWorkspace skips the
+// per-app data tree bootstrap. Inst.Workspace stays nil so handlers
+// know they have no guaranteed scratch directory.
+func TestApp_WithoutWorkspace_Good(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, coreio.Local, dir+"/.core/view.yaml", `
+code: without-workspace-good
+name: Without Workspace Good
+version: 0.1.0
+`)
+
+	inst, err := app.Boot(context.Background(), dir,
+		app.WithMode(app.ModeDev),
+		app.WithMedium(coreio.Local),
+		app.WithoutWorkspace(),
+	)
+	if err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	if inst.Workspace != nil {
+		t.Errorf("Workspace = %v; want nil when WithoutWorkspace was passed", inst.Workspace)
+	}
+}
+
+// TestApp_WithoutWorkspace_Bad — without the option, a dev-mode boot
+// should still try to bootstrap a workspace under the supplied home.
+// The provisioned workspace makes this the contrast case for the Good
+// test above.
+func TestApp_WithoutWorkspace_Bad(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, coreio.Local, dir+"/.core/view.yaml", `
+code: without-workspace-bad
+name: Without Workspace Bad
+version: 0.1.0
+`)
+	home := t.TempDir()
+
+	inst, err := app.Boot(context.Background(), dir,
+		app.WithMode(app.ModeDev),
+		app.WithMedium(coreio.Local),
+		app.WithWorkspaceHome(home),
+	)
+	if err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	if inst.Workspace == nil {
+		t.Fatal("Workspace = nil; expected a provisioned workspace when the option is omitted")
+	}
+	if inst.Workspace.Code != "without-workspace-bad" {
+		t.Errorf("Workspace.Code = %q; want %q", inst.Workspace.Code, "without-workspace-bad")
+	}
+}
+
+// TestApp_WithoutWorkspace_Ugly — applying WithoutWorkspace twice is a
+// no-op (the underlying flag is a bool toggle, not an accumulator).
+func TestApp_WithoutWorkspace_Ugly(t *testing.T) {
+	opts := app.NewOptions(app.WithoutWorkspace(), app.WithoutWorkspace())
+	if !opts.SkipWorkspace {
+		t.Error("two WithoutWorkspace calls did not leave SkipWorkspace=true")
+	}
+}

@@ -198,3 +198,66 @@ func TestPkgMarketplace_readInstalledSource_Ugly(t *testing.T) {
 		t.Errorf("malformed should yield empty; got %q", got)
 	}
 }
+
+// TestPkgMarketplace_runMarketplaceSearch_Bad — missing QUERY returns
+// EX_USAGE so the shell knows to surface the usage line.
+func TestPkgMarketplace_runMarketplaceSearch_Bad(t *testing.T) {
+	if rc := runMarketplaceSearch(nil); rc != 64 {
+		t.Errorf("missing QUERY rc = %d; want 64", rc)
+	}
+}
+
+// TestPkgMarketplace_runMarketplaceSearch_Ugly — a query against a
+// non-existent marketplace cache returns rc=1 (unable to read the
+// missing index.json). Pinned so a regression that silently turns the
+// missing-index path into "no results" gets caught.
+func TestPkgMarketplace_runMarketplaceSearch_Ugly(t *testing.T) {
+	if home := core.Env("DIR_HOME"); home == "" {
+		t.Skip("DIR_HOME unset — search path requires it")
+	}
+	root := core.Path(core.Env("DIR_HOME"), ".core", "marketplace")
+	if coreio.Local.IsDir(root) {
+		t.Skip("user has a real marketplace cache; skipping the missing-cache path")
+	}
+	if rc := runMarketplaceSearch([]string{"never-there"}); rc != 1 {
+		t.Errorf("missing-cache search rc = %d; want 1", rc)
+	}
+}
+
+// TestPkgMarketplace_runMarketplaceFetch_Bad — missing --url and
+// dangling --url both return EX_USAGE; unknown flag too.
+func TestPkgMarketplace_runMarketplaceFetch_Bad(t *testing.T) {
+	if rc := runMarketplaceFetch(nil); rc != 64 {
+		t.Errorf("missing --url rc = %d; want 64", rc)
+	}
+	if rc := runMarketplaceFetch([]string{"--url"}); rc != 64 {
+		t.Errorf("dangling --url rc = %d; want 64", rc)
+	}
+	if rc := runMarketplaceFetch([]string{"--what"}); rc != 64 {
+		t.Errorf("unknown flag rc = %d; want 64", rc)
+	}
+}
+
+// TestPkgMarketplace_runMarketplaceFetch_Good — `--help` returns 0.
+// The full clone path requires git on PATH and is exercised by the
+// MarketplaceFetch tests in the parent package.
+func TestPkgMarketplace_runMarketplaceFetch_Good(t *testing.T) {
+	if rc := runMarketplaceFetch([]string{"--help"}); rc != 0 {
+		t.Errorf("--help rc = %d; want 0", rc)
+	}
+}
+
+// TestPkgMarketplace_runMarketplaceFetch_Ugly — a fetch with --url
+// pointing at a definitely-unreachable host returns rc=1 (clone
+// fails). Pins the error path so a regression that swallows the
+// failure gets caught. We require DIR_HOME to be writable.
+func TestPkgMarketplace_runMarketplaceFetch_Ugly(t *testing.T) {
+	if home := core.Env("DIR_HOME"); home == "" {
+		t.Skip("DIR_HOME unset — fetch path requires it")
+	}
+	// Use a TLD that will not resolve — every git binary returns
+	// non-zero quickly without trying to authenticate.
+	if rc := runMarketplaceFetch([]string{"--url", "https://example.invalid/does-not-exist.git"}); rc == 0 {
+		t.Errorf("unreachable URL rc = 0; want non-zero")
+	}
+}

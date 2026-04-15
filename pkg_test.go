@@ -240,6 +240,93 @@ func TestPkg_InstallWrappedPWA_Ugly(t *testing.T) {
 	}
 }
 
+// TestPkg_InstallWrappedElectron_Good installs a wrapped Electron app
+// and confirms the view.yaml lands in the expected place. Mirrors the
+// PWA wrap path so the three install entry points share their
+// invariants (one entry per wrap type for clearer CLI errors).
+func TestPkg_InstallWrappedElectron_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+
+	manifest := &config.ViewManifest{
+		Code:    "electron-wrap",
+		Name:    "Electron Wrap",
+		Version: "0.1.0",
+		Config: map[string]any{
+			"type": "electron",
+		},
+	}
+
+	dest, err := app.InstallWrappedElectron(medium, manifest,
+		app.PkgInstallOptions{Home: home, Source: "wrap:electron:github.com/foo/bar"})
+	if err != nil {
+		t.Fatalf("InstallWrappedElectron: %v", err)
+	}
+	if dest == "" {
+		t.Fatal("InstallWrappedElectron returned empty dest")
+	}
+	if !medium.Exists(core.Path(dest, ".core", "view.yaml")) {
+		t.Fatalf("view.yaml missing at %s", dest)
+	}
+
+	var round config.ViewManifest
+	if err := config.LoadManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if src, _ := round.Config["source"].(string); src != "wrap:electron:github.com/foo/bar" {
+		t.Errorf("source stamp = %q; want 'wrap:electron:github.com/foo/bar'", src)
+	}
+}
+
+// TestPkg_InstallWrappedElectron_Bad rejects a nil manifest and a
+// manifest without a code — same invariants the PWA path checks so
+// the package-type-specific entry points share their guarantees.
+func TestPkg_InstallWrappedElectron_Bad(t *testing.T) {
+	if _, err := app.InstallWrappedElectron(coreio.Local, nil,
+		app.PkgInstallOptions{Home: "/tmp"}); err == nil {
+		t.Error("nil manifest produced no error")
+	}
+	if _, err := app.InstallWrappedElectron(coreio.Local,
+		&config.ViewManifest{Name: "no-code"},
+		app.PkgInstallOptions{Home: t.TempDir()}); err == nil {
+		t.Error("empty code produced no error")
+	}
+}
+
+// TestPkg_InstallWrappedElectron_Ugly covers the Force=true replace
+// flow — re-installing without Force errors, with Force overwrites.
+func TestPkg_InstallWrappedElectron_Ugly(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+
+	manifest := &config.ViewManifest{
+		Code:    "elec-dup",
+		Name:    "Original",
+		Version: "0.1.0",
+	}
+	if _, err := app.InstallWrappedElectron(medium, manifest,
+		app.PkgInstallOptions{Home: home}); err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+	manifest.Name = "Replaced"
+	if _, err := app.InstallWrappedElectron(medium, manifest,
+		app.PkgInstallOptions{Home: home}); err == nil {
+		t.Error("duplicate install without Force produced no error")
+	}
+	if _, err := app.InstallWrappedElectron(medium, manifest,
+		app.PkgInstallOptions{Home: home, Force: true}); err != nil {
+		t.Fatalf("force install: %v", err)
+	}
+	var round config.ViewManifest
+	path := core.Path(home, ".core", app.AppsDirName, "elec-dup", ".core", "view.yaml")
+	if err := config.LoadManifest(medium, path, &round); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if round.Name != "Replaced" {
+		t.Errorf("force-replaced Name = %q; want 'Replaced'", round.Name)
+	}
+}
+
 // TestPkg_PkgUpdate_Good updates an installed package that has a
 // recorded source and confirms the function succeeds (actual refetch
 // is CLI-driven).

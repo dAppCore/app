@@ -3,11 +3,15 @@
 package app_test
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
 	"testing"
 
 	"dappco.re/go/app"
 	core "dappco.re/go/core"
+	"dappco.re/go/core/config"
 	coreio "dappco.re/go/core/io"
+	"gopkg.in/yaml.v3"
 )
 
 // TestMarketplace_LoadMarketplaceIndex_Good reads a well-formed
@@ -232,4 +236,190 @@ func writeTestMarketplace(t *testing.T) string {
 		t.Fatalf("Write tools index: %v", err)
 	}
 	return root
+}
+
+// TestMarketplace_ExtractErr_Good — a Result wrapping an error returns
+// that error verbatim. Used by the marketplace.go process invocations
+// to surface git failures with the original message intact.
+func TestMarketplace_ExtractErr_Good(t *testing.T) {
+	want := core.NewError("boom")
+	got := app.ExtractErrForTest(core.Result{Value: want})
+	if got != want {
+		t.Errorf("ExtractErr returned %v; want %v", got, want)
+	}
+}
+
+// TestMarketplace_ExtractErr_Bad — an OK Result returns nil so
+// callers do not fabricate phantom errors when the process succeeded.
+func TestMarketplace_ExtractErr_Bad(t *testing.T) {
+	if err := app.ExtractErrForTest(core.Result{OK: true, Value: "ok"}); err != nil {
+		t.Errorf("ExtractErr on OK Result returned %v; want nil", err)
+	}
+}
+
+// TestMarketplace_ExtractErr_Ugly — a Result with a non-error Value
+// (e.g. a string from a CLI process exit message) is wrapped in a
+// typed error so callers always have an `error` to bubble up. The
+// wrapped string survives in the new error's message so a developer
+// can still see the original payload.
+func TestMarketplace_ExtractErr_Ugly(t *testing.T) {
+	got := app.ExtractErrForTest(core.Result{Value: "git: command not found"})
+	if got == nil {
+		t.Fatal("ExtractErr returned nil for non-OK Result with string value")
+	}
+	if !core.Contains(got.Error(), "git: command not found") {
+		t.Errorf("wrapped error message %q does not contain the original payload", got.Error())
+	}
+}
+
+// TestMarketplace_VerifyListingAfterInstall_Good — opt-in skip path
+// returns nil without touching disk. Used by tests and CI runs that
+// already pinned the signature elsewhere.
+func TestMarketplace_VerifyListingAfterInstall_Good(t *testing.T) {
+	dest := t.TempDir()
+	listing := &app.MarketplaceListing{Code: "photo"}
+	err := app.VerifyListingAfterInstallForTest(coreio.Local, dest, listing,
+		app.MarketplaceInstallOptions{SkipVerify: true})
+	if err != nil {
+		t.Errorf("SkipVerify path returned %v; want nil", err)
+	}
+}
+
+// TestMarketplace_VerifyListingAfterInstall_Bad — verify path runs
+// against a real install with a valid signature and a paired key in
+// the listing. The signature round-trips and verify succeeds.
+func TestMarketplace_VerifyListingAfterInstall_Bad(t *testing.T) {
+	medium := coreio.Local
+	pub, priv, _ := ed25519.GenerateKey(nil)
+
+	dest := t.TempDir()
+	manifest := &config.ViewManifest{
+		Code:    "verify-good",
+		Name:    "Verify Good",
+		Version: "0.1.0",
+	}
+	if err := app.SignManifestForTest(manifest, priv); err != nil {
+		t.Fatalf("SignManifestForTest: %v", err)
+	}
+	out, err := yaml.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := medium.EnsureDir(core.Path(dest, ".core")); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(core.Path(dest, ".core", "view.yaml"), string(out)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	listing := &app.MarketplaceListing{
+		Code:    manifest.Code,
+		SignKey: hex.EncodeToString(pub),
+	}
+	if err := app.VerifyListingAfterInstallForTest(medium, dest, listing,
+		app.MarketplaceInstallOptions{}); err != nil {
+		t.Errorf("verify with paired key returned %v; want nil", err)
+	}
+}
+
+// TestMarketplace_VerifyListingAfterInstall_Ugly — verify failure
+// rolls back the install. The destination directory is removed so the
+// next install attempt starts clean.
+func TestMarketplace_VerifyListingAfterInstall_Ugly(t *testing.T) {
+	medium := coreio.Local
+	pub, _, _ := ed25519.GenerateKey(nil) // declared, never used to sign
+	_, otherPriv, _ := ed25519.GenerateKey(nil)
+
+	dest := t.TempDir()
+	manifest := &config.ViewManifest{
+		Code:    "verify-rollback",
+		Name:    "Rollback",
+		Version: "0.1.0",
+	}
+	// Sign with a key that does NOT match the listing's SignKey.
+	if err := app.SignManifestForTest(manifest, otherPriv); err != nil {
+		t.Fatalf("SignManifestForTest: %v", err)
+	}
+	out, err := yaml.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := medium.EnsureDir(core.Path(dest, ".core")); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(core.Path(dest, ".core", "view.yaml"), string(out)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	listing := &app.MarketplaceListing{
+		Code:    manifest.Code,
+		SignKey: hex.EncodeToString(pub), // wrong key for the signature
+	}
+	if err := app.VerifyListingAfterInstallForTest(medium, dest, listing,
+		app.MarketplaceInstallOptions{}); err == nil {
+		t.Error("verify with wrong key produced no error")
+	}
+	// Rollback ran — destination should be gone.
+	if medium.Exists(core.Path(dest, ".core", "view.yaml")) {
+		t.Error("verify failure did not roll back the install")
+	}
+}
+
+// TestMarketplace_StampSource_Good plants the source field in an
+// installed manifest and confirms a re-read sees it.
+func TestMarketplace_StampSource_Good(t *testing.T) {
+	medium := coreio.Local
+	dest := t.TempDir()
+	if err := medium.EnsureDir(core.Path(dest, ".core")); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(core.Path(dest, ".core", "view.yaml"),
+		"code: stamp-good\nname: Stamp Good\nversion: 0.1.0\n"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := app.StampSourceForTest(medium, dest, "marketplace:photo-browser"); err != nil {
+		t.Fatalf("StampSource: %v", err)
+	}
+	var round config.ViewManifest
+	if err := config.LoadManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if src, _ := round.Config["source"].(string); src != "marketplace:photo-browser" {
+		t.Errorf("Config[source] = %q; want %q", src, "marketplace:photo-browser")
+	}
+}
+
+// TestMarketplace_StampSource_Bad — a missing manifest is a no-op
+// (returns nil) so a partial install does not error out the stamp.
+func TestMarketplace_StampSource_Bad(t *testing.T) {
+	medium := coreio.Local
+	dest := t.TempDir()
+	if err := app.StampSourceForTest(medium, dest, "marketplace:none"); err != nil {
+		t.Errorf("StampSource on missing manifest returned %v; want nil", err)
+	}
+}
+
+// TestMarketplace_StampSource_Ugly — stamping over an existing source
+// overwrites it (last-write-wins, matches the install pipeline's
+// expectation that source can change between updates).
+func TestMarketplace_StampSource_Ugly(t *testing.T) {
+	medium := coreio.Local
+	dest := t.TempDir()
+	if err := medium.EnsureDir(core.Path(dest, ".core")); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	body := "code: stamp-ugly\nname: Stamp Ugly\nversion: 0.1.0\nconfig:\n  source: old\n"
+	if err := medium.Write(core.Path(dest, ".core", "view.yaml"), body); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := app.StampSourceForTest(medium, dest, "marketplace:fresh"); err != nil {
+		t.Fatalf("StampSource: %v", err)
+	}
+	var round config.ViewManifest
+	if err := config.LoadManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if src, _ := round.Config["source"].(string); src != "marketplace:fresh" {
+		t.Errorf("Config[source] = %q; want %q", src, "marketplace:fresh")
+	}
 }
