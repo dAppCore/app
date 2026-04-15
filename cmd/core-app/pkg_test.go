@@ -864,3 +864,66 @@ func TestPkg_runPkgRemove_Flags_Bad(t *testing.T) {
 		t.Errorf("runPkgRemove(two names) rc = %d; want 64", rc)
 	}
 }
+
+// TestPkg_runPkgInfo_Good — `pkg info NAME` against a planted install
+// returns 0 and both the human table and `--json` emit the installed
+// identity.
+func TestPkg_runPkgInfo_Good(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CORE_HOME", home)
+	if core.Env("DIR_HOME") != home {
+		t.Skip("CORE_HOME mid-process override not honoured by core.Env; covered by app.PkgInfo tests")
+	}
+	plant(t, home, "viewer", &config.ViewManifest{
+		Code: "viewer", Name: "Viewer", Version: "0.1.0",
+		Permissions: config.ViewPermissions{Read: []string{"./data/"}},
+	})
+
+	if rc := runPkg([]string{"info", "viewer"}); rc != 0 {
+		t.Errorf("pkg info rc = %d; want 0", rc)
+	}
+	if rc := runPkg([]string{"info", "--json", "viewer"}); rc != 0 {
+		t.Errorf("pkg info --json rc = %d; want 0", rc)
+	}
+}
+
+// TestPkg_runPkgInfo_Bad — rejects missing NAME, unknown flags, and
+// surfaces a non-zero rc when the package is not installed.
+// Argv-level rejections (EX_USAGE = 64) fire before any env lookup so
+// these cases run unconditionally. The "missing package" branch needs
+// DIR_HOME to resolve to a temp dir, which the test harness can't always
+// guarantee (core.Env caches at process start), so it skips rather than
+// faking the lookup.
+func TestPkg_runPkgInfo_Bad(t *testing.T) {
+	// Argv-level rejections — no env required.
+	if rc := runPkgInfo(nil); rc != 64 {
+		t.Errorf("pkg info (no name) rc = %d; want 64", rc)
+	}
+	if rc := runPkgInfo([]string{"--unknown", "x"}); rc != 64 {
+		t.Errorf("pkg info unknown flag rc = %d; want 64", rc)
+	}
+	if rc := runPkgInfo([]string{"a", "b"}); rc != 64 {
+		t.Errorf("pkg info two names rc = %d; want 64", rc)
+	}
+
+	// Missing-package path — only runs when CORE_HOME overrides take.
+	home := t.TempDir()
+	t.Setenv("CORE_HOME", home)
+	if core.Env("DIR_HOME") != home {
+		t.Skip("CORE_HOME mid-process override not honoured by core.Env; missing-package path covered by app.PkgInfo tests")
+	}
+	if rc := runPkgInfo([]string{"missing-package"}); rc != 1 {
+		t.Errorf("pkg info missing package rc = %d; want 1", rc)
+	}
+}
+
+// TestPkg_runPkgInfo_Ugly — `--help` exits 0; `pkg info` is exposed via
+// the `runPkg` dispatcher so the verb routing works end-to-end.
+func TestPkg_runPkgInfo_Ugly(t *testing.T) {
+	if rc := runPkgInfo([]string{"--help"}); rc != 0 {
+		t.Errorf("pkg info --help rc = %d; want 0", rc)
+	}
+	if rc := runPkg([]string{"info"}); rc != 64 {
+		t.Errorf("runPkg info (no args) rc = %d; want 64", rc)
+	}
+}

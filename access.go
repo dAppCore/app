@@ -360,3 +360,90 @@ func matchExact(list []string, arg string) bool {
 	}
 	return false
 }
+
+// ActionAccessMode returns the AccessMode an action handler should feed
+// to CheckAccess. Mirrors the RFC §9.3 table so handlers don't repeat
+// the `"fs.read" → AccessRead` mapping — they call
+// `app.ActionAccessMode(name)` and get a typed mode plus `ok=false`
+// when the action is ungated (GUI dialogs, i18n, IPC, auth, crypto).
+//
+//	mode, ok := app.ActionAccessMode("fs.read")
+//	if ok {
+//	    if err := app.CheckAccess(&manifest, mode, path); err != nil { return err }
+//	}
+//
+// Rules:
+//
+//   - Known gated action → (mode, true). The caller runs CheckAccess
+//     with the supplied argument before performing the sensitive op.
+//
+//   - Unknown or ungated action → (0, false). GUI / ipc / auth / crypto
+//     actions fall through here because RFC §9.3 lists their permission
+//     as "—" (no gate).
+//
+//   - Actions registered under a dotted prefix (e.g. `process.run` vs
+//     `process.stdout.subscribe`) are matched by prefix so new verbs
+//     inherit their family's gate automatically — same rule gateFor()
+//     uses inside the entitlement closure.
+func ActionAccessMode(action string) (AccessMode, bool) {
+	gate, ok := gateFor(action)
+	if !ok {
+		return 0, false
+	}
+	switch gate.field {
+	case fieldRead:
+		return AccessRead, true
+	case fieldWrite:
+		return AccessWrite, true
+	case fieldNet:
+		return AccessNet, true
+	case fieldRun:
+		return AccessRun, true
+	case fieldStore:
+		return AccessStore, true
+	case fieldNotification:
+		return AccessNotification, true
+	case fieldClipboardRead:
+		return AccessClipboardRead, true
+	case fieldClipboardWrite:
+		return AccessClipboardWrite, true
+	case fieldCamera:
+		return AccessCamera, true
+	case fieldMicrophone:
+		return AccessMicrophone, true
+	case fieldLocation:
+		return AccessLocation, true
+	}
+	return 0, false
+}
+
+// CheckActionAccess is the one-liner handlers call to gate a Named
+// Action call by its declared argument. Combines ActionAccessMode with
+// CheckAccess so handlers never have to reason about the action → mode
+// mapping themselves.
+//
+//	if err := app.CheckActionAccess(&manifest, "fs.read", path); err != nil {
+//	    return core.Result{Value: err, OK: false}
+//	}
+//
+// Rules:
+//
+//   - Ungated action (GUI dialog, i18n, ipc, auth, crypto) → returns
+//     nil. The entitlement gate already decided the action is allowed
+//     at the framework level; there's no per-arg check to do.
+//
+//   - Gated action → delegates to CheckAccess, which enforces the
+//     per-argument match (path prefix, host:port exact, binary exact).
+//
+//   - nil manifest → typed error so a misbehaving handler doesn't
+//     silently bypass the gate.
+func CheckActionAccess(m *config.ViewManifest, action, arg string) error {
+	if m == nil {
+		return coreerr.E("app.CheckActionAccess", "nil manifest", nil)
+	}
+	mode, ok := ActionAccessMode(action)
+	if !ok {
+		return nil
+	}
+	return CheckAccess(m, mode, arg)
+}

@@ -427,3 +427,101 @@ func TestAccess_CheckAccess_Devices(t *testing.T) {
 		t.Error("empty manifest should deny location")
 	}
 }
+
+// TestAccess_ActionAccessMode_Good covers the dotted-prefix dispatch —
+// every action in the RFC §9.3 table maps to the right AccessMode.
+func TestAccess_ActionAccessMode_Good(t *testing.T) {
+	cases := []struct {
+		action string
+		want   AccessMode
+	}{
+		{"fs.read", AccessRead},
+		{"fs.list", AccessRead},
+		{"fs.write", AccessWrite},
+		{"fs.delete", AccessWrite},
+		{"net.fetch", AccessNet},
+		{"net.ws", AccessNet},
+		{"process.run", AccessRun},
+		{"process.stdout.subscribe", AccessRun},
+		{"store.get", AccessStore},
+		{"store.set", AccessStore},
+		{"gui.notification.send", AccessNotification},
+		{"gui.clipboard.read", AccessClipboardRead},
+		{"gui.clipboard.write", AccessClipboardWrite},
+		{"gui.browser.open", AccessNet},
+		{"device.camera", AccessCamera},
+		{"device.microphone", AccessMicrophone},
+		{"device.location", AccessLocation},
+		{"brain.recall", AccessNet},
+	}
+	for _, c := range cases {
+		got, ok := ActionAccessMode(c.action)
+		if !ok {
+			t.Errorf("ActionAccessMode(%q) = not gated; want %v", c.action, c.want)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("ActionAccessMode(%q) = %v; want %v", c.action, got, c.want)
+		}
+	}
+}
+
+// TestAccess_ActionAccessMode_Bad — ungated actions return ok=false so
+// handlers know not to run CheckAccess.
+func TestAccess_ActionAccessMode_Bad(t *testing.T) {
+	ungated := []string{
+		"gui.window.create",
+		"gui.dialog.confirm",
+		"gui.dialog.open",
+		"gui.dialog.save",
+		"i18n.translate",
+		"ipc.pub.publish",
+		"ipc.req.send",
+		"auth.create",
+		"crypto.pgp.sign",
+		"unknown.action",
+		"",
+	}
+	for _, action := range ungated {
+		if _, ok := ActionAccessMode(action); ok {
+			t.Errorf("ActionAccessMode(%q) returned ok=true; want false (ungated)", action)
+		}
+	}
+}
+
+// TestAccess_CheckActionAccess_Good exercises the one-liner handlers
+// use to gate an action+argument in a single call.
+func TestAccess_CheckActionAccess_Good(t *testing.T) {
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{
+			Read: []string{"./photos/"},
+			Net:  []string{"api.example.com:443"},
+		},
+	}
+	if err := CheckActionAccess(m, "fs.read", "./photos/a.jpg"); err != nil {
+		t.Errorf("fs.read inside declared prefix should succeed: %v", err)
+	}
+	if err := CheckActionAccess(m, "net.fetch", "api.example.com:443"); err != nil {
+		t.Errorf("net.fetch against declared host should succeed: %v", err)
+	}
+	// Ungated action — the helper returns nil without consulting perms.
+	if err := CheckActionAccess(m, "gui.dialog.confirm", "anything"); err != nil {
+		t.Errorf("ungated action should return nil: %v", err)
+	}
+}
+
+// TestAccess_CheckActionAccess_Bad — gated action + undeclared argument
+// surfaces the same denial the underlying CheckAccess would produce.
+func TestAccess_CheckActionAccess_Bad(t *testing.T) {
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{
+			Read: []string{"./photos/"},
+		},
+	}
+	if err := CheckActionAccess(m, "fs.read", "/etc/passwd"); err == nil {
+		t.Error("fs.read on undeclared path should be denied")
+	}
+	if err := CheckActionAccess(nil, "fs.read", "./x"); err == nil {
+		t.Error("nil manifest should error")
+	}
+}

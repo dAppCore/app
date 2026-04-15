@@ -712,3 +712,247 @@ func TestPkg_InstalledApps_Ugly(t *testing.T) {
 		t.Errorf("expected empty slice; got %d entries", len(apps))
 	}
 }
+
+// TestPkg_PkgList_SortOrder_Good — entries come back in lexicographic
+// Name order regardless of the order medium.List returns them in.
+// Deterministic order matters for CLI tables and JSON consumers that
+// diff successive runs.
+func TestPkg_PkgList_SortOrder_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	// Deliberately plant in non-alphabetical order so the test catches a
+	// regression that returns the filesystem's enumeration order.
+	for _, code := range []string{"zebra", "alpha", "mango", "beta"} {
+		writeInstalled(t, medium, home, code, &config.ViewManifest{
+			Code: code, Name: code, Version: "0.1.0",
+		})
+	}
+	entries, err := app.PkgList(medium, home)
+	if err != nil {
+		t.Fatalf("PkgList: %v", err)
+	}
+	if len(entries) != 4 {
+		t.Fatalf("len(entries) = %d; want 4", len(entries))
+	}
+	want := []string{"alpha", "beta", "mango", "zebra"}
+	for i, e := range entries {
+		if e.Name != want[i] {
+			t.Errorf("entries[%d].Name = %q; want %q", i, e.Name, want[i])
+		}
+	}
+}
+
+// TestPkg_PkgInfo_Good writes an installed package, provisions a
+// workspace, and confirms PkgInfo returns the summary, manifest,
+// permissions and the workspace path.
+func TestPkg_PkgInfo_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+
+	manifest := &config.ViewManifest{
+		Code: "viewer", Name: "Viewer", Version: "1.2.3",
+		Layout:  "HLCRF",
+		Modules: []string{"core/media"},
+		Permissions: config.ViewPermissions{
+			Read:          []string{"./photos/"},
+			Net:           []string{"api.example.com:443"},
+			Run:           []string{"ffmpeg", "device.location"},
+			Notifications: true,
+			Clipboard:     true,
+			Camera:        true,
+		},
+		Config: map[string]any{
+			"type":   "native",
+			"source": "marketplace:viewer",
+			"store":  true,
+			"write":  []any{"./photos/.thumbs/"},
+		},
+	}
+	writeInstalled(t, medium, home, "viewer", manifest)
+	if _, err := app.OpenWorkspace(medium, home, "viewer"); err != nil {
+		t.Fatalf("OpenWorkspace: %v", err)
+	}
+
+	info, err := app.PkgInfo(medium, home, "viewer")
+	if err != nil {
+		t.Fatalf("PkgInfo: %v", err)
+	}
+	if info.Entry.Name != "viewer" || info.Entry.Version != "1.2.3" {
+		t.Errorf("summary row mismatch: %+v", info.Entry)
+	}
+	if info.Entry.Type != app.PackageTypeNative {
+		t.Errorf("summary type = %v; want native", info.Entry.Type)
+	}
+	if info.Entry.Source != "marketplace:viewer" {
+		t.Errorf("summary source = %q; want 'marketplace:viewer'", info.Entry.Source)
+	}
+	if info.Manifest.Layout != "HLCRF" {
+		t.Errorf("manifest.Layout = %q; want HLCRF", info.Manifest.Layout)
+	}
+	if info.Workspace == "" {
+		t.Error("Workspace is empty — OpenWorkspace should have populated it")
+	}
+
+	// The flattened permission summary must include at least one entry
+	// per declared capability. The assertion is existence-based so the
+	// ordering rule inside ManifestPermissionSummary can evolve without
+	// breaking this case.
+	want := []string{
+		"read: ./photos/",
+		"write: ./photos/.thumbs/",
+		"net: api.example.com:443",
+		"run: ffmpeg",
+		"store",
+		"notifications",
+		"clipboard",
+		"camera",
+		"location",
+	}
+	seen := map[string]bool{}
+	for _, p := range info.Permissions {
+		seen[p] = true
+	}
+	for _, w := range want {
+		if !seen[w] {
+			t.Errorf("permission summary missing %q; got %v", w, info.Permissions)
+		}
+	}
+}
+
+// TestPkg_PkgInfo_Bad rejects empty home, empty name, and
+// not-installed packages with typed errors.
+func TestPkg_PkgInfo_Bad(t *testing.T) {
+	if _, err := app.PkgInfo(coreio.Local, "", "x"); err == nil {
+		t.Error("empty home produced no error")
+	}
+	if _, err := app.PkgInfo(coreio.Local, t.TempDir(), ""); err == nil {
+		t.Error("empty name produced no error")
+	}
+	if _, err := app.PkgInfo(coreio.Local, t.TempDir(), "missing"); err == nil {
+		t.Error("missing package produced no error")
+	}
+}
+
+// TestPkg_PkgInfo_Ugly — a package with no workspace on disk returns
+// info.Workspace="" so the caller can distinguish "never booted" from
+// "provisioned". The rest of the projection is still populated.
+func TestPkg_PkgInfo_Ugly(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	writeInstalled(t, medium, home, "fresh", &config.ViewManifest{
+		Code: "fresh", Name: "Fresh", Version: "0.1.0",
+	})
+
+	info, err := app.PkgInfo(medium, home, "fresh")
+	if err != nil {
+		t.Fatalf("PkgInfo: %v", err)
+	}
+	if info.Workspace != "" {
+		t.Errorf("Workspace = %q; want empty for never-booted install", info.Workspace)
+	}
+	if info.Entry.Name != "fresh" {
+		t.Errorf("Entry.Name = %q; want 'fresh'", info.Entry.Name)
+	}
+}
+
+// TestPkg_ManifestPermissionSummary_Good exercises the typed-field
+// and config-backed branches in one call — covers read / write / net /
+// run / store / notifications / clipboard / camera / microphone /
+// location plus the catch-all bools (filesystem, network).
+func TestPkg_ManifestPermissionSummary_Good(t *testing.T) {
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{
+			Read:          []string{"./a/", "./b/"},
+			Net:           []string{"host:443"},
+			Run:           []string{"bin", "device.location"},
+			Filesystem:    true,
+			Network:       true,
+			Notifications: true,
+			Clipboard:     true,
+			Camera:        true,
+			Microphone:    true,
+		},
+		Config: map[string]any{
+			"store": true,
+			"write": []any{"./c/"},
+		},
+	}
+	out := app.ManifestPermissionSummary(m)
+	expected := []string{
+		"read: ./a/",
+		"read: ./b/",
+		"write: ./c/",
+		"net: host:443",
+		"run: bin",
+		"filesystem",
+		"network",
+		"store",
+		"notifications",
+		"clipboard",
+		"camera",
+		"microphone",
+		"location",
+	}
+	seen := map[string]bool{}
+	for _, p := range out {
+		seen[p] = true
+	}
+	for _, e := range expected {
+		if !seen[e] {
+			t.Errorf("missing %q from summary; got %v", e, out)
+		}
+	}
+	// `device.location` must not surface under the raw `run: …` list
+	// because the summary renders it under its semantic name.
+	for _, p := range out {
+		if p == "run: device.location" {
+			t.Error("device.location should be rendered as 'location', not 'run: device.location'")
+		}
+	}
+}
+
+// TestPkg_ManifestPermissionSummary_Bad — a nil manifest returns nil
+// rather than panicking. Zero-value manifests surface as an empty
+// slice because nothing is declared.
+func TestPkg_ManifestPermissionSummary_Bad(t *testing.T) {
+	if out := app.ManifestPermissionSummary(nil); out != nil {
+		t.Errorf("nil manifest produced %v; want nil", out)
+	}
+	if out := app.ManifestPermissionSummary(&config.ViewManifest{}); len(out) != 0 {
+		t.Errorf("zero manifest produced %v; want empty", out)
+	}
+}
+
+// TestPkg_ManifestPermissionSummary_Ugly — empty strings inside
+// permission lists are skipped, and a malformed Config["write"] shape
+// is ignored rather than crashing the summary.
+func TestPkg_ManifestPermissionSummary_Ugly(t *testing.T) {
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{
+			Read: []string{"", "./a/"},
+			Net:  []string{""},
+			Run:  []string{"", "bin"},
+		},
+		Config: map[string]any{
+			"write": "not-a-list", // wrong shape — must be silently ignored
+		},
+	}
+	out := app.ManifestPermissionSummary(m)
+	for _, p := range out {
+		switch p {
+		case "read: ", "net: ", "run: ":
+			t.Errorf("empty permission entry leaked into summary: %q", p)
+		}
+	}
+	// Positive checks — valid entries still surface.
+	seen := map[string]bool{}
+	for _, p := range out {
+		seen[p] = true
+	}
+	if !seen["read: ./a/"] {
+		t.Errorf("read: ./a/ missing; got %v", out)
+	}
+	if !seen["run: bin"] {
+		t.Errorf("run: bin missing; got %v", out)
+	}
+}

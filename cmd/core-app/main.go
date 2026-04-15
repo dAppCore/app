@@ -8,10 +8,12 @@
 //	core-app --dev ./            # dev mode (no signature, warnings only)
 //	core-app --dev --watch ./    # dev mode with hot reload (RFC §4.2)
 //	core-app compile             # compile .core/view.yaml → core.json
+//	core-app compile --verify    # lint + compile (fail fast on RFC §2)
 //	core-app sign --key app.key  # sign .core/view.yaml in place
 //	core-app keygen --dir ~/.core/keys --name app
 //	                              # generate a paired ed25519 keypair
 //	core-app pkg list             # list installed packages
+//	core-app pkg info NAME        # describe a single installed package
 //	core-app pkg wrap --pwa URL   # wrap a PWA as a CoreApp
 //	core-app pkg wrap --electron REPO
 //	                              # wrap an Electron app as a CoreApp
@@ -261,7 +263,7 @@ func parseArgs(args []string) (mode app.Mode, start string, watch bool) {
 			core.Println("  validate     lint .core/view.yaml against RFC §2 rules")
 			core.Println("  sdk          generate client SDKs (openapi, ts, go, php, python)")
 			core.Println("  run CODE     boot an installed package by code")
-			core.Println("  pkg ...      manage packages (list, wrap, install, remove, update)")
+			core.Println("  pkg ...      manage packages (list, info, wrap, install, remove, update)")
 			core.Println("  marketplace  search/install/fetch from the marketplace")
 			os.Exit(0)
 		default:
@@ -280,6 +282,7 @@ type compileArgs struct {
 	Start         string
 	Key           string
 	UseDefaultKey bool
+	Verify        bool // --verify → run ValidateManifest before Compile
 }
 
 // runCompile reads `.core/view.yaml`, optionally signs the in-memory
@@ -288,6 +291,7 @@ type compileArgs struct {
 //
 //	core-app compile
 //	core-app compile ./photo-browser
+//	core-app compile --verify                # lint the manifest before compile
 //	core-app compile --key ~/.core/keys/app.key
 //	core-app compile --default              # use $DIR_HOME/.core/keys/default.key
 func runCompile(args []string) int {
@@ -303,10 +307,13 @@ func runCompile(args []string) int {
 			opts.Key = args[i]
 		case "--default":
 			opts.UseDefaultKey = true
+		case "--verify":
+			opts.Verify = true
 		case "--help", "-h":
-			core.Println("core-app compile [--key PATH | --default] [project-dir]")
+			core.Println("core-app compile [--key PATH | --default] [--verify] [project-dir]")
 			core.Println("  --key      hex-encoded ed25519 private key (re-sign before compile)")
 			core.Println("  --default  re-sign with $DIR_HOME/.core/keys/default.key")
+			core.Println("  --verify   run ValidateManifest before Compile (RFC §2 rules)")
 			core.Println("  project    project root holding .core/view.yaml (default: ./)")
 			return 0
 		default:
@@ -333,6 +340,21 @@ func runCompile(args []string) int {
 	}
 
 	root := core.PathDir(core.PathDir(path))
+
+	// `--verify` runs the RFC §2 validator up-front so a broken manifest
+	// fails before we touch the signing key or emit core.json. The
+	// validator runs against the loaded manifest (pre-sign) so it catches
+	// missing required fields, malformed layout variants and template
+	// entries without a path.
+	if opts.Verify {
+		report := app.ValidateManifest(&manifest, app.ValidateOptions{})
+		if !report.OK() {
+			for _, issue := range report.Errors() {
+				core.Error("compile verify", "field", issue.Field, "message", issue.Message)
+			}
+			return 1
+		}
+	}
 
 	if opts.Key != "" || opts.UseDefaultKey {
 		var priv ed25519.PrivateKey

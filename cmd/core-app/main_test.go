@@ -107,6 +107,43 @@ func TestMain_runCompile_Ugly(t *testing.T) {
 	}
 }
 
+// TestMain_runCompile_Verify_Good — `--verify` passes through a
+// well-formed manifest to the regular compile path.
+func TestMain_runCompile_Verify_Good(t *testing.T) {
+	dir := writeViewManifest(t, "verify-compile", "Verify Compile", "0.1.0")
+	rc := runCompile([]string{"--verify", dir})
+	if rc != 0 {
+		t.Fatalf("runCompile --verify rc = %d; want 0", rc)
+	}
+	if !coreio.Local.Exists(core.Path(dir, app.CompiledFileName)) {
+		t.Error("core.json missing after --verify compile")
+	}
+}
+
+// TestMain_runCompile_Verify_Bad — `--verify` surfaces a hard RFC §2
+// violation (missing required field) as a non-zero exit before any
+// core.json gets written.
+func TestMain_runCompile_Verify_Bad(t *testing.T) {
+	dir := t.TempDir()
+	medium := coreio.Local
+	if err := medium.EnsureDir(core.Path(dir, ".core")); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	// Missing `code` field — ValidateManifest rejects this with a hard
+	// error and `--verify` should fail the compile before writing
+	// core.json.
+	if err := medium.Write(core.Path(dir, ".core", "view.yaml"),
+		"name: Missing Code\nversion: 0.1.0\n"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if rc := runCompile([]string{"--verify", dir}); rc == 0 {
+		t.Error("runCompile --verify should fail when required fields are missing")
+	}
+	if medium.Exists(core.Path(dir, app.CompiledFileName)) {
+		t.Error("core.json written despite --verify failure")
+	}
+}
+
 // TestMain_runSign_Good — sign signs the view.yaml and the signature
 // verifies against the paired public key.
 func TestMain_runSign_Good(t *testing.T) {

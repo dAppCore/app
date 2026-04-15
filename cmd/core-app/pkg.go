@@ -32,6 +32,8 @@ func runPkg(args []string) int {
 	switch verb {
 	case "list":
 		return runPkgList(rest)
+	case "info":
+		return runPkgInfo(rest)
 	case "wrap":
 		return runPkgWrap(rest)
 	case "install":
@@ -57,12 +59,130 @@ func runPkg(args []string) int {
 func pkgUsage() {
 	core.Println("core-app pkg <verb> [flags]")
 	core.Println("  list                          list installed packages")
+	core.Println("  info NAME                     describe a single installed package")
 	core.Println("  wrap --pwa URL                wrap a PWA as a CoreApp")
 	core.Println("  wrap --electron REPO|DIR      wrap an Electron app as a CoreApp")
 	core.Println("  wrap --web DIR                wrap a local web directory")
 	core.Println("  install CODE                  install a marketplace listing")
 	core.Println("  remove [--purge] NAME         remove an installed package (purge wipes data)")
 	core.Println("  update  NAME                  re-fetch and re-wrap")
+}
+
+// runPkgInfo prints the full describe-an-installed-package projection —
+// identity line, type/version/source row, declared modules, layout
+// variant + slots, permission summary and workspace path. Structured
+// output via `--json` for programmatic consumers.
+//
+//	core-app pkg info photo-browser
+//	core-app pkg info --json photo-browser
+func runPkgInfo(args []string) int {
+	asJSON := false
+	name := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			asJSON = true
+		case "--help", "-h":
+			core.Println("core-app pkg info [--json] NAME")
+			core.Println("  --json  emit the full PkgDetails projection as JSON")
+			core.Println("  NAME    the installed package code (matches `pkg list` NAME)")
+			return 0
+		default:
+			if core.HasPrefix(args[i], "-") {
+				core.Error("pkg info: unknown flag", "flag", args[i])
+				return 64
+			}
+			if name != "" {
+				core.Error("pkg info: only one NAME supported", "extra", args[i])
+				return 64
+			}
+			name = args[i]
+		}
+	}
+	if name == "" {
+		core.Error("pkg info: NAME is required")
+		return 64
+	}
+	home := core.Env("DIR_HOME")
+	if home == "" {
+		core.Error("pkg info: cannot resolve DIR_HOME")
+		return 1
+	}
+
+	info, err := app.PkgInfo(coreio.Local, home, name)
+	if err != nil {
+		core.Error("pkg info: failed", "name", name, "err", err)
+		return 1
+	}
+
+	if asJSON {
+		// Project to a shape stable across internal reshuffles — the
+		// consumer never cares about Go field tags, only the documented
+		// `info` contract. Mirrors the pkg list JSON projection so both
+		// commands round-trip through the same tooling.
+		type row struct {
+			Name        string   `json:"name"`
+			Type        string   `json:"type"`
+			Version     string   `json:"version"`
+			Source      string   `json:"source"`
+			Path        string   `json:"path"`
+			Workspace   string   `json:"workspace,omitempty"`
+			Layout      string   `json:"layout,omitempty"`
+			Modules     []string `json:"modules,omitempty"`
+			Permissions []string `json:"permissions,omitempty"`
+			Signed      bool     `json:"signed"`
+		}
+		r := row{
+			Name:        info.Entry.Name,
+			Type:        info.Entry.Type.String(),
+			Version:     info.Entry.Version,
+			Source:      info.Entry.Source,
+			Path:        info.Entry.Path,
+			Workspace:   info.Workspace,
+			Layout:      info.Manifest.Layout,
+			Modules:     append([]string(nil), info.Manifest.Modules...),
+			Permissions: info.Permissions,
+			Signed:      info.Manifest.Sign != "",
+		}
+		marshaled := core.JSONMarshal(r)
+		if !marshaled.OK {
+			core.Error("pkg info: marshal failed", "err", marshaled.Value)
+			return 1
+		}
+		raw, _ := marshaled.Value.([]byte)
+		core.Println(string(raw))
+		return 0
+	}
+
+	core.Println(info.Entry.Name + " — " + info.Manifest.Name)
+	core.Println("  type:     " + info.Entry.Type.String())
+	core.Println("  version:  " + info.Entry.Version)
+	core.Println("  source:   " + info.Entry.DisplaySource())
+	core.Println("  path:     " + info.Entry.Path)
+	if info.Workspace != "" {
+		core.Println("  data:     " + info.Workspace)
+	}
+	if info.Manifest.Sign != "" {
+		core.Println("  signed:   yes")
+	} else {
+		core.Println("  signed:   no")
+	}
+	if info.Manifest.Layout != "" {
+		core.Println("  layout:   " + info.Manifest.Layout)
+	}
+	if len(info.Manifest.Modules) > 0 {
+		core.Println("  modules:")
+		for _, mod := range info.Manifest.Modules {
+			core.Println("    - " + mod)
+		}
+	}
+	if len(info.Permissions) > 0 {
+		core.Println("  permissions:")
+		for _, perm := range info.Permissions {
+			core.Println("    - " + perm)
+		}
+	}
+	return 0
 }
 
 // runPkgList prints `NAME\tTYPE\tVERSION\tSOURCE` rows for every

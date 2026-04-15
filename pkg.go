@@ -78,6 +78,10 @@ func (e PkgEntry) DisplaySource() string {
 // errors — a fresh user with no installs gets an empty slice.
 //
 //	entries, err := app.PkgList(coreio.Local, "/Users/me")
+//
+// Entries are sorted lexicographically by Name so CLI tables and JSON
+// consumers see a deterministic order across runs (matches the
+// InstalledApps contract).
 func PkgList(medium coreio.Medium, home string) ([]PkgEntry, error) {
 	if medium == nil {
 		medium = coreio.Local
@@ -116,6 +120,13 @@ func PkgList(medium coreio.Medium, home string) ([]PkgEntry, error) {
 			continue
 		}
 		out = append(out, pe)
+	}
+	// Deterministic order — same rule InstalledApps uses so `pkg list`
+	// and `pkg info` render consistent output on repeated runs.
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j-1].Name > out[j].Name; j-- {
+			out[j-1], out[j] = out[j], out[j-1]
+		}
 	}
 	return out, nil
 }
@@ -239,6 +250,197 @@ func pkgEntryFromManifest(medium coreio.Medium, viewPath, appPath string) (PkgEn
 		entry.Source = "local"
 	}
 	return entry, nil
+}
+
+// PkgDetails is the full describe-an-installed-package projection. It
+// pairs the summary row (PkgEntry) with the fully-parsed manifest, the
+// resolved workspace paths (when a workspace exists on disk), and a
+// human-ordered permission summary so a host UI (or a CI report) can
+// render every relevant field without re-opening view.yaml.
+//
+//	info, err := app.PkgInfo(coreio.Local, "/Users/me", "photo-browser")
+//	for _, perm := range info.Permissions { core.Println(perm) }
+//
+// Fields:
+//
+//   - Entry is the same PkgEntry PkgList would return (name, type,
+//     version, source, path) so CLI tables and JSON output share the
+//     summary shape.
+//
+//   - Manifest is the fully-parsed ViewManifest. Handlers that need to
+//     inspect modules / layout / slots read from here.
+//
+//   - Permissions is the human-sorted permission summary
+//     (`read: ./data/`, `net: api.example.com:443`, `store`, etc.). One
+//     entry per declared capability so a single print loop renders the
+//     full security surface.
+//
+//   - Workspace is the absolute path to `<home>/.core/data/<code>/` when
+//     present on disk. Empty when the workspace has not been provisioned
+//     (fresh install that has never booted).
+type PkgDetails struct {
+	Entry       PkgEntry            // summary row — same shape PkgList emits
+	Manifest    config.ViewManifest // full manifest (permissions, modules, layout, slots, config)
+	Permissions []string            // human-sorted permission summary
+	Workspace   string              // absolute path to the per-app data tree (empty when missing)
+}
+
+// PkgInfo returns everything a caller needs to describe a single
+// installed package — the summary row, the full manifest, a flattened
+// permission summary, and the workspace path when provisioned. Used by
+// `core pkg info NAME` and any host UI that shows a package detail
+// pane.
+//
+//	info, err := app.PkgInfo(coreio.Local, "/Users/me", "photo-browser")
+//
+// Rules:
+//
+//   - Missing `home` → typed error (the caller cannot resolve the apps
+//     tree without one).
+//
+//   - Missing `name` → typed error so callers that forget the argument
+//     get a useful message instead of an empty result.
+//
+//   - Package not installed → typed error naming the expected path so
+//     the CLI message points the user at the right `pkg install`
+//     command.
+//
+//   - Workspace lookup is best-effort — a missing data tree returns
+//     Workspace="" but does not fail the call. A first-boot package
+//     wouldn't have one yet.
+func PkgInfo(medium coreio.Medium, home, name string) (*PkgDetails, error) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	if home == "" {
+		return nil, coreerr.E("app.PkgInfo", "empty home directory", nil)
+	}
+	if name == "" {
+		return nil, coreerr.E("app.PkgInfo", "empty package name", nil)
+	}
+
+	appPath := core.Path(home, ".core", AppsDirName, name)
+	viewPath := core.Path(appPath, ".core", "view.yaml")
+	if !medium.Exists(viewPath) {
+		return nil, coreerr.E(
+			"app.PkgInfo",
+			"package not installed: "+name+" (expected "+viewPath+")",
+			nil,
+		)
+	}
+
+	var manifest config.ViewManifest
+	if err := config.LoadManifest(medium, viewPath, &manifest); err != nil {
+		return nil, coreerr.E("app.PkgInfo", "parse manifest failed", err)
+	}
+
+	entry, err := pkgEntryFromManifest(medium, viewPath, appPath)
+	if err != nil {
+		return nil, coreerr.E("app.PkgInfo", "project entry failed", err)
+	}
+
+	info := &PkgDetails{
+		Entry:       entry,
+		Manifest:    manifest,
+		Permissions: ManifestPermissionSummary(&manifest),
+	}
+
+	workspace := core.Path(home, ".core", DataDirName, manifest.Code)
+	if medium.IsDir(workspace) {
+		info.Workspace = workspace
+	}
+	return info, nil
+}
+
+// ManifestPermissionSummary flattens a manifest's permission declarations
+// into a human-sorted slice of `capability: detail` strings. Each entry
+// is self-describing so a UI can render the full security surface with
+// a single print loop.
+//
+//	for _, p := range app.ManifestPermissionSummary(&manifest) {
+//	    core.Println(p)
+//	}
+//
+// Output forms:
+//
+//   - `read: ./photos/`          — one entry per declared read prefix
+//   - `write: ./photos/.thumbs/` — one entry per declared write prefix
+//   - `net: api.example.com:443` — one entry per declared host:port
+//   - `run: phpstan`             — one entry per declared binary
+//   - `store`                    — single entry when store is declared
+//   - `filesystem`               — legacy catch-all bool
+//   - `network`                  — legacy catch-all bool
+//   - `notifications`            — bool permissions render as one entry
+//   - `clipboard`                — (read and write share one field today)
+//   - `camera`, `microphone`     — typed booleans
+//   - `location`                 — derived from the `device.location`
+//     entry in permissions.run (RFC §9.3
+//     legacy placement until ViewPermissions
+//     grows a typed slot)
+//
+// Sort order is stable: fields are emitted in the order above so a diff
+// tool comparing two manifests shows a consistent delta.
+func ManifestPermissionSummary(m *config.ViewManifest) []string {
+	if m == nil {
+		return nil
+	}
+	var out []string
+
+	for _, p := range m.Permissions.Read {
+		if p != "" {
+			out = append(out, "read: "+p)
+		}
+	}
+	for _, p := range manifestWriteList(m) {
+		if p != "" {
+			out = append(out, "write: "+p)
+		}
+	}
+	for _, p := range m.Permissions.Net {
+		if p != "" {
+			out = append(out, "net: "+p)
+		}
+	}
+	for _, p := range m.Permissions.Run {
+		if p == "" {
+			continue
+		}
+		if p == "device.location" {
+			// Location lives in the Run-list until ViewPermissions grows a
+			// typed slot; render it under its semantic name rather than as
+			// an opaque run entry.
+			continue
+		}
+		out = append(out, "run: "+p)
+	}
+	if m.Permissions.Filesystem {
+		out = append(out, "filesystem")
+	}
+	if m.Permissions.Network {
+		out = append(out, "network")
+	}
+	if hasManifestStorePermission(m) {
+		out = append(out, "store")
+	}
+	if m.Permissions.Notifications {
+		out = append(out, "notifications")
+	}
+	if m.Permissions.Clipboard {
+		out = append(out, "clipboard")
+	}
+	if m.Permissions.Camera {
+		out = append(out, "camera")
+	}
+	if m.Permissions.Microphone {
+		out = append(out, "microphone")
+	}
+	for _, p := range m.Permissions.Run {
+		if p == "device.location" {
+			out = append(out, "location")
+			break
+		}
+	}
+	return out
 }
 
 // PkgRemove deletes an installed package directory. Matches the RFC §16.3
