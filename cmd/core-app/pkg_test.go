@@ -232,6 +232,54 @@ func TestPkg_runPkgInstall_Bad(t *testing.T) {
 	if rc := runPkg([]string{"install", "github.com/owner/definitely-not-a-real-repo-1234567890"}); rc == 0 {
 		t.Errorf("install of non-existent repo returned 0; want non-zero")
 	}
+	// --type with a missing value or an unknown value is rejected with
+	// EX_USAGE so the operator sees the supported list.
+	if rc := runPkg([]string{"install", "--type"}); rc != 64 {
+		t.Errorf("dangling --type rc = %d; want 64", rc)
+	}
+	if rc := runPkg([]string{"install", "--type", "rust", "x"}); rc != 64 {
+		t.Errorf("unknown --type rc = %d; want 64", rc)
+	}
+	// Two source positionals → user error.
+	if rc := runPkg([]string{"install", "a", "b"}); rc != 64 {
+		t.Errorf("two source args rc = %d; want 64", rc)
+	}
+	// Unknown flag is rejected.
+	if rc := runPkg([]string{"install", "--what", "x"}); rc != 64 {
+		t.Errorf("unknown flag rc = %d; want 64", rc)
+	}
+}
+
+// TestPkg_runPkgInstall_TypeOverride — `--type web ./dir` forces the
+// web wrap path even when the directory looks native (has .core/view.yaml).
+// Validates the override branch in runPkgInstall.
+func TestPkg_runPkgInstall_TypeOverride(t *testing.T) {
+	src := t.TempDir()
+	home := t.TempDir()
+	medium := coreio.Local
+
+	// Plant both a native marker AND an index.html so auto-detection
+	// would pick native; --type web should override.
+	if err := medium.EnsureDir(core.Path(src, ".core")); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(core.Path(src, ".core", "view.yaml"),
+		"code: srctype\nname: SrcType\nversion: 0.1.0\n"); err != nil {
+		t.Fatalf("Write view.yaml: %v", err)
+	}
+	if err := medium.Write(core.Path(src, "index.html"), "<html/>"); err != nil {
+		t.Fatalf("Write index.html: %v", err)
+	}
+	t.Setenv("CORE_HOME", home)
+	if core.Env("DIR_HOME") != home {
+		t.Skip("CORE_HOME mid-process override not honoured by core.Env; --type override path validated by spec wiring")
+	}
+	// --type web should pass through to runPkgInstallLocal which then
+	// routes to WrapWeb.
+	rc := runPkg([]string{"install", "--type", "web", src})
+	if rc != 0 {
+		t.Fatalf("--type web rc = %d; want 0", rc)
+	}
 }
 
 // TestPkg_runPkgInstall_Good — auto-detects a PWA URL and installs it

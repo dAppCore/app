@@ -25,6 +25,12 @@ import (
 //	"device.camera"      → requires permissions.camera (boolean)
 //	"device.microphone"  → requires permissions.microphone (boolean)
 //	"device.location"    → requires permissions.location (Run-list legacy entry)
+//	"ipc.*"              → no permission gate (intra-process bus is always allowed
+//	                       but plugins can only see channels their host wires up)
+//	"auth.*"             → no permission gate (identity is host-managed; the
+//	                       handler decides whether to accept the credential payload)
+//	"crypto.*"           → no permission gate (pure compute over caller-supplied
+//	                       material; no IO touched)
 var actionPermissionMap = []actionGate{
 	{prefix: "fs.read", field: fieldRead},
 	{prefix: "fs.list", field: fieldRead},
@@ -33,8 +39,14 @@ var actionPermissionMap = []actionGate{
 	{prefix: "net.fetch", field: fieldNet},
 	{prefix: "net.ws", field: fieldNet},
 	{prefix: "process.run", field: fieldRun},
+	{prefix: "process.add", field: fieldRun},
 	{prefix: "process.start", field: fieldRun},
 	{prefix: "process.stop", field: fieldRun},
+	{prefix: "process.kill", field: fieldRun},
+	{prefix: "process.get", field: fieldRun},
+	{prefix: "process.list", field: fieldRun},
+	{prefix: "process.stdout.subscribe", field: fieldRun},
+	{prefix: "process.stdin.write", field: fieldRun},
 	{prefix: "store.get", field: fieldStore},
 	{prefix: "store.set", field: fieldStore},
 	{prefix: "store.delete", field: fieldStore},

@@ -519,21 +519,56 @@ func persistWrap(manifest *config.ViewManifest, opts pkgWrapArgs) int {
 }
 
 // runPkgInstall handles `pkg install <source>`. Auto-detects the
-// install kind from the argument:
+// install kind from the argument; the operator can override with
+// `--type` when the heuristics pick the wrong path:
 //
-//	core-app pkg install https://app.example.com           # PWA
-//	core-app pkg install github.com/owner/repo             # Electron
-//	core-app pkg install photo-browser                     # marketplace listing
-//	core-app pkg install core/photo-browser                # marketplace listing (vendor/code)
+//	core-app pkg install https://app.example.com            # PWA (auto)
+//	core-app pkg install github.com/owner/repo              # Electron (auto)
+//	core-app pkg install photo-browser                      # marketplace listing
+//	core-app pkg install --type web ./my-site               # forced web wrap
+//	core-app pkg install --type native ./my-coreapp         # forced native copy
 //
 // PWA installs do not need a marketplace cache. Marketplace installs
 // require `core-app marketplace fetch` first.
 func runPkgInstall(args []string) int {
-	if len(args) == 0 {
+	src := ""
+	override := app.PackageTypeUnknown
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--type":
+			if i+1 >= len(args) {
+				core.Error("pkg install: --type requires a value (native|pwa|electron|web)")
+				return 64
+			}
+			i++
+			t := app.ParsePackageType(args[i])
+			if t == app.PackageTypeUnknown {
+				core.Error("pkg install: unknown --type", "value", args[i],
+					"hint", "supported: native, pwa, electron, web")
+				return 64
+			}
+			override = t
+		case "--help", "-h":
+			core.Println("core-app pkg install [--type native|pwa|electron|web] <source>")
+			core.Println("  --type    skip auto-detection and force the install kind")
+			core.Println("  source    URL, github.com/owner/repo, marketplace code, or local path")
+			return 0
+		default:
+			if core.HasPrefix(args[i], "-") {
+				core.Error("pkg install: unknown flag", "flag", args[i])
+				return 64
+			}
+			if src != "" {
+				core.Error("pkg install: only one <source> argument supported", "extra", args[i])
+				return 64
+			}
+			src = args[i]
+		}
+	}
+	if src == "" {
 		core.Error("pkg install: <source> is required")
 		return 64
 	}
-	src := args[0]
 
 	home := core.Env("DIR_HOME")
 	if home == "" {
@@ -545,6 +580,31 @@ func runPkgInstall(args []string) int {
 	defer cancel()
 
 	spec := app.ParseInstallSpec(src)
+	if override != app.PackageTypeUnknown {
+		spec.Type = override
+		// When the operator forces a type, dispatch on it directly so a
+		// local path that auto-detects as native can still be re-wrapped
+		// as web (or vice-versa) without renaming the directory.
+		switch override {
+		case app.PackageTypePWA:
+			if spec.URL == "" {
+				spec.URL = src
+			}
+			return runPkgInstallPWA(ctx, home, spec.URL)
+		case app.PackageTypeElectron:
+			if spec.Repo == "" {
+				spec.Repo = src
+			}
+			return runPkgInstallElectron(ctx, spec.Repo)
+		case app.PackageTypeWeb, app.PackageTypeNative:
+			path := spec.Path
+			if path == "" {
+				path = src
+			}
+			return runPkgInstallLocal(home, path)
+		}
+	}
+
 	switch spec.Type {
 	case app.PackageTypePWA:
 		return runPkgInstallPWA(ctx, home, spec.URL)
@@ -1140,13 +1200,33 @@ func runMarketplaceInstalled(args []string) int {
 	return runPkgList(nil)
 }
 
-// runMarketplaceSearch prints `CODE\tTYPE\tVERSION\tDESCRIPTION` rows
-// for every matching listing. No match = empty stdout + exit 0 (so a
-// shell can test `if [ -z "$(core-app marketplace search foo)" ]`).
+// runMarketplaceSearch prints aligned `CODE TYPE VERSION DESCRIPTION`
+// rows for every matching listing, or a JSON array when --json is
+// passed. No match = empty stdout + exit 0 (so a shell can test
+// `if [ -z "$(core-app marketplace search foo)" ]`).
 //
 //	core-app marketplace search photo
+//	core-app marketplace search photo --json
 func runMarketplaceSearch(args []string) int {
-	if len(args) == 0 {
+	asJSON := false
+	query := ""
+	for _, a := range args {
+		switch a {
+		case "--json":
+			asJSON = true
+		case "--help", "-h":
+			core.Println("core-app marketplace search [--json] QUERY")
+			core.Println("  --json   emit a JSON array of {code, name, type, version, description}")
+			return 0
+		default:
+			if core.HasPrefix(a, "-") {
+				core.Error("marketplace search: unknown flag", "flag", a)
+				return 64
+			}
+			query = a
+		}
+	}
+	if query == "" {
 		core.Error("marketplace search: QUERY is required")
 		return 64
 	}
@@ -1156,13 +1236,44 @@ func runMarketplaceSearch(args []string) int {
 		return 1
 	}
 	root := core.Path(home, ".core", "marketplace")
-	results, err := app.MarketplaceSearch(coreio.Local, root, args[0])
+	results, err := app.MarketplaceSearch(coreio.Local, root, query)
 	if err != nil {
 		core.Error("marketplace search: failed", "err", err)
 		return 1
 	}
+
+	if asJSON {
+		// Round-trip via core.JSONMarshal so the output is canonical and
+		// downstream tooling can pipe directly into `jq` / a script
+		// without re-parsing the human-readable table.
+		r := core.JSONMarshal(results)
+		if !r.OK {
+			core.Error("marketplace search: marshal failed", "err", r.Value)
+			return 1
+		}
+		raw, _ := r.Value.([]byte)
+		core.Println(string(raw))
+		return 0
+	}
+
+	if len(results) == 0 {
+		return 0
+	}
+	const gutter = 2
+	headers := []string{"CODE", "TYPE", "VERSION", "DESCRIPTION"}
+	widths := []int{len(headers[0]), len(headers[1]), len(headers[2]), len(headers[3])}
 	for _, r := range results {
-		core.Println(r.Code + "\t" + r.Type + "\t" + r.Version + "\t" + r.Description)
+		cells := []string{r.Code, r.Type, r.Version, r.Description}
+		for i, cell := range cells {
+			if len(cell) > widths[i] {
+				widths[i] = len(cell)
+			}
+		}
+	}
+	core.Println(formatRow(headers, widths, gutter))
+	for _, r := range results {
+		cells := []string{r.Code, r.Type, r.Version, r.Description}
+		core.Println(formatRow(cells, widths, gutter))
 	}
 	return 0
 }

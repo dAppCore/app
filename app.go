@@ -313,3 +313,35 @@ func (inst *Instance) Start(ctx context.Context) core.Result {
 	}
 	return start(ctx, inst)
 }
+
+// Stop is the symmetric tear-down for Start — broadcasts ActionAppStopping
+// so subscribers (core/gui windows, core-agent fleet bus) can flush state
+// before the host calls c.Shutdown(). Hosts that orchestrate plugin
+// lifecycles (RFC §11.5) call inst.Stop on idle, restart, or shutdown.
+//
+//	r := inst.Stop(ctx)
+//	if !r.OK { core.Error("stop failed", "err", r.Value) }
+//
+// Rules:
+//
+//   - nil instance / nil core → typed Result.
+//
+//   - The Stop broadcast is fire-and-forget; subscribers that need to
+//     veto a shutdown should respond via a separate Query handler (Core
+//     IPC supports both). The bus does not block on listeners.
+//
+//   - Stop does NOT close the workspace — the host owns the data tree
+//     beyond the app's lifetime so it can recover state on the next
+//     boot.
+func (inst *Instance) Stop(ctx context.Context) core.Result {
+	if inst == nil || inst.Core == nil {
+		return core.Result{Value: coreerr.E("app.Instance.Stop", "nil instance", nil), OK: false}
+	}
+	inst.Core.ACTION(ActionAppStopping{
+		Code:    inst.Manifest.Code,
+		Name:    inst.Manifest.Name,
+		Version: inst.Manifest.Version,
+		Mode:    inst.Mode.String(),
+	})
+	return core.Result{OK: true}
+}

@@ -200,10 +200,27 @@ func TestPkgMarketplace_readInstalledSource_Ugly(t *testing.T) {
 }
 
 // TestPkgMarketplace_runMarketplaceSearch_Bad — missing QUERY returns
-// EX_USAGE so the shell knows to surface the usage line.
+// EX_USAGE so the shell knows to surface the usage line. Same for an
+// unknown flag and a dangling --json (well, --json is a bool so there is
+// no "dangling" form, but `--what` is rejected).
 func TestPkgMarketplace_runMarketplaceSearch_Bad(t *testing.T) {
 	if rc := runMarketplaceSearch(nil); rc != 64 {
 		t.Errorf("missing QUERY rc = %d; want 64", rc)
+	}
+	if rc := runMarketplaceSearch([]string{"--what"}); rc != 64 {
+		t.Errorf("unknown flag rc = %d; want 64", rc)
+	}
+	if rc := runMarketplaceSearch([]string{"--json"}); rc != 64 {
+		t.Errorf("missing QUERY after --json rc = %d; want 64", rc)
+	}
+}
+
+// TestPkgMarketplace_runMarketplaceSearch_Good — `--help` returns 0
+// without touching the marketplace cache. Mirrors the help-only path
+// the Fetch test pins.
+func TestPkgMarketplace_runMarketplaceSearch_Good(t *testing.T) {
+	if rc := runMarketplaceSearch([]string{"--help"}); rc != 0 {
+		t.Errorf("--help rc = %d; want 0", rc)
 	}
 }
 

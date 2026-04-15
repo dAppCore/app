@@ -432,7 +432,9 @@ func TestSdk_DefaultSDKActions_Bad(t *testing.T) {
 }
 
 // TestSdk_DefaultSDKActions_Ugly — the catalogue includes the four pillars
-// from RFC §9.3 so SDK consumers can rely on them.
+// from RFC §9.3 so SDK consumers can rely on them, plus the §9.4 RPC
+// surface (process lifecycle, IPC bus, auth, crypto.pgp.*) that ports
+// the dAppServer surface verbatim.
 func TestSdk_DefaultSDKActions_Ugly(t *testing.T) {
 	want := map[string]bool{
 		"fs.read":            false,
@@ -451,6 +453,32 @@ func TestSdk_DefaultSDKActions_Ugly(t *testing.T) {
 		"device.location":       false,
 		"device.camera":         false,
 		"device.microphone":     false,
+		// RFC §9.4 — process lifecycle. process.run was already in the
+		// surface; the rest extend it to cover the dAppServer
+		// process-as-service contract.
+		"process.run":              false,
+		"process.add":              false,
+		"process.start":            false,
+		"process.stop":             false,
+		"process.kill":             false,
+		"process.list":             false,
+		"process.get":              false,
+		"process.stdout.subscribe": false,
+		"process.stdin.write":      false,
+		// RFC §9.4 — IPC / event bus. Always allowed (host-managed).
+		"ipc.pub.publish":   false,
+		"ipc.pub.subscribe": false,
+		"ipc.req.send":      false,
+		"ipc.push.send":     false,
+		// RFC §9.4 — auth + crypto. Identity and PGP primitives.
+		"auth.create":                false,
+		"auth.login":                 false,
+		"auth.delete":                false,
+		"crypto.pgp.generateKeyPair": false,
+		"crypto.pgp.encrypt":         false,
+		"crypto.pgp.decrypt":         false,
+		"crypto.pgp.sign":            false,
+		"crypto.pgp.verify":          false,
 	}
 	for _, a := range DefaultSDKActions() {
 		if _, ok := want[a.Name]; ok {

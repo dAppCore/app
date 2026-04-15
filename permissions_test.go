@@ -453,3 +453,132 @@ func TestPermissions_DeviceGates_Ugly(t *testing.T) {
 		t.Error("device.location should be denied — Run list does not contain device.location")
 	}
 }
+
+// TestPermissions_ProcessLifecycle_Good — every dAppServer process verb
+// (RFC §9.4) gates against permissions.run; when the manifest declares
+// `run: ["miner"]` each verb is allowed.
+func TestPermissions_ProcessLifecycle_Good(t *testing.T) {
+	c := core.New()
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{Run: []string{"miner"}},
+	}
+	if err := permissions(c, m, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	for _, action := range []string{
+		"process.run",
+		"process.add",
+		"process.start",
+		"process.stop",
+		"process.kill",
+		"process.list",
+		"process.get",
+		"process.stdout.subscribe",
+		"process.stdin.write",
+	} {
+		if e := c.Entitled(action); !e.Allowed {
+			t.Errorf("%s should be allowed when run is declared; reason=%q", action, e.Reason)
+		}
+	}
+}
+
+// TestPermissions_ProcessLifecycle_Bad — without a run declaration, every
+// process verb is denied in prod mode with a reason.
+func TestPermissions_ProcessLifecycle_Bad(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	for _, action := range []string{
+		"process.add",
+		"process.kill",
+		"process.list",
+		"process.get",
+		"process.stdout.subscribe",
+		"process.stdin.write",
+	} {
+		e := c.Entitled(action)
+		if e.Allowed {
+			t.Errorf("%s should be denied without a run declaration", action)
+		}
+		if e.Reason == "" {
+			t.Errorf("%s denial should explain why", action)
+		}
+	}
+}
+
+// TestPermissions_ProcessLifecycle_Ugly — `process.kill` and similar are
+// gated by the same prefix that `process.run` uses, so a manifest's Run
+// list grants them collectively. This stops a manifest accidentally
+// gating only `process.run` while a handler that needs `process.kill`
+// would have been silently denied.
+func TestPermissions_ProcessLifecycle_Ugly(t *testing.T) {
+	gate, ok := gateFor("process.list")
+	if !ok || gate.field != fieldRun {
+		t.Errorf("process.list should be gated under fieldRun; got (%v, %v)", gate, ok)
+	}
+	gate, ok = gateFor("process.stdout.subscribe")
+	if !ok || gate.field != fieldRun {
+		t.Errorf("process.stdout.subscribe should be gated under fieldRun; got (%v, %v)", gate, ok)
+	}
+}
+
+// TestPermissions_UngatedActions_Good — IPC, auth and crypto actions are
+// not gated by the manifest (the host owns those surfaces). They must
+// always pass the entitlement gate even when the manifest declares
+// nothing.
+func TestPermissions_UngatedActions_Good(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	for _, action := range []string{
+		"ipc.pub.publish",
+		"ipc.pub.subscribe",
+		"ipc.req.send",
+		"ipc.push.send",
+		"auth.create",
+		"auth.login",
+		"auth.delete",
+		"crypto.pgp.generateKeyPair",
+		"crypto.pgp.encrypt",
+		"crypto.pgp.decrypt",
+		"crypto.pgp.sign",
+		"crypto.pgp.verify",
+	} {
+		e := c.Entitled(action)
+		if !e.Allowed {
+			t.Errorf("%s should be allowed (ungated, host-managed); reason=%q", action, e.Reason)
+		}
+	}
+}
+
+// TestPermissions_UngatedActions_Bad — gateFor returns false for the
+// host-managed surfaces so the entitlement walker treats them as
+// always-allowed.
+func TestPermissions_UngatedActions_Bad(t *testing.T) {
+	for _, action := range []string{
+		"ipc.pub.publish",
+		"auth.login",
+		"crypto.pgp.encrypt",
+	} {
+		if _, ok := gateFor(action); ok {
+			t.Errorf("%s should NOT be gated (host-managed surface)", action)
+		}
+	}
+}
+
+// TestPermissions_UngatedActions_Ugly — the unknown-action escape hatch
+// returns Unlimited so a custom action a host registers later is
+// always-allowed without a permissions row. Mirrors the "unknown
+// commands are not denied" rule from RFC §9.
+func TestPermissions_UngatedActions_Ugly(t *testing.T) {
+	c := core.New()
+	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
+		t.Fatalf("permissions: %v", err)
+	}
+	e := c.Entitled("custom.host.action")
+	if !e.Allowed || !e.Unlimited {
+		t.Errorf("custom action should be Allowed+Unlimited; got %+v", e)
+	}
+}

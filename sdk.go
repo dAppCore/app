@@ -218,6 +218,63 @@ func DefaultSDKActions() []SDKAction {
 			},
 		},
 		{
+			Name: "process.add", Permission: "run",
+			Description: "Register a long-lived process under a key (RFC §9.4)",
+			Request: []SDKArg{
+				{Name: "key", Type: "string", Required: true},
+				{Name: "command", Type: "string", Required: true},
+				{Name: "args", Type: "array"},
+			},
+			Response: []SDKArg{{Name: "key", Type: "string"}},
+		},
+		{
+			Name: "process.start", Permission: "run",
+			Description: "Start a previously-registered process by key",
+			Request:     []SDKArg{{Name: "key", Type: "string", Required: true}},
+			Response:    []SDKArg{{Name: "started", Type: "boolean"}},
+		},
+		{
+			Name: "process.stop", Permission: "run",
+			Description: "Gracefully stop a registered process by key",
+			Request:     []SDKArg{{Name: "key", Type: "string", Required: true}},
+			Response:    []SDKArg{{Name: "stopped", Type: "boolean"}},
+		},
+		{
+			Name: "process.kill", Permission: "run",
+			Description: "Forcibly kill a registered process by key",
+			Request:     []SDKArg{{Name: "key", Type: "string", Required: true}},
+			Response:    []SDKArg{{Name: "killed", Type: "boolean"}},
+		},
+		{
+			Name: "process.list", Permission: "run",
+			Description: "List the keys of every registered process",
+			Response:    []SDKArg{{Name: "keys", Type: "array"}},
+		},
+		{
+			Name: "process.get", Permission: "run",
+			Description: "Read a registered process's current info",
+			Request:     []SDKArg{{Name: "key", Type: "string", Required: true}},
+			Response: []SDKArg{
+				{Name: "key", Type: "string"},
+				{Name: "command", Type: "string"},
+				{Name: "running", Type: "boolean"},
+				{Name: "exit", Type: "integer"},
+			},
+		},
+		{
+			Name: "process.stdout.subscribe", Permission: "run",
+			Description: "Subscribe to stdout events for a registered process",
+			Request:     []SDKArg{{Name: "key", Type: "string", Required: true}},
+		},
+		{
+			Name: "process.stdin.write", Permission: "run",
+			Description: "Write a chunk to a registered process's stdin",
+			Request: []SDKArg{
+				{Name: "key", Type: "string", Required: true},
+				{Name: "data", Type: "string", Required: true},
+			},
+		},
+		{
 			Name:        "gui.window.create",
 			Description: "Create a new desktop window",
 			Request: []SDKArg{
@@ -312,6 +369,116 @@ func DefaultSDKActions() []SDKAction {
 			Description: "Search OpenBrain memories",
 			Request:     []SDKArg{{Name: "query", Type: "string", Required: true}},
 			Response:    []SDKArg{{Name: "memories", Type: "array"}},
+		},
+		// IPC / Event Bus (RFC §9.4) — host-managed; no permission gate
+		// because the Core IPC bus is intra-process and the host already
+		// decides which channels each plugin can see (RFC §11.2).
+		{
+			Name:        "ipc.pub.publish",
+			Description: "Publish a message on a named channel",
+			Request: []SDKArg{
+				{Name: "channel", Type: "string", Required: true},
+				{Name: "message", Type: "object"},
+			},
+		},
+		{
+			Name:        "ipc.pub.subscribe",
+			Description: "Subscribe to a stream of messages on a channel",
+			Request:     []SDKArg{{Name: "channel", Type: "string", Required: true}},
+		},
+		{
+			Name:        "ipc.req.send",
+			Description: "Request/response over a named channel",
+			Request: []SDKArg{
+				{Name: "channel", Type: "string", Required: true},
+				{Name: "message", Type: "object"},
+			},
+			Response: []SDKArg{{Name: "response", Type: "object"}},
+		},
+		{
+			Name:        "ipc.push.send",
+			Description: "Fire-and-forget push to the host bus",
+			Request:     []SDKArg{{Name: "message", Type: "object", Required: true}},
+		},
+		// Auth (RFC §9.4) — identity creation / login / deletion. The host
+		// owns the credential store; the manifest does not gate identity.
+		{
+			Name:        "auth.create",
+			Description: "Create a new identity (PGP key gen + QuasiSalt hash)",
+			Request: []SDKArg{
+				{Name: "username", Type: "string", Required: true},
+				{Name: "password", Type: "string", Required: true},
+			},
+			Response: []SDKArg{{Name: "username", Type: "string"}},
+		},
+		{
+			Name:        "auth.login",
+			Description: "Authenticate a user via ZK PGP verify; returns a JWT",
+			Request: []SDKArg{
+				{Name: "username", Type: "string", Required: true},
+				{Name: "encrypted_payload", Type: "string", Required: true},
+			},
+			Response: []SDKArg{{Name: "token", Type: "string"}},
+		},
+		{
+			Name:        "auth.delete",
+			Description: "Remove an identity (the user must already be logged in)",
+			Request:     []SDKArg{{Name: "username", Type: "string", Required: true}},
+			Response:    []SDKArg{{Name: "deleted", Type: "boolean"}},
+		},
+		// Crypto (RFC §9.4) — pure-compute helpers over caller-supplied
+		// material. No permission gate because no IO is touched.
+		{
+			Name:        "crypto.pgp.generateKeyPair",
+			Description: "Generate a fresh PGP keypair",
+			Request: []SDKArg{
+				{Name: "name", Type: "string", Required: true},
+				{Name: "email", Type: "string", Required: true},
+				{Name: "passphrase", Type: "string", Required: true},
+			},
+			Response: []SDKArg{
+				{Name: "public", Type: "string"},
+				{Name: "private", Type: "string"},
+			},
+		},
+		{
+			Name:        "crypto.pgp.encrypt",
+			Description: "Encrypt a payload with a PGP public key",
+			Request: []SDKArg{
+				{Name: "data", Type: "string", Required: true},
+				{Name: "public_key", Type: "string", Required: true},
+			},
+			Response: []SDKArg{{Name: "encrypted", Type: "string"}},
+		},
+		{
+			Name:        "crypto.pgp.decrypt",
+			Description: "Decrypt a payload with a PGP private key + passphrase",
+			Request: []SDKArg{
+				{Name: "data", Type: "string", Required: true},
+				{Name: "private_key", Type: "string", Required: true},
+				{Name: "passphrase", Type: "string", Required: true},
+			},
+			Response: []SDKArg{{Name: "plaintext", Type: "string"}},
+		},
+		{
+			Name:        "crypto.pgp.sign",
+			Description: "Sign a payload with a PGP private key + passphrase",
+			Request: []SDKArg{
+				{Name: "data", Type: "string", Required: true},
+				{Name: "private_key", Type: "string", Required: true},
+				{Name: "passphrase", Type: "string", Required: true},
+			},
+			Response: []SDKArg{{Name: "signature", Type: "string"}},
+		},
+		{
+			Name:        "crypto.pgp.verify",
+			Description: "Verify a PGP signature against a public key",
+			Request: []SDKArg{
+				{Name: "data", Type: "string", Required: true},
+				{Name: "signature", Type: "string", Required: true},
+				{Name: "public_key", Type: "string", Required: true},
+			},
+			Response: []SDKArg{{Name: "valid", Type: "boolean"}},
 		},
 	}
 }

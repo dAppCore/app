@@ -89,3 +89,89 @@ func TestStart_ActionAppStarted_Ugly(t *testing.T) {
 		t.Error("ActionAppStarted should satisfy core.Message")
 	}
 }
+
+// TestStart_InstanceStop_Good — Instance.Stop broadcasts an
+// ActionAppStopping event subscribers can pick up via type-switch
+// (RFC §11.5 — Stoppable lifecycle).
+func TestStart_InstanceStop_Good(t *testing.T) {
+	c := core.New()
+	var saw ActionAppStopping
+	c.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
+		if evt, ok := msg.(ActionAppStopping); ok {
+			saw = evt
+		}
+		return core.Result{OK: true}
+	})
+	inst := &Instance{
+		Core: c,
+		Mode: ModeDev,
+		Manifest: config.ViewManifest{
+			Code: "stop-me", Name: "Stop Me", Version: "0.2.0",
+		},
+	}
+	r := inst.Stop(context.Background())
+	if !r.OK {
+		t.Fatalf("Stop.OK=false; Value=%v", r.Value)
+	}
+	if saw.Code != "stop-me" {
+		t.Errorf("ActionAppStopping.Code = %q; want %q", saw.Code, "stop-me")
+	}
+	if saw.Mode != "dev" {
+		t.Errorf("ActionAppStopping.Mode = %q; want dev", saw.Mode)
+	}
+}
+
+// TestStart_InstanceStop_Bad — nil instance / nil core both fail
+// gracefully rather than panic.
+func TestStart_InstanceStop_Bad(t *testing.T) {
+	if r := (*Instance)(nil).Stop(context.Background()); r.OK {
+		t.Error("Stop on nil Instance should fail")
+	}
+	if r := (&Instance{}).Stop(context.Background()); r.OK {
+		t.Error("Stop on Instance with nil Core should fail")
+	}
+}
+
+// TestStart_InstanceStop_Ugly — Stop with no registered subscribers
+// still returns OK (broadcast is fire-and-forget).
+func TestStart_InstanceStop_Ugly(t *testing.T) {
+	inst := &Instance{
+		Core: core.New(),
+		Mode: ModeProd,
+		Manifest: config.ViewManifest{
+			Code: "no-listeners", Name: "n", Version: "v",
+		},
+	}
+	if r := inst.Stop(context.Background()); !r.OK {
+		t.Errorf("Stop with no listeners should still OK; Value=%v", r.Value)
+	}
+}
+
+// TestStart_ActionAppStopping_Good — fields round-trip through the
+// struct literal.
+func TestStart_ActionAppStopping_Good(t *testing.T) {
+	evt := ActionAppStopping{
+		Code: "c", Name: "n", Version: "v", Mode: "dev",
+	}
+	if evt.Code != "c" || evt.Mode != "dev" {
+		t.Error("ActionAppStopping fields do not round-trip")
+	}
+}
+
+// TestStart_ActionAppStopping_Bad — zero value is valid; subscribers
+// type-switch on identity, not field presence.
+func TestStart_ActionAppStopping_Bad(t *testing.T) {
+	var evt ActionAppStopping
+	if evt.Code != "" {
+		t.Error("zero-value ActionAppStopping.Code should be empty")
+	}
+}
+
+// TestStart_ActionAppStopping_Ugly — assignment through core.Message
+// preserves the concrete type for the subscriber type-switch.
+func TestStart_ActionAppStopping_Ugly(t *testing.T) {
+	var msg core.Message = ActionAppStopping{Code: "x"}
+	if _, ok := msg.(ActionAppStopping); !ok {
+		t.Error("ActionAppStopping should satisfy core.Message")
+	}
+}

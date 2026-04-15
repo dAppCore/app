@@ -72,3 +72,21 @@ type ActionAppStarted struct {
 	Version string // manifest.version
 	Mode    string // "prod" or "dev"
 }
+
+// ActionAppStopping is the symmetric broadcast (RFC §11.5 "Stoppable")
+// the host fires before tearing the app down. Subscribers flush state
+// (window position, in-flight requests, fleet-bus farewell) and return
+// quickly — the bus does not wait for slow listeners.
+//
+//	c.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
+//	    if evt, ok := msg.(app.ActionAppStopping); ok {
+//	        core.Info("app stopping", "code", evt.Code)
+//	    }
+//	    return core.Result{OK: true}
+//	})
+type ActionAppStopping struct {
+	Code    string // manifest.code
+	Name    string // manifest.name
+	Version string // manifest.version
+	Mode    string // "prod" or "dev"
+}
