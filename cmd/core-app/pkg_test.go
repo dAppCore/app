@@ -282,6 +282,78 @@ func TestPkg_runPkgInstall_Bad(t *testing.T) {
 	}
 }
 
+// TestPkg_resolveInstallSpecAgainstMarketplace_Good prefers an exact
+// marketplace hit for ambiguous `vendor/name` inputs so marketplace
+// shorthands like `core/play` do not fall through to the GitHub repo
+// path when the cache is present.
+func TestPkg_resolveInstallSpecAgainstMarketplace_Good(t *testing.T) {
+	home := t.TempDir()
+	root := core.Path(home, ".core", "marketplace")
+	if err := coreio.Local.EnsureDir(core.Path(root, "apps")); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := coreio.Local.Write(core.Path(root, "index.json"),
+		`{"version":1,"categories":["apps"]}`); err != nil {
+		t.Fatalf("Write index.json: %v", err)
+	}
+	if err := coreio.Local.Write(core.Path(root, "apps", "index.json"),
+		`{"version":1,"category":"apps","entries":[{"code":"core/play","type":"pwa","url":"https://play.example.com"}]}`); err != nil {
+		t.Fatalf("Write apps/index.json: %v", err)
+	}
+
+	spec := resolveInstallSpecAgainstMarketplace(home, app.ParseInstallSpec("core/play"))
+	if spec.Type != app.PackageTypeNative {
+		t.Errorf("resolved Type = %v; want PackageTypeNative marketplace path", spec.Type)
+	}
+	if spec.Code != "core/play" {
+		t.Errorf("resolved Code = %q; want core/play", spec.Code)
+	}
+	if spec.Repo != "" {
+		t.Errorf("resolved Repo = %q; want empty", spec.Repo)
+	}
+}
+
+// TestPkg_resolveInstallSpecAgainstMarketplace_Bad leaves plain
+// marketplace codes untouched; only ambiguous repo-like shapes are
+// rewritten.
+func TestPkg_resolveInstallSpecAgainstMarketplace_Bad(t *testing.T) {
+	spec := resolveInstallSpecAgainstMarketplace(t.TempDir(), app.ParseInstallSpec("photo-browser"))
+	if spec.Type != app.PackageTypeNative {
+		t.Errorf("plain code Type = %v; want PackageTypeNative", spec.Type)
+	}
+	if spec.Code != "photo-browser" {
+		t.Errorf("plain code Code = %q; want photo-browser", spec.Code)
+	}
+	if spec.Repo != "" {
+		t.Errorf("plain code Repo = %q; want empty", spec.Repo)
+	}
+}
+
+// TestPkg_resolveInstallSpecAgainstMarketplace_Ugly falls back to the
+// repo path when an ambiguous shorthand is not present in the local
+// marketplace cache, and it upgrades explicit GitHub URLs to the same
+// repo install flow.
+func TestPkg_resolveInstallSpecAgainstMarketplace_Ugly(t *testing.T) {
+	spec := resolveInstallSpecAgainstMarketplace(t.TempDir(), app.ParseInstallSpec("bitwarden/clients"))
+	if spec.Type != app.PackageTypeElectron {
+		t.Errorf("bitwarden/clients Type = %v; want PackageTypeElectron", spec.Type)
+	}
+	if spec.Repo != "bitwarden/clients" {
+		t.Errorf("bitwarden/clients Repo = %q; want bitwarden/clients", spec.Repo)
+	}
+
+	spec = resolveInstallSpecAgainstMarketplace(t.TempDir(), app.ParseInstallSpec("https://github.com/bitwarden/clients"))
+	if spec.Type != app.PackageTypeElectron {
+		t.Errorf("github URL Type = %v; want PackageTypeElectron", spec.Type)
+	}
+	if spec.Repo != "https://github.com/bitwarden/clients" {
+		t.Errorf("github URL Repo = %q; want explicit URL", spec.Repo)
+	}
+	if spec.URL != "" {
+		t.Errorf("github URL should have been cleared after repo resolution; got %q", spec.URL)
+	}
+}
+
 // TestPkg_runPkgInstall_TypeOverride — `--type web ./dir` forces the
 // web wrap path even when the directory looks native (has .core/view.yaml).
 // Validates the override branch in runPkgInstall.

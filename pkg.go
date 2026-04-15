@@ -642,6 +642,14 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 		}
 		manifest.Config["source"] = opts.Source
 	}
+	// Wrapped installs are distribution artifacts, not dev drafts. Sign
+	// them with the user's default keypair on the way to disk so prod
+	// boots can verify the manifest immediately after install.
+	if manifest.Sign == "" {
+		if err := signManifestForHome(medium, home, manifest); err != nil {
+			return dest, coreerr.E("app.installWrap", "sign wrapped manifest failed", err)
+		}
+	}
 	if err := WriteWrappedApp(medium, dest, manifest, opts.AssetSource); err != nil {
 		return dest, coreerr.E("app.installWrap", "materialise wrap failed", err)
 	}

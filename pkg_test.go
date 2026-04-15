@@ -262,6 +262,44 @@ func TestPkg_InstallWrappedPWA_Good(t *testing.T) {
 	if src, _ := round.Config["source"].(string); src != "marketplace:play" {
 		t.Errorf("source stamp = %q; want 'marketplace:play'", src)
 	}
+	if round.Sign == "" {
+		t.Error("wrapped install was left unsigned")
+	}
+}
+
+// TestPkg_InstallWrappedPWA_ProdBootSigned_Good confirms wrapped
+// installs are auto-signed with the per-home default keypair so a prod
+// boot can verify them immediately after install.
+func TestPkg_InstallWrappedPWA_ProdBootSigned_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+
+	manifest := app.WrapPWA(&app.PWAManifest{
+		Name:     "Signed Play",
+		StartURL: "https://play.example.com/",
+	}, app.WrapPWAOptions{})
+	dest, err := app.InstallWrappedPWA(medium, manifest, app.PkgInstallOptions{Home: home})
+	if err != nil {
+		t.Fatalf("InstallWrappedPWA: %v", err)
+	}
+
+	if !medium.Exists(core.Path(home, ".core", "keys", app.DefaultKeyName)) {
+		t.Fatalf("default private key missing after install")
+	}
+	if !medium.Exists(core.Path(home, ".core", "keys", "default.pub")) {
+		t.Fatalf("default public key missing after install")
+	}
+
+	inst, err := app.Boot(context.Background(), dest,
+		app.WithTrustedKeysDir(core.Path(home, ".core", "keys")),
+		app.WithWorkspaceHome(home),
+	)
+	if err != nil {
+		t.Fatalf("Boot(prod): %v", err)
+	}
+	if inst.Manifest.Sign == "" {
+		t.Fatal("booted wrapped manifest had empty signature")
+	}
 }
 
 // TestPkg_InstallWrappedPWA_Bad rejects nil manifest, empty code, and

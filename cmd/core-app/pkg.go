@@ -666,6 +666,53 @@ func manifestPackageType(manifest *config.ViewManifest) app.PackageType {
 	return app.PackageTypePWA
 }
 
+// resolveInstallSpecAgainstMarketplace handles the RFC §16.3 ambiguity
+// where `vendor/name` may be either a marketplace code or a GitHub repo
+// shorthand. Resolution rules:
+//
+//   - Explicit repo references (`github.com/...`, `git@...`,
+//     `https://github.com/...`) always win.
+//
+//   - Ambiguous `owner/repo` shorthands consult the local marketplace
+//     cache first; if no listing exists, they fall back to the repo path.
+//
+//   - Everything else is left untouched.
+func resolveInstallSpecAgainstMarketplace(home string, spec app.PkgInstallSpec) app.PkgInstallSpec {
+	switch {
+	case spec.Repo != "":
+		return spec
+	case spec.URL != "" && isRepoSpec(spec.URL):
+		if _, _, _, ok := app.ParseGitHubRepo(spec.URL); ok {
+			spec.Type = app.PackageTypeElectron
+			spec.Repo = spec.URL
+			spec.URL = ""
+		}
+		return spec
+	case spec.Code == "", !core.Contains(spec.Code, "/"):
+		return spec
+	}
+
+	root := marketplaceRoot(home)
+	if root != "" && coreio.Local.IsDir(root) {
+		if _, err := app.MarketplaceResolve(coreio.Local, root, spec.Code); err == nil {
+			return spec
+		}
+	}
+	if _, _, _, ok := app.ParseGitHubRepo(spec.Code); ok {
+		spec.Type = app.PackageTypeElectron
+		spec.Repo = spec.Code
+		spec.Code = ""
+	}
+	return spec
+}
+
+func marketplaceRoot(home string) string {
+	if home == "" {
+		return ""
+	}
+	return core.Path(home, ".core", "marketplace")
+}
+
 // runPkgInstall handles `pkg install <source>`. Auto-detects the
 // install kind from the argument; the operator can override with
 // `--type` when the heuristics pick the wrong path:
@@ -728,6 +775,7 @@ func runPkgInstall(args []string) int {
 	defer cancel()
 
 	spec := app.ParseInstallSpec(src)
+	spec = resolveInstallSpecAgainstMarketplace(home, spec)
 	if override != app.PackageTypeUnknown {
 		spec.Type = override
 		// When the operator forces a type, dispatch on it directly so a

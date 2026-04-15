@@ -91,12 +91,20 @@ func LoadDefaultPrivateKey(medium coreio.Medium) (ed25519.PrivateKey, error) {
 	if path == "" {
 		return nil, coreerr.E("app.LoadDefaultPrivateKey", "DIR_HOME is empty — cannot resolve default key", nil)
 	}
+	return loadDefaultPrivateKeyAtPath(medium, path)
+}
+
+// loadDefaultPrivateKeyAtPath is the filesystem-aware body shared by the
+// DIR_HOME-based loader and the install-time "sign into this alternate
+// home tree" path. The caller passes the fully-qualified default.key
+// location it wants resolved.
+func loadDefaultPrivateKeyAtPath(medium coreio.Medium, path string) (ed25519.PrivateKey, error) {
 	if medium == nil {
 		medium = coreio.Local
 	}
 	if !medium.Exists(path) {
 		return nil, coreerr.E(
-			"app.LoadDefaultPrivateKey",
+			"app.loadDefaultPrivateKeyAtPath",
 			"default key not found — run `core-app keygen --dir "+
 				core.PathDir(path)+" --name "+core.TrimSuffix(DefaultKeyName, ".key")+"`",
 			nil,
@@ -227,4 +235,85 @@ func Keygen(medium coreio.Medium, dir, name string) (privPath, pubPath string, e
 		return "", "", err
 	}
 	return privPath, pubPath, nil
+}
+
+// signManifestForHome signs a wrapped manifest with the default keypair
+// rooted under `home/.core/keys/`. If the keypair does not exist yet,
+// it is generated on demand so installed wrapped apps are immediately
+// bootable in prod mode without a separate `keygen` pre-step.
+func signManifestForHome(medium coreio.Medium, home string, manifest *config.ViewManifest) error {
+	if manifest == nil {
+		return coreerr.E("app.signManifestForHome", "nil manifest", nil)
+	}
+	priv, err := ensureDefaultPrivateKey(medium, home)
+	if err != nil {
+		return coreerr.E("app.signManifestForHome", "resolve default key failed", err)
+	}
+	if err := SignManifest(manifest, priv); err != nil {
+		return coreerr.E("app.signManifestForHome", "sign failed", err)
+	}
+	return nil
+}
+
+// ensureDefaultPrivateKey returns the user's default signing key under
+// the supplied home tree, generating `default.key` + `default.pub` on
+// first use. Wrapped installs call this so `pkg install` and
+// marketplace-driven wraps produce signed manifests by default.
+func ensureDefaultPrivateKey(medium coreio.Medium, home string) (ed25519.PrivateKey, error) {
+	if medium == nil {
+		medium = coreio.Local
+	}
+	privPath := defaultPrivateKeyPathForHome(home)
+	if privPath == "" {
+		return nil, coreerr.E("app.ensureDefaultPrivateKey", "empty home directory", nil)
+	}
+	pubPath := defaultPublicKeyPathForHome(home)
+
+	hasPriv := medium.Exists(privPath)
+	hasPub := pubPath != "" && medium.Exists(pubPath)
+	switch {
+	case hasPriv:
+		priv, err := loadDefaultPrivateKeyAtPath(medium, privPath)
+		if err != nil {
+			return nil, err
+		}
+		if !hasPub && pubPath != "" {
+			pub, _ := priv.Public().(ed25519.PublicKey)
+			if err := WritePublicKey(medium, pubPath, pub); err != nil {
+				return nil, coreerr.E("app.ensureDefaultPrivateKey", "write derived public key failed", err)
+			}
+		}
+		return priv, nil
+	case hasPub:
+		return nil, coreerr.E(
+			"app.ensureDefaultPrivateKey",
+			"default public key exists without matching private key at "+privPath,
+			nil,
+		)
+	default:
+		keysDir := core.PathDir(privPath)
+		if _, _, err := Keygen(medium, keysDir, core.TrimSuffix(DefaultKeyName, ".key")); err != nil {
+			return nil, coreerr.E("app.ensureDefaultPrivateKey", "keygen failed", err)
+		}
+		return loadDefaultPrivateKeyAtPath(medium, privPath)
+	}
+}
+
+func defaultPrivateKeyPathForHome(home string) string {
+	home = core.Trim(home)
+	if home == "" {
+		home = core.Env("DIR_HOME")
+	}
+	if home == "" {
+		return ""
+	}
+	return core.Path(home, ".core", "keys", DefaultKeyName)
+}
+
+func defaultPublicKeyPathForHome(home string) string {
+	privPath := defaultPrivateKeyPathForHome(home)
+	if privPath == "" {
+		return ""
+	}
+	return core.Path(core.PathDir(privPath), core.TrimSuffix(DefaultKeyName, ".key")+".pub")
 }
