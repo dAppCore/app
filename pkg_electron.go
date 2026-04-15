@@ -311,8 +311,21 @@ func WrapElectron(pkg *ElectronPackageJSON, scan *ElectronScanResult, opts WrapE
 			m.Permissions.Filesystem = true
 		}
 		if scan.Net {
+			// RFC §16.2 — `require('net')` → `net: ["*"]` wildcard
+			// declaration (the spec table lists the explicit literal so a
+			// wrapped Electron app keeps unrestricted network access).
+			// Network=true mirrors the boolean catch-all so legacy
+			// permission gates that consult ViewPermissions.Network still
+			// see the capability without re-walking the Net slice.
+			m.Permissions.Net = []string{"*"}
 			m.Permissions.Network = true
 		}
+		// RFC §16.2 — `require('fs')` → `write: ["./data/"]` per-path
+		// declaration. ViewPermissions has no typed write list yet so the
+		// Config["write"] map carries the per-path slice; the entitlement
+		// gate's manifestWriteList helper consults it before falling back
+		// to the Filesystem catch-all. Recording the write path keeps the
+		// per-path wider check (access.go) symmetric with the Read slice.
 		if scan.ClipboardRead || scan.ClipboardWrite {
 			m.Permissions.Clipboard = true
 		}
@@ -331,6 +344,13 @@ func WrapElectron(pkg *ElectronPackageJSON, scan *ElectronScanResult, opts WrapE
 		},
 	}
 	if scan != nil {
+		// RFC §16.2 — `require('fs')` produces both a read and a write
+		// declaration for the data directory. The write list lands under
+		// Config["write"] because ViewPermissions has no typed write-path
+		// slot yet (access.go's manifestWriteList knows where to look).
+		if scan.FS {
+			cfg["write"] = []any{dataDir}
+		}
 		gates := map[string]any{}
 		if scan.DialogOpen {
 			gates["gui.dialog.open"] = true

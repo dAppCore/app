@@ -105,6 +105,96 @@ func TestPkgPwa_WrapPWA_Good(t *testing.T) {
 	if !wantService("notification") {
 		t.Errorf("Config[services] missing 'notification' (notifications perm declared); got %v", services)
 	}
+
+	// RFC §16.1 — `display: standalone` should produce a "window" mode
+	// hint so CoreGUI knows to render a chrome-less app window rather
+	// than embedding the PWA in a tab.
+	if mode, ok := m.Config["window_mode"].(string); !ok || mode != "window" {
+		t.Errorf("Config[window_mode] = %v; want 'window' (display=standalone)", m.Config["window_mode"])
+	}
+}
+
+// TestPkgPwa_WrapPWA_WindowMode covers RFC §16.1's `display → layout`
+// table — every defined PWA display value maps to the matching CoreApp
+// window mode and unknown values leave the field unset.
+func TestPkgPwa_WrapPWA_WindowMode_Good(t *testing.T) {
+	cases := []struct {
+		display string
+		want    string // "" → window_mode key absent
+	}{
+		{display: "standalone", want: "window"},
+		{display: "minimal-ui", want: "window"},
+		{display: "fullscreen", want: "kiosk"},
+		{display: "browser", want: "tab"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.display, func(t *testing.T) {
+			m := app.WrapPWA(&app.PWAManifest{
+				Name:     "x",
+				StartURL: "https://x.example.com/",
+				Display:  tc.display,
+			}, app.WrapPWAOptions{})
+			if m == nil {
+				t.Fatal("WrapPWA returned nil")
+			}
+			got, _ := m.Config["window_mode"].(string)
+			if got != tc.want {
+				t.Errorf("display=%q: window_mode = %q; want %q", tc.display, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPkgPwa_WrapPWA_WindowMode_Bad confirms unknown / empty display
+// values leave window_mode unset so CoreGUI applies its host default
+// rather than recording an unhandlable string.
+func TestPkgPwa_WrapPWA_WindowMode_Bad(t *testing.T) {
+	cases := []string{"", "  ", "unknown", "kiosk-mode", "popup"}
+	for _, display := range cases {
+		t.Run(display, func(t *testing.T) {
+			m := app.WrapPWA(&app.PWAManifest{
+				Name:     "x",
+				StartURL: "https://x.example.com/",
+				Display:  display,
+			}, app.WrapPWAOptions{})
+			if m == nil {
+				t.Fatal("WrapPWA returned nil")
+			}
+			if _, ok := m.Config["window_mode"]; ok {
+				t.Errorf("display=%q: window_mode key present; want absent", display)
+			}
+		})
+	}
+}
+
+// TestPkgPwa_WrapPWA_WindowMode_Ugly confirms case insensitivity and
+// surrounding whitespace — PWA manifests in the wild sometimes have
+// noisy display values from hand-edited JSON.
+func TestPkgPwa_WrapPWA_WindowMode_Ugly(t *testing.T) {
+	cases := []struct {
+		display string
+		want    string
+	}{
+		{display: "STANDALONE", want: "window"},
+		{display: "  Fullscreen  ", want: "kiosk"},
+		{display: "Minimal-UI", want: "window"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.display, func(t *testing.T) {
+			m := app.WrapPWA(&app.PWAManifest{
+				Name:     "x",
+				StartURL: "https://x.example.com/",
+				Display:  tc.display,
+			}, app.WrapPWAOptions{})
+			if m == nil {
+				t.Fatal("WrapPWA returned nil")
+			}
+			got, _ := m.Config["window_mode"].(string)
+			if got != tc.want {
+				t.Errorf("display=%q: window_mode = %q; want %q", tc.display, got, tc.want)
+			}
+		})
+	}
 }
 
 // TestPkgPwa_WrapPWA_Bad confirms nil input returns nil without a

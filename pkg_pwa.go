@@ -209,6 +209,20 @@ func WrapPWA(src *PWAManifest, opts WrapPWAOptions) *config.ViewManifest {
 	}
 	m.Config["services"] = services
 
+	// RFC §16.1 — map PWA `display` to a CoreApp window mode so the host
+	// (CoreGUI) knows whether to chrome the window, hide it, or render it
+	// fullscreen. Recorded under Config["window_mode"] so the value
+	// survives the wrap → install round-trip without forcing a new typed
+	// field on ViewManifest.
+	//
+	//   standalone → window  (chrome-less app window — the W3C default)
+	//   fullscreen → kiosk   (no chrome, occupies the whole display)
+	//   minimal-ui → window  (small chrome — treated like standalone)
+	//   browser    → tab     (open in the user's browser)
+	if mode := pwaWindowMode(src.Display); mode != "" {
+		m.Config["window_mode"] = mode
+	}
+
 	if src.ThemeColor != "" || src.BackgroundColor != "" {
 		m.Config["theme"] = map[string]any{
 			"primary":    src.ThemeColor,
@@ -223,6 +237,41 @@ func WrapPWA(src *PWAManifest, opts WrapPWAOptions) *config.ViewManifest {
 	}
 
 	return m
+}
+
+// pwaWindowMode maps a PWA `display` field to a CoreApp window mode.
+// Empty inputs and unknown values return "" so the caller leaves the
+// field unset rather than recording a value the host can't act on.
+//
+//	pwaWindowMode("standalone") // "window"
+//	pwaWindowMode("fullscreen") // "kiosk"
+//	pwaWindowMode("browser")    // "tab"
+//	pwaWindowMode("")           // ""
+//
+// Rules:
+//
+//   - standalone → window  (chrome-less app window — RFC §16.1 default)
+//
+//   - minimal-ui → window  (W3C "minimal browser chrome" — same window
+//     mode as standalone for our purposes; the underlying renderer
+//     decides whether to draw a thin top bar)
+//
+//   - fullscreen → kiosk   (no chrome, fills the display)
+//
+//   - browser    → tab     (the PWA prefers the user's browser tab —
+//     CoreGUI surfaces this as a "open externally" hint)
+//
+//   - anything else        → "" so the host applies its default
+func pwaWindowMode(display string) string {
+	switch core.Lower(core.Trim(display)) {
+	case "standalone", "minimal-ui":
+		return "window"
+	case "fullscreen":
+		return "kiosk"
+	case "browser":
+		return "tab"
+	}
+	return ""
 }
 
 // WritePWAWrap materialises a wrapped PWA as `<dest>/.core/view.yaml`.

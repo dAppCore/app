@@ -164,8 +164,21 @@ func TestPkgElectron_WrapElectron_Good(t *testing.T) {
 	if !m.Permissions.Filesystem {
 		t.Error("Permissions.Filesystem = false; want true (fs detected)")
 	}
+	// RFC §16.2 — `require('fs')` should also produce a write list so
+	// the entitlement gate honours per-path writes (access.go consults
+	// Config["write"] before falling back to the Filesystem catch-all).
+	writeList, ok := m.Config["write"].([]any)
+	if !ok || len(writeList) != 1 || writeList[0] != "./data/" {
+		t.Errorf("Config[write] = %v; want [./data/] (RFC §16.2)", m.Config["write"])
+	}
 	if !m.Permissions.Network {
 		t.Error("Permissions.Network = false; want true (net detected)")
+	}
+	// RFC §16.2 — `require('net')` should produce `net: ["*"]`
+	// (wildcard). Network=true is the legacy catch-all; the explicit
+	// Net slice is the spec-compliant declaration.
+	if len(m.Permissions.Net) != 1 || m.Permissions.Net[0] != "*" {
+		t.Errorf("Permissions.Net = %v; want [*] (RFC §16.2 wildcard)", m.Permissions.Net)
 	}
 	if !m.Permissions.Clipboard {
 		t.Error("Permissions.Clipboard = false; want true (clipboard detected)")
@@ -222,6 +235,12 @@ func TestPkgElectron_WrapElectron_Ugly(t *testing.T) {
 	}
 	if m.Permissions.Read[0] != "./store/" {
 		t.Errorf("Permissions.Read[0] = %q; want override dir", m.Permissions.Read[0])
+	}
+	// RFC §16.2 — Config[write] should follow the override dir so the
+	// per-path declaration matches the read list (not the default ./data/).
+	writeList, ok := m.Config["write"].([]any)
+	if !ok || len(writeList) != 1 || writeList[0] != "./store/" {
+		t.Errorf("Config[write] = %v; want [./store/]", m.Config["write"])
 	}
 }
 
