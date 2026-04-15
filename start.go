@@ -67,16 +67,22 @@ func start(ctx context.Context, inst *Instance) core.Result {
 
 	// Step 7b — broadcast the app-started signal. Services that
 	// registered a RegisterAction handler pick it up via type-switch.
+	// The resolved LayoutSpec travels with the message so core/gui can
+	// compose the window without re-parsing the manifest — RFC §4.1
+	// step 7 ("hand the composed window spec to core/gui") is honoured
+	// via the IPC bus rather than a direct call so RFC §11.2 stays
+	// intact ("Actions are the ONLY inter-plugin boundary"). Root is
+	// stamped so subscribers that resolve project-relative assets
+	// (theme CSS, slot components) don't repeat the Root lookup.
 	c.ACTION(ActionAppStarted{
 		Code:    inst.Manifest.Code,
 		Name:    inst.Manifest.Name,
 		Version: inst.Manifest.Version,
 		Mode:    inst.Mode.String(),
+		Root:    inst.Root,
+		Layout:  inst.Layout,
 	})
 
-	// TODO(core/gui): hand the window spec over. Until then the boot
-	// returns immediately; the CLI caller (cmd/core-app) prints the
-	// booted identity and exits.
 	return core.Result{OK: true}
 }
 
@@ -138,15 +144,27 @@ func stop(ctx context.Context, inst *Instance) core.Result {
 //
 //	c.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
 //	    if evt, ok := msg.(app.ActionAppStarted); ok {
-//	        core.Info("app started", "code", evt.Code, "mode", evt.Mode)
+//	        core.Info("app started",
+//	            "code", evt.Code,
+//	            "mode", evt.Mode,
+//	            "layout", evt.Layout.Variant)
+//	        // core/gui composes the window from evt.Layout + evt.Root
 //	    }
 //	    return core.Result{OK: true}
 //	})
+//
+// Root and Layout carry everything core/gui needs to compose the
+// window at Step 7 without reopening the manifest — the LayoutSpec
+// already has slot → component → order resolved, and Root is the
+// absolute directory the composition should reference for slot
+// asset lookups.
 type ActionAppStarted struct {
-	Code    string // manifest.code
-	Name    string // manifest.name
-	Version string // manifest.version
-	Mode    string // "prod" or "dev"
+	Code    string      // manifest.code
+	Name    string      // manifest.name
+	Version string      // manifest.version
+	Mode    string      // "prod" or "dev"
+	Root    string      // absolute project root (parent of .core/)
+	Layout  *LayoutSpec // resolved HLCRF layout (nil = headless CLI app)
 }
 
 // ActionAppStopping is the symmetric broadcast (RFC §11.5 "Stoppable")

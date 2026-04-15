@@ -96,10 +96,12 @@ func TestMarketplaceUpdate_MarketplaceUpdate_Bad(t *testing.T) {
 	}
 }
 
-// TestMarketplaceUpdate_MarketplaceUpdate_Ugly — a non-native listing
-// (electron, web, unknown) returns the install path without erroring.
-// The CLI surfaces the listing's URL so the operator can re-issue the
-// wrap call.
+// TestMarketplaceUpdate_MarketplaceUpdate_Ugly — an Electron listing
+// whose upstream release is unreachable surfaces a typed error rather
+// than silently succeeding. The RFC §6.3 pipeline refreshes the
+// renderer assets from the upstream GitHub release — a 404 there
+// must fail the update so the operator is not left with a stale
+// install that the pipeline thinks is fresh.
 func TestMarketplaceUpdate_MarketplaceUpdate_Ugly(t *testing.T) {
 	root := writeTestMarketplaceWithElectron(t, "ghost-electron")
 	home := t.TempDir()
@@ -116,14 +118,10 @@ func TestMarketplaceUpdate_MarketplaceUpdate_Ugly(t *testing.T) {
 	}
 
 	c := core.New()
-	got, err := app.MarketplaceUpdate(context.Background(), c, app.MarketplaceUpdateOptions{
+	if _, err := app.MarketplaceUpdate(context.Background(), c, app.MarketplaceUpdateOptions{
 		Root: root, Home: home, Code: "ghost-electron",
-	})
-	if err != nil {
-		t.Errorf("electron listing should be a no-op success; got %v", err)
-	}
-	if got != dest {
-		t.Errorf("dest = %q; want %q", got, dest)
+	}); err == nil {
+		t.Error("unreachable Electron release should surface a typed error")
 	}
 }
 

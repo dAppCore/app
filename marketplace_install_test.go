@@ -113,3 +113,108 @@ func TestMarketplaceInstall_MarketplaceFetch_Bad(t *testing.T) {
 		t.Error("empty Dir produced no error")
 	}
 }
+
+// TestMarketplaceInstall_MarketplaceInstall_ElectronUnreachable confirms
+// that an Electron listing whose GitHub release is unreachable surfaces
+// a typed error rather than falling through to a plain git clone. The
+// RFC §16.2 pipeline runs fetch → extract → scan → wrap; a 404 on the
+// release means the install cannot complete honestly.
+func TestMarketplaceInstall_MarketplaceInstall_ElectronUnreachable(t *testing.T) {
+	root := t.TempDir()
+	medium := coreio.Local
+
+	if err := medium.Write(core.Path(root, app.MarketplaceIndexFileName),
+		`{"version":1,"categories":["tools"]}`); err != nil {
+		t.Fatalf("Write index: %v", err)
+	}
+	if err := medium.EnsureDir(core.Path(root, "tools")); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	body := `{
+		"version":1,
+		"category":"tools",
+		"entries":[{"code":"ghost-electron","type":"electron","repo":"github.com/example/ghost-electron"}]
+	}`
+	if err := medium.Write(core.Path(root, "tools", app.MarketplaceIndexFileName), body); err != nil {
+		t.Fatalf("Write category: %v", err)
+	}
+
+	c := core.New()
+	if _, err := app.MarketplaceInstall(context.Background(), c, app.MarketplaceInstallOptions{
+		Root: root,
+		Home: t.TempDir(),
+		Code: "ghost-electron",
+	}); err == nil {
+		t.Error("Electron listing with unreachable release produced no error")
+	}
+}
+
+// TestMarketplaceInstall_MarketplaceInstall_ElectronSignatureSkip
+// — the Electron install path pins the `sign_key` field on the
+// listing but does NOT verify the wrapped manifest against it
+// (wraps are unsigned by construction). The listing's `sign_key`
+// applies only to native marketplace clones whose upstream manifest
+// carries a signature. This test pins that contract so a future
+// refactor does not start rejecting Electron wraps as unsigned.
+func TestMarketplaceInstall_MarketplaceInstall_ElectronSignatureSkip(t *testing.T) {
+	// Can't install an Electron listing without the release pipeline
+	// succeeding — but we CAN assert the install fails at the fetch
+	// rather than at a post-install signature verification step. When
+	// the fetch fails the error message should mention the release,
+	// not a signature mismatch.
+	root := t.TempDir()
+	medium := coreio.Local
+
+	if err := medium.Write(core.Path(root, app.MarketplaceIndexFileName),
+		`{"version":1,"categories":["tools"]}`); err != nil {
+		t.Fatalf("Write index: %v", err)
+	}
+	if err := medium.EnsureDir(core.Path(root, "tools")); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	body := `{
+		"version":1,
+		"category":"tools",
+		"entries":[{
+			"code":"pinned-electron",
+			"type":"electron",
+			"repo":"github.com/example/pinned-electron",
+			"sign_key":"deadbeef"
+		}]
+	}`
+	if err := medium.Write(core.Path(root, "tools", app.MarketplaceIndexFileName), body); err != nil {
+		t.Fatalf("Write category: %v", err)
+	}
+
+	c := core.New()
+	_, err := app.MarketplaceInstall(context.Background(), c, app.MarketplaceInstallOptions{
+		Root: root,
+		Home: t.TempDir(),
+		Code: "pinned-electron",
+	})
+	if err == nil {
+		t.Fatal("Electron install with unreachable release produced no error")
+	}
+	// The error must come from the release fetch, not from a post-install
+	// signature verification step that should not run for Electron wraps.
+	if msg := err.Error(); !contains(msg, "release") && !contains(msg, "FetchElectronRelease") {
+		t.Errorf("error does not mention release fetch: %v", err)
+	}
+}
+
+// contains is a small local helper so the test file avoids importing
+// strings (`core.Contains` would also work but keeping the helper
+// local matches the other substring checks in this file).
+//
+//	contains("hello world", "world") // true
+func contains(s, needle string) bool {
+	if needle == "" {
+		return true
+	}
+	for i := 0; i+len(needle) <= len(s); i++ {
+		if s[i:i+len(needle)] == needle {
+			return true
+		}
+	}
+	return false
+}

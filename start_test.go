@@ -91,6 +91,91 @@ func TestStart_ActionAppStarted_Ugly(t *testing.T) {
 	}
 }
 
+// TestStart_start_CarriesLayout — the ActionAppStarted broadcast
+// carries the resolved LayoutSpec and Root so core/gui subscribers
+// can compose the window without re-parsing the manifest. RFC §4.1
+// step 7 names the hand-off; this test pins the contract so a future
+// refactor doesn't silently drop the layout from the event.
+func TestStart_start_CarriesLayout(t *testing.T) {
+	c := core.New()
+
+	var saw ActionAppStarted
+	c.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
+		if evt, ok := msg.(ActionAppStarted); ok {
+			saw = evt
+		}
+		return core.Result{OK: true}
+	})
+
+	layout := &LayoutSpec{
+		Variant: "HLCRF",
+		Slots: map[string]string{
+			"H": "nav-breadcrumb",
+			"C": "photo-grid",
+		},
+		Order:      []string{"H", "L", "C", "R", "F"},
+		Components: []string{"nav-breadcrumb", "photo-grid"},
+	}
+	inst := &Instance{
+		Core: c,
+		Mode: ModeProd,
+		Root: "/tmp/photo-browser",
+		Manifest: config.ViewManifest{
+			Code: "photo-browser", Name: "Photo Browser", Version: "0.1.0",
+		},
+		Layout: layout,
+	}
+	r := start(context.Background(), inst)
+	if !r.OK {
+		t.Fatalf("start.OK = false; Value=%v", r.Value)
+	}
+	if saw.Root != "/tmp/photo-browser" {
+		t.Errorf("ActionAppStarted.Root = %q; want %q", saw.Root, "/tmp/photo-browser")
+	}
+	if saw.Layout == nil {
+		t.Fatal("ActionAppStarted.Layout is nil; expected resolved LayoutSpec")
+	}
+	if saw.Layout.Variant != "HLCRF" {
+		t.Errorf("Layout.Variant = %q; want HLCRF", saw.Layout.Variant)
+	}
+	if saw.Layout.Slots["C"] != "photo-grid" {
+		t.Errorf("Layout.Slots[C] = %q; want photo-grid", saw.Layout.Slots["C"])
+	}
+}
+
+// TestStart_start_HeadlessLayout — a CLI app (no layout variant, no
+// slots) broadcasts a nil Layout. Subscribers must branch on the nil
+// case rather than assuming every boot carries a window spec.
+func TestStart_start_HeadlessLayout(t *testing.T) {
+	c := core.New()
+
+	var saw ActionAppStarted
+	c.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
+		if evt, ok := msg.(ActionAppStarted); ok {
+			saw = evt
+		}
+		return core.Result{OK: true}
+	})
+
+	inst := &Instance{
+		Core: c,
+		Mode: ModeDev,
+		Manifest: config.ViewManifest{
+			Code: "headless-cli", Name: "Headless CLI", Version: "1.0.0",
+		},
+		// Layout deliberately left nil — CLI / headless app.
+	}
+	if r := start(context.Background(), inst); !r.OK {
+		t.Fatalf("start.OK = false; Value=%v", r.Value)
+	}
+	if saw.Layout != nil {
+		t.Errorf("ActionAppStarted.Layout = %v; want nil for headless CLI", saw.Layout)
+	}
+	if saw.Mode != "dev" {
+		t.Errorf("ActionAppStarted.Mode = %q; want dev", saw.Mode)
+	}
+}
+
 // TestStart_InstanceStop_Good — Instance.Stop broadcasts an
 // ActionAppStopping event subscribers can pick up via type-switch
 // (RFC §11.5 — Stoppable lifecycle).

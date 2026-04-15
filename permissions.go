@@ -131,13 +131,23 @@ type actionGate struct {
 //
 //	err := permissions(c, &manifest, app.ModeProd)
 //
-// TODO(app): each declared path / host / binary is currently treated as
-// a presence check — "has the manifest asked for any read access?" — not
-// a per-argument match. Proper per-call matching lives inside the
-// individual Action handlers (fs.read checks its `path` argument against
-// permissions.read[]; net.fetch checks its `host:port` against
-// permissions.net[]). That enforcement layer is owned by the handlers in
-// go-io / core-net / go-process; this file wires the gate, not the rule.
+// Two layers cooperate to enforce the RFC §2.2 / §10.1 rules:
+//
+//   - This function installs the coarse gate — a Named Action whose
+//     family is not declared at all (the app never asked for `read`)
+//     is rejected before the handler runs.
+//
+//   - `CheckActionAccess` (access.go) performs the per-argument match
+//     — fs.read's `path` is checked against `permissions.read[]`,
+//     net.fetch's `host:port` is checked against `permissions.net[]`,
+//     etc. Handlers in go-io / core-net / go-process call it once
+//     with the caller-supplied argument before performing any
+//     sensitive IO.
+//
+// Both layers are required: the coarse gate keeps the entitlement bus
+// honest (so an ungated action costs nothing at runtime), and the
+// per-arg layer keeps the sandbox honest (a manifest granting
+// `./photos/` must not admit `./photos/../etc/passwd`).
 func permissions(c *core.Core, m *config.ViewManifest, mode Mode) error {
 	if c == nil {
 		return coreerr.E("app.permissions", "nil core", nil)

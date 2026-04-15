@@ -455,10 +455,33 @@ func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInsta
 		// The listing's own pinned key is used by `pkg install --sign`
 		// when invoked.
 		return installed, nil
-	case PackageTypeWeb, PackageTypeElectron, PackageTypeUnknown:
-		// Electron handled via repo clone (renderer assets only) — same
-		// path as native for now; the CLI-side flag drives a subsequent
-		// scan + re-wrap pass.
+	case PackageTypeElectron:
+		// RFC §16.2 — Electron listings point at a GitHub repo. Fetch the
+		// latest release, download the renderer-shaped asset, extract it,
+		// scan the unpacked tree and wrap the result into a CoreApp
+		// manifest. Falls back to a plain git clone + scan when the repo
+		// URL is not a GitHub reference (gitlab / self-hosted) so the
+		// install path still produces a usable install even without a
+		// release pipeline.
+		installed, err := installElectronListing(ctx, c, listing, home, opts.Force)
+		if err != nil {
+			return dest, err
+		}
+		if listing.Category != "" {
+			_ = stampCategory(medium, installed, listing.Category)
+		}
+		// Electron wraps are unsigned by construction (same as PWA) —
+		// the listing's pinned `sign_key` applies only to native
+		// marketplace clones where the upstream manifest is already
+		// signed. Skip the post-install verify so an Electron install
+		// does not fail on a missing `sign` field.
+		_ = opts.SkipVerify
+		return installed, nil
+	case PackageTypeWeb, PackageTypeUnknown:
+		// Web and unknown types fall back to a plain git clone so the
+		// user ends up with SOMETHING at the install path — the CLI can
+		// follow up with a `pkg wrap --web` or similar against the cloned
+		// directory.
 		if err := installNativeFromRepo(ctx, c, listing, dest); err != nil {
 			return dest, err
 		}
@@ -468,6 +491,170 @@ func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInsta
 		return dest, nil
 	}
 	return dest, coreerr.E("app.MarketplaceInstall", "unreachable type switch", nil)
+}
+
+// installElectronListing implements the RFC §16.2 marketplace Electron
+// install pipeline — fetch latest release, download the renderer
+// asset, extract, scan, wrap and install the wrapped manifest under
+// `<home>/.core/apps/<code>/`. Falls back to `installNativeFromRepo`
+// when the listing's repo URL is not a GitHub reference so non-GitHub
+// hosts (GitLab, self-hosted) still produce a usable install.
+//
+//	installed, err := installElectronListing(ctx, c, listing, home, force)
+//
+// Rules:
+//
+//   - Empty `listing.Repo` → typed error (the RFC §16.2 pipeline
+//     needs a release reference).
+//
+//   - Non-GitHub repo URLs fall back to a git clone so the install
+//     path still produces a directory the operator can re-run
+//     `pkg wrap --electron <dir>` against.
+//
+//   - A missing renderer asset in the release surfaces as a typed
+//     error so the operator can pick a different listing or wait for
+//     the upstream to publish the asset.
+//
+//   - Non-archive downloads are installed as-is (the caller is
+//     responsible for any follow-up wrap). Matches the CLI path in
+//     cmd/core-app/pkg.go which prints the download location when the
+//     asset cannot be auto-extracted.
+func installElectronListing(ctx context.Context, c *core.Core, listing *MarketplaceListing, home string, force bool) (string, error) {
+	if listing == nil {
+		return "", coreerr.E("app.installElectronListing", "nil listing", nil)
+	}
+	if listing.Repo == "" {
+		return "", coreerr.E(
+			"app.installElectronListing",
+			"listing "+listing.Code+" has no repo — cannot resolve Electron release",
+			nil,
+		)
+	}
+	medium := coreio.Local
+	dest := core.Path(home, ".core", AppsDirName, listing.Code)
+
+	// Non-GitHub repos fall back to a plain git clone so self-hosted
+	// Electron forks still produce a usable install. The CLI can walk
+	// the clone with `pkg wrap --electron <dir>` afterwards.
+	host, owner, repo, ok := ParseGitHubRepo(listing.Repo)
+	if !ok {
+		if err := installNativeFromRepo(ctx, c, listing, dest); err != nil {
+			return dest, err
+		}
+		return dest, nil
+	}
+
+	rel, err := FetchElectronRelease(ctx, host, owner, repo)
+	if err != nil {
+		return dest, coreerr.E("app.installElectronListing", "release fetch failed", err)
+	}
+	asset, ok := SelectRendererAsset(rel)
+	if !ok {
+		return dest, coreerr.E(
+			"app.installElectronListing",
+			"listing "+listing.Code+" release "+rel.TagName+" has no renderer-shaped asset",
+			nil,
+		)
+	}
+
+	// Download the asset into a scratch directory under the install
+	// destination so the unpacked renderer is discoverable later (e.g.
+	// during `pkg update`). The extracted tree becomes the install
+	// source, and the synthesised manifest lands at `<dest>/.core/view.yaml`.
+	scratch := core.Path(dest, ".core-wrap", "electron-"+repo)
+	if medium.IsDir(dest) {
+		if !force {
+			return dest, coreerr.E(
+				"app.installElectronListing",
+				"already installed at "+dest+" (use Force to replace)",
+				nil,
+			)
+		}
+		if err := medium.DeleteAll(dest); err != nil {
+			return dest, coreerr.E("app.installElectronListing", "remove existing failed", err)
+		}
+	}
+	if err := medium.EnsureDir(scratch); err != nil {
+		return dest, coreerr.E("app.installElectronListing", "ensure scratch failed", err)
+	}
+
+	archivePath, err := DownloadAsset(ctx, medium, asset, scratch)
+	if err != nil {
+		return dest, coreerr.E("app.installElectronListing", "asset download failed", err)
+	}
+
+	// Auto-extract the archive so we can scan the renderer. Non-archive
+	// downloads fall through — the manifest ends up pointing at the
+	// scratch directory itself and the caller can re-wrap manually.
+	var rendererDir string
+	if isArchivePath(asset.Name) {
+		extracted := ArchiveExtractedDir(scratch, asset.Name)
+		if err := ExtractArchive(medium, archivePath, extracted); err != nil {
+			return dest, coreerr.E("app.installElectronListing", "archive extract failed", err)
+		}
+		rendererDir = extracted
+	} else {
+		rendererDir = scratch
+	}
+
+	// Load the Electron package.json and scan the renderer to build
+	// the wrapped manifest. Missing package.json is tolerated — the
+	// scan still runs and produces a manifest with the permission
+	// flags derived from the renderer sources alone.
+	var pkg ElectronPackageJSON
+	pkgPath := core.Path(rendererDir, "package.json")
+	if medium.Exists(pkgPath) {
+		if body, rerr := medium.Read(pkgPath); rerr == nil {
+			r := core.JSONUnmarshal([]byte(body), &pkg)
+			if !r.OK {
+				// Malformed package.json is non-fatal — the wrap can still
+				// use the listing's code/name/version fallbacks.
+				_ = r
+			}
+		}
+	}
+	scan, err := ScanElectronRenderer(medium, rendererDir)
+	if err != nil {
+		return dest, coreerr.E("app.installElectronListing", "renderer scan failed", err)
+	}
+
+	manifest := WrapElectron(&pkg, scan, WrapElectronOptions{Code: listing.Code})
+	if manifest == nil {
+		return dest, coreerr.E("app.installElectronListing", "WrapElectron returned nil", nil)
+	}
+	if listing.Name != "" {
+		manifest.Name = listing.Name
+	}
+	if listing.Version != "" {
+		manifest.Version = listing.Version
+	}
+
+	installed, err := InstallWrappedElectron(medium, manifest, PkgInstallOptions{
+		Home:   home,
+		Force:  force,
+		Source: "marketplace:" + listing.Code,
+	})
+	if err != nil {
+		return installed, coreerr.E("app.installElectronListing", "install failed", err)
+	}
+	return installed, nil
+}
+
+// isArchivePath reports whether the asset name ends in a supported
+// archive suffix (.zip, .tar.gz, .tgz, .tar). Kept local to the
+// marketplace install path so MarketplaceInstall does not reach into
+// the CLI's isExtractable helper.
+//
+//	isArchivePath("renderer.tar.gz") // true
+//	isArchivePath("app.exe")         // false
+func isArchivePath(name string) bool {
+	low := core.Lower(name)
+	for _, suffix := range []string{".zip", ".tar.gz", ".tgz", ".tar"} {
+		if core.HasSuffix(low, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // verifyListingAfterInstall runs VerifyListing as the install's final
@@ -765,12 +952,19 @@ func MarketplaceUpdate(ctx context.Context, c *core.Core, opts MarketplaceUpdate
 		}
 		return dest, nil
 	case PackageTypeElectron:
-		// Electron wraps need the operator to re-run `pkg wrap --electron`
-		// against an unpacked renderer directory. The marketplace cannot
-		// download the upstream binary itself (RFC §16.2 only the
-		// renderer assets) — surface the listing URL so the CLI can
-		// instruct the user.
-		return dest, nil
+		// Electron listings go through the same pipeline as
+		// MarketplaceInstall — fetch the latest GitHub release, download
+		// the renderer-shaped asset, extract, scan and re-wrap. Matches
+		// RFC §6.3 / §16.2 by always refreshing from the upstream source
+		// rather than leaving a stale install on disk.
+		installed, err := installElectronListing(ctx, c, listing, home, true)
+		if err != nil {
+			return dest, err
+		}
+		if listing.Category != "" {
+			_ = stampCategory(medium, installed, listing.Category)
+		}
+		return installed, nil
 	case PackageTypeWeb, PackageTypeUnknown:
 		// Web wraps and unknown listings return the install path so
 		// the CLI can decide on a follow-up. No automatic refresh
