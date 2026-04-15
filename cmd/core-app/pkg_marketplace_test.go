@@ -278,3 +278,90 @@ func TestPkgMarketplace_runMarketplaceFetch_Ugly(t *testing.T) {
 		t.Errorf("unreachable URL rc = 0; want non-zero")
 	}
 }
+
+// TestPkgMarketplace_runMarketplaceCategories_Good — `--help` returns 0
+// without touching the marketplace cache. The full listing behaviour is
+// covered by app.MarketplaceCategories tests in the parent package.
+func TestPkgMarketplace_runMarketplaceCategories_Good(t *testing.T) {
+	if rc := runMarketplaceCategories([]string{"--help"}); rc != 0 {
+		t.Errorf("categories --help rc = %d; want 0", rc)
+	}
+}
+
+// TestPkgMarketplace_runMarketplaceCategories_Bad — unknown flags are
+// rejected with EX_USAGE so callers notice the typo.
+func TestPkgMarketplace_runMarketplaceCategories_Bad(t *testing.T) {
+	if rc := runMarketplaceCategories([]string{"--what"}); rc != 64 {
+		t.Errorf("unknown flag rc = %d; want 64", rc)
+	}
+}
+
+// TestPkgMarketplace_runMarketplaceCategories_Ugly — categories against
+// a missing marketplace cache returns rc=1, matching the regression
+// policy the search / browse paths pin.
+func TestPkgMarketplace_runMarketplaceCategories_Ugly(t *testing.T) {
+	if home := core.Env("DIR_HOME"); home == "" {
+		t.Skip("DIR_HOME unset — categories path requires it")
+	}
+	root := core.Path(core.Env("DIR_HOME"), ".core", "marketplace")
+	if coreio.Local.IsDir(root) {
+		t.Skip("user has a real marketplace cache; skipping the missing-cache path")
+	}
+	if rc := runMarketplaceCategories(nil); rc != 1 {
+		t.Errorf("missing-cache categories rc = %d; want 1", rc)
+	}
+}
+
+// TestPkgMarketplace_runMarketplaceBrowse_Good — `--help` returns 0. The
+// full listing path is covered by app.MarketplaceBrowse tests in the
+// parent package.
+func TestPkgMarketplace_runMarketplaceBrowse_Good(t *testing.T) {
+	if rc := runMarketplaceBrowse([]string{"--help"}); rc != 0 {
+		t.Errorf("browse --help rc = %d; want 0", rc)
+	}
+}
+
+// TestPkgMarketplace_runMarketplaceBrowse_Bad — missing CATEGORY,
+// unknown flag, and multiple CATEGORY arguments all return EX_USAGE.
+func TestPkgMarketplace_runMarketplaceBrowse_Bad(t *testing.T) {
+	if rc := runMarketplaceBrowse(nil); rc != 64 {
+		t.Errorf("missing CATEGORY rc = %d; want 64", rc)
+	}
+	if rc := runMarketplaceBrowse([]string{"--what"}); rc != 64 {
+		t.Errorf("unknown flag rc = %d; want 64", rc)
+	}
+	if rc := runMarketplaceBrowse([]string{"media", "tools"}); rc != 64 {
+		t.Errorf("two CATEGORY args rc = %d; want 64", rc)
+	}
+}
+
+// TestPkgMarketplace_runMarketplaceBrowse_Ugly — browsing against a
+// missing marketplace cache returns rc=1 with a readable error rather
+// than a panic.
+func TestPkgMarketplace_runMarketplaceBrowse_Ugly(t *testing.T) {
+	if home := core.Env("DIR_HOME"); home == "" {
+		t.Skip("DIR_HOME unset — browse path requires it")
+	}
+	root := core.Path(core.Env("DIR_HOME"), ".core", "marketplace")
+	if coreio.Local.IsDir(root) {
+		t.Skip("user has a real marketplace cache; skipping the missing-cache path")
+	}
+	if rc := runMarketplaceBrowse([]string{"media"}); rc != 1 {
+		t.Errorf("missing-cache browse rc = %d; want 1", rc)
+	}
+}
+
+// TestPkgMarketplace_runMarketplace_Dispatch_Ugly — the new verbs
+// dispatch from runMarketplace without the dispatcher rejecting them.
+// Full behaviour is pinned per-verb above.
+func TestPkgMarketplace_runMarketplace_Dispatch_Ugly(t *testing.T) {
+	if rc := runMarketplace([]string{"categories", "--help"}); rc != 0 {
+		t.Errorf("categories --help via dispatcher rc = %d; want 0", rc)
+	}
+	if rc := runMarketplace([]string{"browse", "--help"}); rc != 0 {
+		t.Errorf("browse --help via dispatcher rc = %d; want 0", rc)
+	}
+	if rc := runMarketplace([]string{"browse"}); rc != 64 {
+		t.Errorf("browse with no CATEGORY rc = %d; want 64", rc)
+	}
+}

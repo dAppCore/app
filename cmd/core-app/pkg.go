@@ -125,6 +125,7 @@ func runPkgInfo(args []string) int {
 			Type        string   `json:"type"`
 			Version     string   `json:"version"`
 			Source      string   `json:"source"`
+			Category    string   `json:"category,omitempty"`
 			Path        string   `json:"path"`
 			Workspace   string   `json:"workspace,omitempty"`
 			Layout      string   `json:"layout,omitempty"`
@@ -137,6 +138,7 @@ func runPkgInfo(args []string) int {
 			Type:        info.Entry.Type.String(),
 			Version:     info.Entry.Version,
 			Source:      info.Entry.Source,
+			Category:    info.Entry.Category,
 			Path:        info.Entry.Path,
 			Workspace:   info.Workspace,
 			Layout:      info.Manifest.Layout,
@@ -158,6 +160,9 @@ func runPkgInfo(args []string) int {
 	core.Println("  type:     " + info.Entry.Type.String())
 	core.Println("  version:  " + info.Entry.Version)
 	core.Println("  source:   " + info.Entry.DisplaySource())
+	if info.Entry.Category != "" {
+		core.Println("  category: " + info.Entry.Category)
+	}
 	core.Println("  path:     " + info.Entry.Path)
 	if info.Workspace != "" {
 		core.Println("  data:     " + info.Workspace)
@@ -224,20 +229,24 @@ func runPkgList(args []string) int {
 		// regardless of internal field reordering in PkgEntry. Both the
 		// raw and display forms of the source are included so JSON
 		// consumers can drive `pkg update` (raw) and a human-readable
-		// table (display) without re-parsing the value.
+		// table (display) without re-parsing the value. Category is
+		// emitted when the installed manifest recorded it (marketplace
+		// installs stamp it via app.stampCategory).
 		type row struct {
 			Name          string `json:"name"`
 			Type          string `json:"type"`
 			Version       string `json:"version"`
 			Source        string `json:"source"`
 			DisplaySource string `json:"display_source"`
+			Category      string `json:"category,omitempty"`
 			Path          string `json:"path"`
 		}
 		rows := make([]row, 0, len(entries))
 		for _, e := range entries {
 			rows = append(rows, row{
 				Name: e.Name, Type: e.Type.String(), Version: e.Version,
-				Source: e.Source, DisplaySource: e.DisplaySource(), Path: e.Path,
+				Source: e.Source, DisplaySource: e.DisplaySource(),
+				Category: e.Category, Path: e.Path,
 			})
 		}
 		r := core.JSONMarshal(rows)
@@ -1213,6 +1222,8 @@ func (a pkgWrapArgs) sourceTag() string {
 // separate from `pkg` so CLI tab-completion can advertise them
 // independently.
 //
+//	core-app marketplace categories
+//	core-app marketplace browse media
 //	core-app marketplace search photo
 //	core-app marketplace install photo-browser
 //	core-app marketplace update  photo-browser
@@ -1227,6 +1238,10 @@ func runMarketplace(args []string) int {
 	verb := args[0]
 	rest := args[1:]
 	switch verb {
+	case "categories":
+		return runMarketplaceCategories(rest)
+	case "browse":
+		return runMarketplaceBrowse(rest)
 	case "search":
 		return runMarketplaceSearch(rest)
 	case "install":
@@ -1254,12 +1269,151 @@ func runMarketplace(args []string) int {
 //	marketplaceUsage()
 func marketplaceUsage() {
 	core.Println("core-app marketplace <verb> [flags]")
+	core.Println("  categories         list the marketplace's top-level categories (RFC §6.1)")
+	core.Println("  browse CATEGORY    list every listing in a single category")
 	core.Println("  search QUERY       search the local marketplace cache")
 	core.Println("  install CODE       install a marketplace listing (same as `pkg install`)")
 	core.Println("  update  CODE       git pull + re-verify the listing's signature (RFC §6.3)")
 	core.Println("  remove  NAME       remove an installed package (same as `pkg remove`)")
 	core.Println("  installed          list installed packages (same as `pkg list`)")
 	core.Println("  fetch --url URL    clone/update the marketplace repo")
+}
+
+// runMarketplaceCategories dispatches `core-app marketplace categories`.
+// Prints the marketplace's top-level category names in sorted order so a
+// user can pipe `browse CATEGORY` against the output without knowing the
+// index layout in advance.
+//
+//	core-app marketplace categories
+//	core-app marketplace categories --json
+func runMarketplaceCategories(args []string) int {
+	asJSON := false
+	for _, a := range args {
+		switch a {
+		case "--json":
+			asJSON = true
+		case "--help", "-h":
+			core.Println("core-app marketplace categories [--json]")
+			core.Println("  --json   emit a JSON array of category names")
+			return 0
+		default:
+			core.Error("marketplace categories: unknown flag", "flag", a)
+			return 64
+		}
+	}
+
+	home := core.Env("DIR_HOME")
+	if home == "" {
+		core.Error("marketplace categories: cannot resolve DIR_HOME")
+		return 1
+	}
+	root := core.Path(home, ".core", "marketplace")
+	cats, err := app.MarketplaceCategories(coreio.Local, root)
+	if err != nil {
+		core.Error("marketplace categories: failed", "err", err)
+		return 1
+	}
+
+	if asJSON {
+		r := core.JSONMarshal(cats)
+		if !r.OK {
+			core.Error("marketplace categories: marshal failed", "err", r.Value)
+			return 1
+		}
+		raw, _ := r.Value.([]byte)
+		core.Println(string(raw))
+		return 0
+	}
+
+	if len(cats) == 0 {
+		core.Println("(no categories)")
+		return 0
+	}
+	for _, cat := range cats {
+		core.Println(cat)
+	}
+	return 0
+}
+
+// runMarketplaceBrowse dispatches `core-app marketplace browse CATEGORY`.
+// Prints every listing in the named category as an aligned table (or a
+// JSON array with `--json`). Stamps the `Category` column on every row
+// so the output matches the projection `search --json` already emits.
+//
+//	core-app marketplace browse media
+//	core-app marketplace browse media --json
+func runMarketplaceBrowse(args []string) int {
+	asJSON := false
+	category := ""
+	for _, a := range args {
+		switch a {
+		case "--json":
+			asJSON = true
+		case "--help", "-h":
+			core.Println("core-app marketplace browse [--json] CATEGORY")
+			core.Println("  --json    emit a JSON array of marketplace listings")
+			core.Println("  CATEGORY  one of the names from `marketplace categories`")
+			return 0
+		default:
+			if core.HasPrefix(a, "-") {
+				core.Error("marketplace browse: unknown flag", "flag", a)
+				return 64
+			}
+			if category != "" {
+				core.Error("marketplace browse: only one CATEGORY supported", "extra", a)
+				return 64
+			}
+			category = a
+		}
+	}
+	if category == "" {
+		core.Error("marketplace browse: CATEGORY is required")
+		return 64
+	}
+
+	home := core.Env("DIR_HOME")
+	if home == "" {
+		core.Error("marketplace browse: cannot resolve DIR_HOME")
+		return 1
+	}
+	root := core.Path(home, ".core", "marketplace")
+	listings, err := app.MarketplaceBrowse(coreio.Local, root, category)
+	if err != nil {
+		core.Error("marketplace browse: failed", "category", category, "err", err)
+		return 1
+	}
+
+	if asJSON {
+		r := core.JSONMarshal(listings)
+		if !r.OK {
+			core.Error("marketplace browse: marshal failed", "err", r.Value)
+			return 1
+		}
+		raw, _ := r.Value.([]byte)
+		core.Println(string(raw))
+		return 0
+	}
+
+	if len(listings) == 0 {
+		return 0
+	}
+	const gutter = 2
+	headers := []string{"CODE", "TYPE", "VERSION", "DESCRIPTION"}
+	widths := []int{len(headers[0]), len(headers[1]), len(headers[2]), len(headers[3])}
+	for _, r := range listings {
+		cells := []string{r.Code, r.Type, r.Version, r.Description}
+		for i, cell := range cells {
+			if len(cell) > widths[i] {
+				widths[i] = len(cell)
+			}
+		}
+	}
+	core.Println(formatRow(headers, widths, gutter))
+	for _, r := range listings {
+		cells := []string{r.Code, r.Type, r.Version, r.Description}
+		core.Println(formatRow(cells, widths, gutter))
+	}
+	return 0
 }
 
 // runMarketplaceUpdate dispatches `core-app marketplace update CODE`.

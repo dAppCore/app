@@ -48,3 +48,12 @@ func VerifyListingAfterInstallForTest(medium coreio.Medium, dest string, listing
 func StampSourceForTest(medium coreio.Medium, dest, source string) error {
 	return stampSource(medium, dest, source)
 }
+
+// StampCategoryForTest exposes the package-private category stamp so
+// black-box tests can confirm `Config["category"]` round-trips through
+// the same helper the marketplace install paths use.
+//
+//	err := app.StampCategoryForTest(coreio.Local, dest, "media")
+func StampCategoryForTest(medium coreio.Medium, dest, category string) error {
+	return stampCategory(medium, dest, category)
+}

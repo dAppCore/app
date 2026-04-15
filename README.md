@@ -49,6 +49,8 @@ core-app sdk generate --lang ts --out ./build/sdk
 
 # Marketplace integration.
 core-app marketplace fetch --url https://forge.lthn.ai/core/marketplace.git
+core-app marketplace categories
+core-app marketplace browse media
 core-app marketplace search photo
 core-app marketplace install photo-browser
 core-app marketplace update  photo-browser

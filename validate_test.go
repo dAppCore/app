@@ -248,6 +248,29 @@ func TestValidate_LayoutSlotConsistency_Ugly(t *testing.T) {
 	}
 }
 
+// TestValidate_ReservedCategoryKey_Good — a manifest carrying the
+// marketplace-stamped `Config["category"]` metadata value round-trips
+// through the validator without producing a template-shape error. Pins
+// the RFC §6 marketplace flow (Search / Resolve / stamp) so a future
+// change to the reserved key set never regresses the install path.
+func TestValidate_ReservedCategoryKey_Good(t *testing.T) {
+	m := &config.ViewManifest{
+		Code:    "cat-ok",
+		Name:    "Category OK",
+		Version: "0.1.0",
+		Config: map[string]any{
+			"category": "media",
+			"source":   "marketplace:cat-ok",
+		},
+	}
+	report := ValidateManifest(m, ValidateOptions{AllowUnknownModules: true})
+	for _, e := range report.Errors() {
+		if strings.HasPrefix(e.Field, "config.") {
+			t.Errorf("reserved key produced validation error: %+v", e)
+		}
+	}
+}
+
 // TestValidate_ValidateIssueSeverity_Good — String returns the
 // canonical lowercase name used in CLI output.
 func TestValidate_ValidateIssueSeverity_Good(t *testing.T) {

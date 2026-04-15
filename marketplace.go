@@ -50,13 +50,22 @@ type MarketplaceCategoryIndex struct {
 //	    Type: "native",
 //	    Repo: "github.com/core/photo-browser",
 //	}
+//
+// The `Category` slot is stamped by MarketplaceSearch / MarketplaceResolve
+// so downstream consumers can render "category" in a table without
+// re-walking the index. The on-disk category index files do NOT carry a
+// per-entry category string — the category IS the parent directory — so
+// Category stays empty when the struct is decoded from JSON and is only
+// populated when the listing is returned through the search / resolve
+// API.
 type MarketplaceListing struct {
 	Code        string `json:"code"`
 	Name        string `json:"name,omitempty"`
 	Version     string `json:"version,omitempty"`
-	Type        string `json:"type,omitempty"` // "native" | "pwa" | "electron" | "web"
-	Repo        string `json:"repo,omitempty"` // clone URL / github path
-	URL         string `json:"url,omitempty"`  // for PWAs — the live manifest URL
+	Type        string `json:"type,omitempty"`     // "native" | "pwa" | "electron" | "web"
+	Category    string `json:"category,omitempty"` // stamped by Search / Resolve — the parent directory name
+	Repo        string `json:"repo,omitempty"`     // clone URL / github path
+	URL         string `json:"url,omitempty"`      // for PWAs — the live manifest URL
 	Description string `json:"description,omitempty"`
 	SignKey     string `json:"sign_key,omitempty"` // hex-encoded ed25519 public key
 }
@@ -121,6 +130,9 @@ func LoadMarketplaceCategory(medium coreio.Medium, root, category string) (*Mark
 // MarketplaceSearch walks every category in the index and returns the
 // listings whose code, name or description contains the needle. Case
 // insensitive substring match — matches the CLI `search` ergonomics.
+// Each returned listing has its Category field stamped from the index
+// directory it came from so downstream renderers can show the category
+// column without re-walking the tree.
 //
 //	results, err := app.MarketplaceSearch(medium, root, "photo")
 func MarketplaceSearch(medium coreio.Medium, root, needle string) ([]MarketplaceListing, error) {
@@ -137,8 +149,15 @@ func MarketplaceSearch(medium coreio.Medium, root, needle string) ([]Marketplace
 			// is more useful than a failed search.
 			continue
 		}
+		category := c.Category
+		if category == "" {
+			category = cat
+		}
 		for _, entry := range c.Entries {
 			if needle == "" || listingMatches(entry, needle) {
+				// Stamp the category so renderers can surface it even
+				// when the underlying index omits the per-entry field.
+				entry.Category = category
 				out = append(out, entry)
 			}
 		}
@@ -146,9 +165,112 @@ func MarketplaceSearch(medium coreio.Medium, root, needle string) ([]Marketplace
 	return out, nil
 }
 
+// MarketplaceCategories returns the sorted list of top-level category
+// names declared by the marketplace index. Matches the RFC §6.1
+// "category-as-directory" convention — each category is a subdirectory
+// under the marketplace root carrying its own `index.json`.
+//
+//	cats, err := app.MarketplaceCategories(coreio.Local, root)
+//	for _, cat := range cats { core.Println(cat) }
+//
+// Rules:
+//
+//   - Missing / unreadable top-level index → typed error so the CLI can
+//     tell the user to `core marketplace fetch` first.
+//
+//   - Categories are returned in lexicographic order so the CLI table
+//     and JSON output stay deterministic across runs.
+//
+//   - Duplicate entries in the index are collapsed — a misbehaving
+//     marketplace shouldn't produce duplicate rows in the browser.
+func MarketplaceCategories(medium coreio.Medium, root string) ([]string, error) {
+	idx, err := LoadMarketplaceIndex(medium, root)
+	if err != nil {
+		return nil, err
+	}
+	if len(idx.Categories) == 0 {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(idx.Categories))
+	for _, cat := range idx.Categories {
+		if cat == "" || seen[cat] {
+			continue
+		}
+		seen[cat] = true
+		out = append(out, cat)
+	}
+	// Small insertion sort — category count is in the low tens.
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j-1] > out[j]; j-- {
+			out[j-1], out[j] = out[j], out[j-1]
+		}
+	}
+	return out, nil
+}
+
+// MarketplaceBrowse returns every listing in `category`, each carrying
+// its Category field pre-stamped so the same projection shape that
+// MarketplaceSearch emits also covers the browse path. Used by the
+// `core marketplace browse CATEGORY` CLI verb so a user can drill into
+// a single category without typing a search needle.
+//
+//	listings, err := app.MarketplaceBrowse(medium, root, "media")
+//
+// Rules:
+//
+//   - Empty category → typed error (the caller must pick a bucket).
+//
+//   - Unknown category (not listed in the top-level index) → typed
+//     error so the CLI can hint at `marketplace categories` for the
+//     valid set.
+//
+//   - Missing category index on disk → typed error from the underlying
+//     loader; caller should treat it as "run marketplace fetch".
+func MarketplaceBrowse(medium coreio.Medium, root, category string) ([]MarketplaceListing, error) {
+	if core.Trim(category) == "" {
+		return nil, coreerr.E("app.MarketplaceBrowse", "empty category", nil)
+	}
+	idx, err := LoadMarketplaceIndex(medium, root)
+	if err != nil {
+		return nil, err
+	}
+	known := false
+	for _, cat := range idx.Categories {
+		if cat == category {
+			known = true
+			break
+		}
+	}
+	if !known {
+		return nil, coreerr.E(
+			"app.MarketplaceBrowse",
+			"unknown category '"+category+"' — run `core marketplace categories` for the valid set",
+			nil,
+		)
+	}
+	c, err := LoadMarketplaceCategory(medium, root, category)
+	if err != nil {
+		return nil, err
+	}
+	cat := c.Category
+	if cat == "" {
+		cat = category
+	}
+	out := make([]MarketplaceListing, 0, len(c.Entries))
+	for _, entry := range c.Entries {
+		entry.Category = cat
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
 // MarketplaceResolve walks every category looking for an exact code
 // match. Returns the first hit — codes are globally unique in the
-// marketplace (enforced by the submission process).
+// marketplace (enforced by the submission process). The returned
+// listing's Category field is stamped from the index directory it came
+// from so downstream install / update paths can record the provenance
+// without re-scanning the tree.
 //
 //	listing, err := app.MarketplaceResolve(medium, root, "photo-browser")
 func MarketplaceResolve(medium coreio.Medium, root, code string) (*MarketplaceListing, error) {
@@ -164,9 +286,15 @@ func MarketplaceResolve(medium coreio.Medium, root, code string) (*MarketplaceLi
 		if err != nil {
 			continue
 		}
+		category := c.Category
+		if category == "" {
+			category = cat
+		}
 		for i, entry := range c.Entries {
 			if entry.Code == code {
-				return &c.Entries[i], nil
+				hit := c.Entries[i]
+				hit.Category = category
+				return &hit, nil
 			}
 		}
 	}
@@ -316,6 +444,11 @@ func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInsta
 		if err != nil {
 			return installed, err
 		}
+		if listing.Category != "" {
+			// Best-effort category stamp so `pkg info` can show it
+			// regardless of which install path landed the manifest.
+			_ = stampCategory(medium, installed, listing.Category)
+		}
 		// PWA wraps are unsigned by construction (the CoreApp signs the
 		// wrapped manifest only when the user supplies a key) so there
 		// is nothing to verify against the listing's `sign_key` here.
@@ -395,13 +528,56 @@ func installNativeFromRepo(ctx context.Context, c *core.Core, listing *Marketpla
 		return coreerr.E("app.installNativeFromRepo", "git clone failed", extractErr(r))
 	}
 
-	// Stamp the source into .core/view.yaml so `core pkg list` can show
-	// it. Failure is non-fatal — the clone itself succeeded.
+	// Stamp the source + category into .core/view.yaml so `core pkg list`
+	// and `core pkg info` can show both without re-walking the
+	// marketplace index. Failure is non-fatal — the clone itself
+	// succeeded and the metadata is advisory.
 	if err := stampSource(medium, dest, "marketplace:"+listing.Code); err != nil {
-		// Don't wrap — this is best-effort metadata.
 		_ = err
 	}
+	if listing.Category != "" {
+		if err := stampCategory(medium, dest, listing.Category); err != nil {
+			_ = err
+		}
+	}
 	return nil
+}
+
+// stampCategory re-writes the installed view.yaml with
+// `Config["category"] = category`. Matches stampSource semantics — the
+// category is a best-effort metadata field a downstream UI can use to
+// group installed packages without re-walking the marketplace index.
+//
+//	_ = stampCategory(medium, dest, "media")
+//
+// Rules:
+//
+//   - Missing view.yaml → no-op + nil error (caller treats this as
+//     advisory metadata; failures here must never block an install).
+//
+//   - Empty category → no-op so callers can pass `listing.Category`
+//     unconditionally.
+func stampCategory(medium coreio.Medium, dest, category string) error {
+	if category == "" {
+		return nil
+	}
+	path := core.Path(dest, ".core", "view.yaml")
+	if !medium.Exists(path) {
+		return nil
+	}
+	var manifest config.ViewManifest
+	if err := config.LoadManifest(medium, path, &manifest); err != nil {
+		return err
+	}
+	if manifest.Config == nil {
+		manifest.Config = map[string]any{}
+	}
+	manifest.Config["category"] = category
+	body, err := yamlMarshal(&manifest)
+	if err != nil {
+		return err
+	}
+	return medium.Write(path, body)
 }
 
 // stampSource re-writes the installed view.yaml with
@@ -546,6 +722,11 @@ func MarketplaceUpdate(ctx context.Context, c *core.Core, opts MarketplaceUpdate
 		if err := stampSource(medium, dest, "marketplace:"+listing.Code); err != nil {
 			_ = err // best-effort metadata
 		}
+		if listing.Category != "" {
+			// Re-stamp so a category rename in the marketplace catches up
+			// on the next update rather than waiting for a fresh install.
+			_ = stampCategory(medium, dest, listing.Category)
+		}
 		if !opts.SkipVerify {
 			if err := VerifyListing(medium, dest, listing); err != nil {
 				// Roll back to the previous git commit so an unverified
@@ -578,6 +759,9 @@ func MarketplaceUpdate(ctx context.Context, c *core.Core, opts MarketplaceUpdate
 		})
 		if err != nil {
 			return dest, err
+		}
+		if listing.Category != "" {
+			_ = stampCategory(medium, dest, listing.Category)
 		}
 		return dest, nil
 	case PackageTypeElectron:

@@ -20,6 +20,10 @@
 //	core-app pkg wrap --web DIR   # wrap a local web dir as a CoreApp
 //	core-app pkg remove NAME      # remove an installed package
 //	core-app pkg update NAME      # re-fetch and re-wrap an installed pkg
+//	core-app marketplace categories
+//	                              # list top-level marketplace categories
+//	core-app marketplace browse CATEGORY
+//	                              # list every listing in a category
 //	core-app marketplace search Q # search the local marketplace cache
 //	core-app marketplace install CODE
 //	                              # install a marketplace listing

@@ -110,7 +110,8 @@ func TestMarketplace_LoadMarketplaceCategory_Bad(t *testing.T) {
 }
 
 // TestMarketplace_MarketplaceSearch_Good builds a two-category index
-// and confirms a substring search returns the expected listings.
+// and confirms a substring search returns the expected listings with
+// the parent category stamped on each row.
 func TestMarketplace_MarketplaceSearch_Good(t *testing.T) {
 	root := writeTestMarketplace(t)
 
@@ -121,14 +122,24 @@ func TestMarketplace_MarketplaceSearch_Good(t *testing.T) {
 	if len(results) != 1 || results[0].Code != "photo-browser" {
 		t.Errorf("search 'photo' = %+v; want [photo-browser]", results)
 	}
+	if results[0].Category != "media" {
+		t.Errorf("search hit did not stamp Category: got %q; want 'media'", results[0].Category)
+	}
 
-	// Empty needle → every listing.
+	// Empty needle → every listing. Each row must carry the category it
+	// came from so a `core marketplace search ""` renders a complete
+	// browse view.
 	all, err := app.MarketplaceSearch(coreio.Local, root, "")
 	if err != nil {
 		t.Fatalf("MarketplaceSearch (empty): %v", err)
 	}
 	if len(all) != 3 {
 		t.Errorf("empty search = %d results; want 3", len(all))
+	}
+	for _, row := range all {
+		if row.Category == "" {
+			t.Errorf("empty search left Category blank on %q", row.Code)
+		}
 	}
 }
 
@@ -164,7 +175,8 @@ func TestMarketplace_MarketplaceSearch_Ugly(t *testing.T) {
 	}
 }
 
-// TestMarketplace_MarketplaceResolve_Good resolves an exact code match.
+// TestMarketplace_MarketplaceResolve_Good resolves an exact code match
+// and confirms the returned listing carries the parent category.
 func TestMarketplace_MarketplaceResolve_Good(t *testing.T) {
 	root := writeTestMarketplace(t)
 	listing, err := app.MarketplaceResolve(coreio.Local, root, "play")
@@ -176,6 +188,9 @@ func TestMarketplace_MarketplaceResolve_Good(t *testing.T) {
 	}
 	if listing.Type != "pwa" {
 		t.Errorf("Type = %q; want 'pwa'", listing.Type)
+	}
+	if listing.Category != "media" {
+		t.Errorf("Category = %q; want 'media'", listing.Category)
 	}
 }
 
@@ -487,3 +502,132 @@ func TestMarketplace_MarketplaceRemove_Ugly(t *testing.T) {
 	}
 }
 
+// TestMarketplace_MarketplaceCategories_Good lists the top-level
+// categories in sorted order. Matches the RFC §6.1 category-as-directory
+// convention the marketplace commands expose via `core marketplace
+// categories`.
+func TestMarketplace_MarketplaceCategories_Good(t *testing.T) {
+	root := writeTestMarketplace(t)
+	cats, err := app.MarketplaceCategories(coreio.Local, root)
+	if err != nil {
+		t.Fatalf("MarketplaceCategories: %v", err)
+	}
+	if len(cats) != 2 {
+		t.Fatalf("len = %d; want 2", len(cats))
+	}
+	if cats[0] != "media" || cats[1] != "tools" {
+		t.Errorf("sorted categories = %v; want [media tools]", cats)
+	}
+}
+
+// TestMarketplace_MarketplaceCategories_Bad propagates the missing
+// index error so the CLI can instruct the user to fetch first.
+func TestMarketplace_MarketplaceCategories_Bad(t *testing.T) {
+	if _, err := app.MarketplaceCategories(coreio.Local, t.TempDir()); err == nil {
+		t.Error("missing index produced no error")
+	}
+}
+
+// TestMarketplace_MarketplaceCategories_Ugly collapses duplicate
+// category entries so a misbehaving marketplace never produces
+// duplicate rows in the browser.
+func TestMarketplace_MarketplaceCategories_Ugly(t *testing.T) {
+	medium := coreio.Local
+	root := t.TempDir()
+	body := `{"version":1,"categories":["media","tools","media",""]}`
+	if err := medium.Write(core.Path(root, app.MarketplaceIndexFileName), body); err != nil {
+		t.Fatalf("Write index: %v", err)
+	}
+	cats, err := app.MarketplaceCategories(medium, root)
+	if err != nil {
+		t.Fatalf("MarketplaceCategories: %v", err)
+	}
+	if len(cats) != 2 || cats[0] != "media" || cats[1] != "tools" {
+		t.Errorf("deduped categories = %v; want [media tools]", cats)
+	}
+}
+
+// TestMarketplace_MarketplaceBrowse_Good returns every listing in a
+// category with the Category slot stamped so the same projection
+// covers search + browse without re-walking the tree.
+func TestMarketplace_MarketplaceBrowse_Good(t *testing.T) {
+	root := writeTestMarketplace(t)
+	listings, err := app.MarketplaceBrowse(coreio.Local, root, "media")
+	if err != nil {
+		t.Fatalf("MarketplaceBrowse: %v", err)
+	}
+	if len(listings) != 2 {
+		t.Fatalf("len = %d; want 2", len(listings))
+	}
+	for _, row := range listings {
+		if row.Category != "media" {
+			t.Errorf("browse row %q has Category %q; want 'media'", row.Code, row.Category)
+		}
+	}
+}
+
+// TestMarketplace_MarketplaceBrowse_Bad rejects empty + unknown
+// categories so the CLI can point at `marketplace categories`.
+func TestMarketplace_MarketplaceBrowse_Bad(t *testing.T) {
+	root := writeTestMarketplace(t)
+	if _, err := app.MarketplaceBrowse(coreio.Local, root, ""); err == nil {
+		t.Error("empty category produced no error")
+	}
+	if _, err := app.MarketplaceBrowse(coreio.Local, root, "not-a-category"); err == nil {
+		t.Error("unknown category produced no error")
+	}
+}
+
+// TestMarketplace_MarketplaceBrowse_Ugly — the root-level index is
+// absent so the browse path propagates the same "run marketplace
+// fetch" hint the other loaders use.
+func TestMarketplace_MarketplaceBrowse_Ugly(t *testing.T) {
+	if _, err := app.MarketplaceBrowse(coreio.Local, t.TempDir(), "media"); err == nil {
+		t.Error("missing index produced no error")
+	}
+}
+
+// TestMarketplace_StampCategory_Good records the listing category on
+// an existing installed manifest so `pkg info` / `pkg list` can surface
+// it without re-walking the marketplace index.
+func TestMarketplace_StampCategory_Good(t *testing.T) {
+	dest := t.TempDir()
+	medium := coreio.Local
+	viewPath := core.Path(dest, ".core", "view.yaml")
+	if err := medium.EnsureDir(core.PathDir(viewPath)); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(viewPath, "code: stamp-cat\nname: Stamp Cat\nversion: 0.1.0\n"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := app.StampCategoryForTest(medium, dest, "media"); err != nil {
+		t.Fatalf("StampCategoryForTest: %v", err)
+	}
+	body, err := medium.Read(viewPath)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if !core.Contains(body, "category: media") {
+		t.Errorf("stamped manifest missing `category: media`:\n%s", body)
+	}
+}
+
+// TestMarketplace_StampCategory_Bad — empty category is a no-op, no
+// write is performed so the caller can pass listing.Category
+// unconditionally.
+func TestMarketplace_StampCategory_Bad(t *testing.T) {
+	dest := t.TempDir()
+	medium := coreio.Local
+	if err := app.StampCategoryForTest(medium, dest, ""); err != nil {
+		t.Errorf("empty category returned %v; want nil", err)
+	}
+}
+
+// TestMarketplace_StampCategory_Ugly — missing view.yaml at dest is a
+// no-op (metadata is advisory; caller never surfaces the error).
+func TestMarketplace_StampCategory_Ugly(t *testing.T) {
+	dest := t.TempDir()
+	if err := app.StampCategoryForTest(coreio.Local, dest, "media"); err != nil {
+		t.Errorf("missing manifest returned %v; want nil", err)
+	}
+}

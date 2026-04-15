@@ -33,11 +33,12 @@ const AppsDirName = "apps"
 // on the correct strategy. Use DisplaySource() when surfacing the
 // value to a human — it strips the `wrap:TYPE:` prefix per RFC §16.3.
 type PkgEntry struct {
-	Name    string      // manifest.code — the user-facing slug
-	Type    PackageType // native | pwa | electron | web
-	Version string      // manifest.version
-	Source  string      // marketplace:CODE | wrap:pwa:URL | wrap:electron:REF | local:PATH
-	Path    string      // absolute install path (<home>/.core/apps/<code>)
+	Name     string      // manifest.code — the user-facing slug
+	Type     PackageType // native | pwa | electron | web
+	Version  string      // manifest.version
+	Source   string      // marketplace:CODE | wrap:pwa:URL | wrap:electron:REF | local:PATH
+	Category string      // marketplace category the install came from (empty for wraps / local)
+	Path     string      // absolute install path (<home>/.core/apps/<code>)
 }
 
 // DisplaySource returns the human-facing rendering of Source per the
@@ -244,6 +245,9 @@ func pkgEntryFromManifest(medium coreio.Medium, viewPath, appPath string) (PkgEn
 			if u, ok := manifest.Config["url"].(string); ok {
 				entry.Source = u
 			}
+		}
+		if c, ok := manifest.Config["category"].(string); ok {
+			entry.Category = c
 		}
 	}
 	if entry.Source == "" {
