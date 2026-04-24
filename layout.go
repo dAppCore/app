@@ -53,8 +53,11 @@ func (s *LayoutSpec) Has(slot string) bool {
 //
 //  1. Accept an empty layout (headless CLI app) — no-op.
 //  2. Validate the layout variant string (HLCRF, HCF, C, …).
-//  3. Check every slot names a string component.
-//  4. (owned by caller) stash the resolved spec on the booted Instance
+//  3. Check every slot referenced by the variant names a string
+//     component.
+//  4. Ignore manifest slots not referenced by the variant — they never
+//     mount at runtime.
+//  5. (owned by caller) stash the resolved spec on the booted Instance
 //     so Start / core/gui can pick it up without reparsing YAML.
 //
 // The returned LayoutSpec is the narrow form of `manifest.slots` —
@@ -78,7 +81,7 @@ func resolveLayout(c *core.Core, m *config.ViewManifest) (*LayoutSpec, error) {
 	if m == nil {
 		return nil, coreerr.E("app.layout", "nil manifest", nil)
 	}
-	if m.Layout == "" && len(m.Slots) == 0 {
+	if m.Layout == "" {
 		// Headless CLI app — no layout to compose.
 		return nil, nil
 	}
@@ -87,16 +90,34 @@ func resolveLayout(c *core.Core, m *config.ViewManifest) (*LayoutSpec, error) {
 		return nil, coreerr.E("app.layout", "invalid layout variant", err)
 	}
 
-	slots := make(map[string]string, len(m.Slots))
-	for slot, component := range m.Slots {
-		if component == nil {
+	spec := &LayoutSpec{
+		Variant: m.Layout,
+		Slots:   make(map[string]string, len(m.Slots)),
+	}
+	spec.Order = make([]string, 0, len(m.Layout))
+
+	// Components list — unique, variant-ordered so downstream codegen
+	// writes stable output across boots.
+	compSeen := map[string]bool{}
+	seen := map[string]bool{}
+	for _, ch := range m.Layout {
+		slot := string(ch)
+		if seen[slot] {
+			continue
+		}
+		seen[slot] = true
+		spec.Order = append(spec.Order, slot)
+
+		component, ok := m.Slots[slot]
+		if !ok || component == nil {
 			return nil, coreerr.E(
 				"app.layout",
-				"slot '"+slot+"' names a nil component",
+				"layout '"+m.Layout+"' references slot '"+slot+"' but no component is declared under slots."+slot,
 				nil,
 			)
 		}
-		name, ok := component.(string)
+
+		comp, ok := component.(string)
 		if !ok {
 			return nil, coreerr.E(
 				"app.layout",
@@ -104,43 +125,15 @@ func resolveLayout(c *core.Core, m *config.ViewManifest) (*LayoutSpec, error) {
 				nil,
 			)
 		}
-		if name != "" {
-			slots[slot] = name
+		if comp == "" {
+			return nil, coreerr.E(
+				"app.layout",
+				"layout '"+m.Layout+"' references slot '"+slot+"' but no component is declared under slots."+slot,
+				nil,
+			)
 		}
-	}
 
-	spec := &LayoutSpec{
-		Variant: m.Layout,
-		Slots:   slots,
-	}
-	if m.Layout != "" {
-		spec.Order = make([]string, 0, len(m.Layout))
-		seen := map[string]bool{}
-		for _, ch := range m.Layout {
-			slot := string(ch)
-			if seen[slot] {
-				continue
-			}
-			seen[slot] = true
-			spec.Order = append(spec.Order, slot)
-		}
-	}
-	// Components list — unique, variant-ordered so downstream codegen
-	// writes stable output across boots.
-	compSeen := map[string]bool{}
-	for _, slot := range spec.Order {
-		if comp, ok := slots[slot]; ok && !compSeen[comp] {
-			compSeen[comp] = true
-			spec.Components = append(spec.Components, comp)
-		}
-	}
-	// Include any slot keys that were declared outside the variant
-	// string so the spec doesn't silently drop them (YAML flexibility).
-	for slot, comp := range slots {
-		if seen := containsString(spec.Order, slot); seen {
-			continue
-		}
-		spec.Order = append(spec.Order, slot)
+		spec.Slots[slot] = comp
 		if !compSeen[comp] {
 			compSeen[comp] = true
 			spec.Components = append(spec.Components, comp)

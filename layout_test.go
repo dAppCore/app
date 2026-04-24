@@ -3,6 +3,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
 	core "dappco.re/go/core"
@@ -28,21 +29,56 @@ func TestLayout_layout_Good(t *testing.T) {
 	}
 }
 
-// TestLayout_layout_Bad — an unknown variant character fails validation.
+// TestLayout_layout_Bad — a layout variant that references a missing
+// slot fails cleanly instead of silently producing a partial spec.
 func TestLayout_layout_Bad(t *testing.T) {
 	c := core.New()
-	m := &config.ViewManifest{Layout: "XYZ"}
-	if err := layout(c, m); err == nil {
-		t.Fatal("layout should reject unknown variant characters")
+	m := &config.ViewManifest{
+		Layout: "HCF",
+		Slots: map[string]any{
+			"H": "nav-breadcrumb",
+			"F": "status-bar",
+		},
+	}
+	err := layout(c, m)
+	if err == nil {
+		t.Fatal("layout should reject a missing slot component")
+	}
+	if !strings.Contains(err.Error(), "slots.C") {
+		t.Fatalf("layout error should name missing slot C; got %v", err)
 	}
 }
 
-// TestLayout_layout_Ugly — an empty manifest is a no-op (headless CLI
-// apps have no layout).
+// TestLayout_layout_Ugly — extra manifest slots are ignored when the
+// layout variant does not reference them.
 func TestLayout_layout_Ugly(t *testing.T) {
 	c := core.New()
-	if err := layout(c, &config.ViewManifest{}); err != nil {
-		t.Fatalf("empty layout should be no-op: %v", err)
+	m := &config.ViewManifest{
+		Layout: "HC",
+		Slots: map[string]any{
+			"H": "nav-breadcrumb",
+			"C": "photo-grid",
+			"R": "metadata-panel",
+		},
+	}
+	spec, err := resolveLayout(c, m)
+	if err != nil {
+		t.Fatalf("resolveLayout: %v", err)
+	}
+	if spec == nil {
+		t.Fatal("expected composed spec")
+	}
+	if spec.Has("R") {
+		t.Fatalf("extra slot R should be ignored; got %+v", spec.Slots)
+	}
+	want := []string{"H", "C"}
+	if len(spec.Order) != len(want) {
+		t.Fatalf("Order = %v; want %v", spec.Order, want)
+	}
+	for i, slot := range want {
+		if spec.Order[i] != slot {
+			t.Fatalf("Order[%d] = %q; want %q", i, spec.Order[i], slot)
+		}
 	}
 }
 
@@ -129,7 +165,8 @@ func TestLayout_resolveLayout_Good(t *testing.T) {
 }
 
 // TestLayout_resolveLayout_Bad — a slot with a non-string component is
-// rejected; a nil manifest also errors.
+// rejected; missing required slots, a nil manifest and a nil core also
+// error.
 func TestLayout_resolveLayout_Bad(t *testing.T) {
 	c := core.New()
 	m := &config.ViewManifest{
@@ -141,6 +178,15 @@ func TestLayout_resolveLayout_Bad(t *testing.T) {
 	if _, err := resolveLayout(c, m); err == nil {
 		t.Fatal("resolveLayout should reject non-string component")
 	}
+	m = &config.ViewManifest{
+		Layout: "HC",
+		Slots: map[string]any{
+			"H": "nav-breadcrumb",
+		},
+	}
+	if _, err := resolveLayout(c, m); err == nil {
+		t.Fatal("resolveLayout should reject a missing slot declared by the layout")
+	}
 	if _, err := resolveLayout(c, nil); err == nil {
 		t.Fatal("resolveLayout should reject nil manifest")
 	}
@@ -150,9 +196,8 @@ func TestLayout_resolveLayout_Bad(t *testing.T) {
 }
 
 // TestLayout_resolveLayout_Ugly — an empty manifest returns (nil, nil)
-// so headless CLI apps don't leak a spec object. A manifest with slots
-// declared outside the variant string still captures them so the host
-// can render them at the end.
+// so headless CLI apps don't leak a spec object. Extra slots declared
+// outside the variant string are ignored during composition.
 func TestLayout_resolveLayout_Ugly(t *testing.T) {
 	c := core.New()
 	if spec, err := resolveLayout(c, &config.ViewManifest{}); err != nil || spec != nil {
@@ -164,18 +209,18 @@ func TestLayout_resolveLayout_Ugly(t *testing.T) {
 		Slots: map[string]any{
 			"H": "a",
 			"C": "b",
-			"X": "c", // declared outside variant — must still survive
+			"X": "c", // declared outside variant — should be ignored
 		},
 	}
 	spec, err := resolveLayout(c, m)
 	if err != nil {
 		t.Fatalf("resolveLayout: %v", err)
 	}
-	if !spec.Has("X") {
-		t.Error("slot outside variant should still appear in Slots")
+	if spec.Has("X") {
+		t.Errorf("slot outside variant should be ignored; got %v", spec.Slots)
 	}
-	if !containsString(spec.Order, "X") {
-		t.Errorf("slot outside variant should appear in Order; got %v", spec.Order)
+	if containsString(spec.Order, "X") {
+		t.Errorf("slot outside variant should not appear in Order; got %v", spec.Order)
 	}
 }
 
