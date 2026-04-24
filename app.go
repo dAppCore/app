@@ -280,11 +280,6 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 	}
 	inst.Layout = spec
 
-	// Step 6 — Config
-	if err := applyConfigWithMode(c, &manifest, o.Medium, root, o.Mode); err != nil {
-		return nil, coreerr.E("app.Boot", "config template failed", err)
-	}
-
 	// Workspace lifecycle — provision `<home>/.core/data/<code>/` so the
 	// app has a guaranteed place for its store, cache, keys and tmp by
 	// the time Start() fires. Failures here are non-fatal in dev mode
@@ -302,6 +297,12 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 			_ = wsErr
 		}
 		inst.Workspace = ws
+	}
+
+	// Step 6 — Config. Render after the workspace exists so template vars
+	// can hydrate from the runtime object store.
+	if err := renderManifestConfigTemplatesWithMode(c, &manifest, o.Medium, root, inst.Workspace, o.Mode); err != nil {
+		return nil, coreerr.E("app.Boot", "config template failed", err)
 	}
 	if err := registerRuntimeActions(inst); err != nil {
 		return nil, coreerr.E("app.Boot", "runtime action registration failed", err)
