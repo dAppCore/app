@@ -216,7 +216,7 @@ func (rt *runtimeBindings) handleFSDelete(_ context.Context, opts core.Options) 
 }
 
 func (rt *runtimeBindings) handleStoreGet(_ context.Context, opts core.Options) core.Result {
-	if err := CheckActionAccess(&rt.inst.Manifest, "store.get", opts.String("group")+":"+opts.String("key")); err != nil {
+	if err := CheckActionAccess(&rt.inst.Manifest, "store.get", storeAccessTarget(opts.String("group"), opts.String("key"))); err != nil {
 		return resultError("app.runtime.handleStoreGet", "access denied", err)
 	}
 	store, err := rt.workspaceStore()
@@ -231,7 +231,7 @@ func (rt *runtimeBindings) handleStoreGet(_ context.Context, opts core.Options) 
 }
 
 func (rt *runtimeBindings) handleStoreSet(_ context.Context, opts core.Options) core.Result {
-	if err := CheckActionAccess(&rt.inst.Manifest, "store.set", opts.String("group")+":"+opts.String("key")); err != nil {
+	if err := CheckActionAccess(&rt.inst.Manifest, "store.set", storeAccessTarget(opts.String("group"), opts.String("key"))); err != nil {
 		return resultError("app.runtime.handleStoreSet", "access denied", err)
 	}
 	store, err := rt.workspaceStore()
@@ -245,7 +245,7 @@ func (rt *runtimeBindings) handleStoreSet(_ context.Context, opts core.Options) 
 }
 
 func (rt *runtimeBindings) handleStoreDelete(_ context.Context, opts core.Options) core.Result {
-	if err := CheckActionAccess(&rt.inst.Manifest, "store.delete", opts.String("group")+":"+opts.String("key")); err != nil {
+	if err := CheckActionAccess(&rt.inst.Manifest, "store.delete", storeAccessTarget(opts.String("group"), opts.String("key"))); err != nil {
 		return resultError("app.runtime.handleStoreDelete", "access denied", err)
 	}
 	store, err := rt.workspaceStore()

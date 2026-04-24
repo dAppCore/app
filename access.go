@@ -372,6 +372,14 @@ func matchNet(list []string, arg string) bool {
 	return false
 }
 
+// storeAccessTarget encodes the group/key pair the store permission
+// gate uses for diagnostics. Keeping the format in access.go ensures
+// every store.* runtime handler feeds the same target into
+// CheckActionAccess.
+func storeAccessTarget(group, key string) string {
+	return group + ":" + key
+}
+
 // ActionAccessMode returns the AccessMode an action handler should feed
 // to CheckAccess. Mirrors the RFC §9.3 table so handlers don't repeat
 // the `"fs.read" → AccessRead` mapping — they call
