@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
-	coreerr "dappco.re/go/core/log"
+	"dappco.re/go/config"
+	coreerr "dappco.re/go/log"
 )
 
 // TestStart_start_Good — a ready Instance broadcasts ActionAppStarted

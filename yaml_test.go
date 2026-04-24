@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"dappco.re/go/core/config"
-	coreio "dappco.re/go/core/io"
+	"dappco.re/go/config"
+	coreio "dappco.re/go/io"
 )
 
 // TestYaml_yamlMarshalBytes_Good — marshalling a populated ViewManifest

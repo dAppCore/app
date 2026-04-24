@@ -10,8 +10,8 @@ import (
 
 	"dappco.re/go/app"
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
-	coreio "dappco.re/go/core/io"
+	"dappco.re/go/config"
+	coreio "dappco.re/go/io"
 )
 
 // TestStore_RuntimePermissionGate_Good verifies that manifest-declared

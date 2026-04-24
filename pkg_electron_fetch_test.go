@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"dappco.re/go/app"
-	coreio "dappco.re/go/core/io"
+	coreio "dappco.re/go/io"
 )
 
 // TestPkgElectronFetch_FetchElectronReleaseURL_Good plants a fake

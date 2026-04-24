@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
-	coreio "dappco.re/go/core/io"
+	"dappco.re/go/config"
+	coreio "dappco.re/go/io"
 )
 
 // TestConfig_applyConfig_Good — a manifest declaring a template whose

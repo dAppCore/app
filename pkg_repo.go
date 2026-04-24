@@ -6,8 +6,8 @@ import (
 	"context"
 
 	core "dappco.re/go/core"
-	coreio "dappco.re/go/core/io"
-	coreerr "dappco.re/go/core/log"
+	coreio "dappco.re/go/io"
+	coreerr "dappco.re/go/log"
 )
 
 // FetchRepoSource downloads and extracts a GitHub-style repository

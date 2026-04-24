@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 type managedProcesses struct {

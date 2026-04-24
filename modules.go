@@ -6,7 +6,7 @@ import (
 	"context"
 
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
+	"dappco.re/go/config"
 )
 
 // modules is Step 4 of the 7-step boot — load the modules declared in

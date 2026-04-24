@@ -4,8 +4,8 @@ package app
 
 import (
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
-	coreerr "dappco.re/go/core/log"
+	"dappco.re/go/config"
+	coreerr "dappco.re/go/log"
 )
 
 // LayoutSpec is the resolved form of a manifest's HLCRF layout. It

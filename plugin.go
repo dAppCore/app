@@ -6,9 +6,9 @@ import (
 	"context"
 
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
-	coreio "dappco.re/go/core/io"
-	coreerr "dappco.re/go/core/log"
+	"dappco.re/go/config"
+	coreio "dappco.re/go/io"
+	coreerr "dappco.re/go/log"
 )
 
 // PluginOptions tunes PluginBoot. Plugins are isolated `core.New()`

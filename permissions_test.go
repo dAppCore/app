@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
+	"dappco.re/go/config"
 )
 
 // captureLog redirects the default core logger to a buffer for the

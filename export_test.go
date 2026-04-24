@@ -6,8 +6,8 @@ import (
 	"crypto/ed25519"
 
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
-	coreio "dappco.re/go/core/io"
+	"dappco.re/go/config"
+	coreio "dappco.re/go/io"
 )
 
 // SignManifestForTest is a test-only shim that exposes the internal

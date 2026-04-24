@@ -5,7 +5,7 @@ package app
 import (
 	"testing"
 
-	"dappco.re/go/core/config"
+	"dappco.re/go/config"
 )
 
 // TestAccess_CheckAccess_Good — reading a path inside a declared

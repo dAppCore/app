@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
+	"dappco.re/go/config"
 )
 
 // TestRegistry_RegisterModule_Good — Registering, looking up and

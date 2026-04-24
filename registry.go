@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
-	coreerr "dappco.re/go/core/log"
+	"dappco.re/go/config"
+	coreerr "dappco.re/go/log"
 )
 
 // ModuleFactory returns a CoreOption that wires a named module onto a

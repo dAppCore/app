@@ -8,8 +8,8 @@ import (
 
 	"dappco.re/go/app"
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
-	coreio "dappco.re/go/core/io"
+	"dappco.re/go/config"
+	coreio "dappco.re/go/io"
 )
 
 // TestPlugin_PluginBoot_Good asserts a host can spin up an isolated

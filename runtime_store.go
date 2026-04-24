@@ -13,8 +13,8 @@ import (
 	enchantrix "forge.lthn.ai/Snider/Enchantrix/pkg/enchantrix"
 
 	core "dappco.re/go/core"
-	corestore "dappco.re/go/core/io/store"
-	coreerr "dappco.re/go/core/log"
+	corestore "dappco.re/go/io/store"
+	coreerr "dappco.re/go/log"
 )
 
 const workspaceStoreDBName = "store.db"

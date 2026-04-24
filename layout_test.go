@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
+	"dappco.re/go/config"
 )
 
 // TestLayout_layout_Good — an HLCRF manifest with named components

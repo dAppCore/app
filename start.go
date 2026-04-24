@@ -6,7 +6,7 @@ import (
 	"context"
 
 	core "dappco.re/go/core"
-	coreerr "dappco.re/go/core/log"
+	coreerr "dappco.re/go/log"
 )
 
 // start is Step 7 of the 7-step boot — unblock the app's entry point.

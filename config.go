@@ -4,9 +4,9 @@ package app
 
 import (
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
-	coreio "dappco.re/go/core/io"
-	coreerr "dappco.re/go/core/log"
+	"dappco.re/go/config"
+	coreio "dappco.re/go/io"
+	coreerr "dappco.re/go/log"
 )
 
 // TemplateSuffix is the canonical extension for config template

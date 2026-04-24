@@ -8,7 +8,7 @@ import (
 
 	"dappco.re/go/app"
 	core "dappco.re/go/core"
-	coreio "dappco.re/go/core/io"
+	coreio "dappco.re/go/io"
 )
 
 // TestApp_Boot_Good — a manifest exists under start/.core/view.yaml and

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
+	"dappco.re/go/config"
 )
 
 // TestModules_modules_Good — a manifest with no modules is a no-op.

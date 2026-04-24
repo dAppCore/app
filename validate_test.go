@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	core "dappco.re/go/core"
-	"dappco.re/go/core/config"
+	"dappco.re/go/config"
 )
 
 // TestValidate_ValidateManifest_Good — a well-formed manifest passes

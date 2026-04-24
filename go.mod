@@ -4,9 +4,9 @@ go 1.26.0
 
 require (
 	dappco.re/go/core v0.8.0-alpha.1
-	dappco.re/go/core/config v0.2.3
-	dappco.re/go/core/io v0.4.2
-	dappco.re/go/core/log v0.1.2
+	dappco.re/go/config v0.2.3
+	dappco.re/go/io v0.4.2
+	dappco.re/go/log v0.1.2
 	gopkg.in/yaml.v3 v3.0.1
 )
 
