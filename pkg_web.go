@@ -3,6 +3,8 @@
 package app
 
 import (
+	"strings"
+
 	core "dappco.re/go/core"
 	"dappco.re/go/core/config"
 	coreio "dappco.re/go/core/io"
@@ -66,6 +68,9 @@ func WrapWeb(medium coreio.Medium, dir string, opts WrapWebOptions) (*config.Vie
 
 	name := opts.Name
 	if name == "" {
+		name = defaultWebWrapName(dir)
+	}
+	if name == "" {
 		name = code
 	}
 
@@ -99,19 +104,24 @@ func WriteWebWrap(medium coreio.Medium, dest string, manifest *config.ViewManife
 	if manifest == nil {
 		return coreerr.E("app.WriteWebWrap", "nil manifest", nil)
 	}
-	if medium == nil {
-		medium = coreio.Local
+	return writeWrappedManifest(medium, dest, manifest)
+}
+
+func defaultWebWrapName(dir string) string {
+	base := core.Trim(core.PathBase(dir))
+	if base == "" {
+		return ""
 	}
-	body, err := yamlMarshalBytes(manifest)
-	if err != nil {
-		return coreerr.E("app.WriteWebWrap", "marshal failed", err)
+	base = strings.NewReplacer("-", " ", "_", " ", ".", " ").Replace(base)
+	parts := strings.Fields(base)
+	if len(parts) == 0 {
+		return ""
 	}
-	path := core.Path(dest, ".core", "view.yaml")
-	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
-		return coreerr.E("app.WriteWebWrap", "ensure dir failed", err)
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(part[:1]) + part[1:]
 	}
-	if err := medium.Write(path, string(body)); err != nil {
-		return coreerr.E("app.WriteWebWrap", "write failed", err)
-	}
-	return nil
+	return strings.Join(parts, " ")
 }

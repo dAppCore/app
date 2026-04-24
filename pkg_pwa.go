@@ -340,15 +340,7 @@ func WritePWAWrap(medium coreio.Medium, dest string, manifest *config.ViewManife
 	if err := materializeWrappedRuntimeAssets(medium, dest, manifest); err != nil {
 		return coreerr.E("app.WritePWAWrap", "materialise runtime assets failed", err)
 	}
-	body, err := yamlMarshalBytes(manifest)
-	if err != nil {
-		return coreerr.E("app.WritePWAWrap", "marshal failed", err)
-	}
-	path := core.Path(dest, ".core", "view.yaml")
-	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
-		return coreerr.E("app.WritePWAWrap", "ensure dir failed", err)
-	}
-	if err := medium.Write(path, string(body)); err != nil {
+	if err := writeWrappedManifest(medium, dest, manifest); err != nil {
 		return coreerr.E("app.WritePWAWrap", "write failed", err)
 	}
 	return nil

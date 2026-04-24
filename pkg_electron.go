@@ -536,19 +536,5 @@ func WriteElectronWrap(medium coreio.Medium, dest string, manifest *config.ViewM
 	if manifest == nil {
 		return coreerr.E("app.WriteElectronWrap", "nil manifest", nil)
 	}
-	if medium == nil {
-		medium = coreio.Local
-	}
-	body, err := yamlMarshalBytes(manifest)
-	if err != nil {
-		return coreerr.E("app.WriteElectronWrap", "marshal failed", err)
-	}
-	path := core.Path(dest, ".core", "view.yaml")
-	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
-		return coreerr.E("app.WriteElectronWrap", "ensure dir failed", err)
-	}
-	if err := medium.Write(path, string(body)); err != nil {
-		return coreerr.E("app.WriteElectronWrap", "write failed", err)
-	}
-	return nil
+	return writeWrappedManifest(medium, dest, manifest)
 }
