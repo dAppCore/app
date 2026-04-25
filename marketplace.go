@@ -728,6 +728,8 @@ func stampSource(medium coreio.Medium, dest, source string) error {
 // yamlMarshal is a thin wrapper so tests (and stampSource) don't depend
 // on the yaml import path directly — keeps the signature stable if we
 // swap encoders later.
+// Note: AX-6 — no core YAML primitive yet; keep the app-local marshal
+// bridge until core/config exposes one.
 //
 //	body, err := yamlMarshal(&manifest)
 func yamlMarshal(v any) (string, error) {
