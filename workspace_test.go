@@ -3,11 +3,12 @@
 package app_test
 
 import (
+	"strings"
 	"testing"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -97,17 +98,25 @@ func TestWorkspace_Sandboxed_Good(t *testing.T) {
 		t.Fatal("Sandboxed returned nil medium")
 	}
 
-	// A relative write inside the workspace should land at <root>/x.
+	// A relative write inside the workspace should round-trip through
+	// the sandbox while the underlying file remains encrypted at rest.
 	if err := sb.Write("hello.txt", "world"); err != nil {
 		t.Fatalf("write inside sandbox: %v", err)
+	}
+	plain, err := sb.Read("hello.txt")
+	if err != nil {
+		t.Fatalf("read inside sandbox: %v", err)
+	}
+	if plain != "world" {
+		t.Errorf("sandbox body = %q; want %q", plain, "world")
 	}
 	abs := core.Path(ws.Root, "hello.txt")
 	got, err := medium.Read(abs)
 	if err != nil {
 		t.Fatalf("read absolute: %v", err)
 	}
-	if got != "world" {
-		t.Errorf("body = %q; want %q", got, "world")
+	if got == "world" || strings.Contains(got, "world") {
+		t.Errorf("raw workspace body leaked plaintext: %q", got)
 	}
 }
 

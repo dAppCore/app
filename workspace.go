@@ -3,9 +3,10 @@
 package app
 
 import (
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
+	"dappco.re/go/io/cube"
 	coreerr "dappco.re/go/log"
 )
 
@@ -162,14 +163,15 @@ func (w *Workspace) Resolve(layout WorkspaceLayout, rel string) string {
 }
 
 // Sandboxed returns a Medium whose root is pinned to the workspace
-// directory. The returned medium honours go-io's SASE containment —
-// reads and writes outside the workspace root are rejected at the
-// medium boundary. Useful when an app handler wants a `coreio.Medium`
-// it can hand to a sub-system without re-doing path checks.
+// directory and whose file payloads are encrypted at rest. The returned
+// medium honours go-io's SASE containment — reads and writes outside
+// the workspace root are rejected at the medium boundary. Useful when
+// an app handler wants a `coreio.Medium` it can hand to a sub-system
+// without re-doing path checks.
 //
 //	m, err := ws.Sandboxed()
 //	if err != nil { return err }
-//	_ = m.Write("config.json", body) // → <root>/config.json
+//	_ = m.Write("config.json", body) // encrypted at <root>/config.json
 //
 // On a MemoryMedium / MockMedium where Sandboxed isn't available the
 // underlying medium is returned unchanged so tests compose naturally.
@@ -183,7 +185,19 @@ func (w *Workspace) Sandboxed() (coreio.Medium, error) {
 		// expectations during tests.
 		return w.medium, nil
 	}
-	return coreio.NewSandboxed(w.Root)
+	sandbox, err := coreio.NewSandboxed(w.Root)
+	if err != nil {
+		return nil, coreerr.E("app.Workspace.Sandboxed", "sandbox workspace failed", err)
+	}
+	secret, err := deriveWorkspaceSecret(w)
+	if err != nil {
+		return nil, coreerr.E("app.Workspace.Sandboxed", "derive workspace key failed", err)
+	}
+	encrypted, err := cube.New(cube.Options{Inner: sandbox, Key: secret})
+	if err != nil {
+		return nil, coreerr.E("app.Workspace.Sandboxed", "encrypt workspace medium failed", err)
+	}
+	return encrypted, nil
 }
 
 // Wipe removes every layout sub-directory and the workspace root

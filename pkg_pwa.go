@@ -4,13 +4,14 @@ package app
 
 import (
 	"context"
-	"io"
+	// AX-6 fetch-boundary exception: the pinned core module has no HTTP
+	// client wrapper, and the batch sandbox blocks shelling out to curl.
 	"net/http"
 	neturl "net/url"
 	"time"
 
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -58,7 +59,7 @@ var localPWAManifestNames = []string{"manifest.json", "manifest.webmanifest"}
 // cannot hang `core pkg wrap`. 15s matches the dAppServer marketplace
 // install-poll timeout.
 //
-//	client := &http.Client{Timeout: pwaFetchTimeout}
+//	fetchPWAURL(ctx, "https://app.example.com/manifest.json")
 const pwaFetchTimeout = 15 * time.Second
 
 // FetchPWAManifest performs an HTTP GET against the supplied URL and
@@ -410,9 +411,8 @@ func fetchPWAURL(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, coreerr.E("app.fetchPWAURL", "HTTP GET failed", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_ = resp.Body.Close()
 		return nil, coreerr.E(
 			"app.fetchPWAURL",
 			"non-2xx status: "+core.Sprint(resp.StatusCode),
@@ -420,11 +420,13 @@ func fetchPWAURL(ctx context.Context, url string) ([]byte, error) {
 		)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, coreerr.E("app.fetchPWAURL", "read body failed", err)
+	body := core.ReadAll(resp.Body)
+	if !body.OK {
+		cause, _ := body.Value.(error)
+		return nil, coreerr.E("app.fetchPWAURL", "read body failed", cause)
 	}
-	return body, nil
+	payload, _ := body.Value.(string)
+	return []byte(payload), nil
 }
 
 // decodePWAManifest narrows a JSON body into the subset of the Web App
