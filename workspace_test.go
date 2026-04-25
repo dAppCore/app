@@ -120,6 +120,42 @@ func TestWorkspace_Sandboxed_Good(t *testing.T) {
 	}
 }
 
+func TestWorkspace_Sandboxed_CachesLocalMedium(t *testing.T) {
+	t.Setenv("CORE_WORKSPACE_KEY", "sandbox-cache-key-material")
+	t.Setenv("CORE_WORKSPACE_PASSWORD", "")
+
+	home := t.TempDir()
+	medium := coreio.Local
+
+	ws, err := app.OpenWorkspace(medium, home, "sandbox-cache-app")
+	if err != nil {
+		t.Fatalf("OpenWorkspace: %v", err)
+	}
+
+	first, err := ws.Sandboxed()
+	if err != nil {
+		t.Fatalf("first Sandboxed: %v", err)
+	}
+	second, err := ws.Sandboxed()
+	if err != nil {
+		t.Fatalf("second Sandboxed: %v", err)
+	}
+	if first != second {
+		t.Fatal("Sandboxed should reuse the cached encrypted medium for a workspace")
+	}
+
+	if err := first.Write("cached.txt", "reused"); err != nil {
+		t.Fatalf("write via first sandbox: %v", err)
+	}
+	got, err := second.Read("cached.txt")
+	if err != nil {
+		t.Fatalf("read via second sandbox: %v", err)
+	}
+	if got != "reused" {
+		t.Errorf("cached sandbox read = %q; want reused", got)
+	}
+}
+
 // TestWorkspace_Sandboxed_Bad — Sandboxed on a nil receiver must
 // surface a typed error rather than panic.
 func TestWorkspace_Sandboxed_Bad(t *testing.T) {

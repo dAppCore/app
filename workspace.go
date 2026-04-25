@@ -3,6 +3,8 @@
 package app
 
 import (
+	"sync"
+
 	"dappco.re/go/config"
 	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
@@ -72,6 +74,10 @@ type Workspace struct {
 	// boot-time storage abstraction (matters for tests that hand in a
 	// MockMedium).
 	medium coreio.Medium
+
+	sandboxOnce   sync.Once
+	sandboxMedium coreio.Medium
+	sandboxErr    error
 }
 
 // OpenWorkspace resolves a workspace for the supplied app code and
@@ -185,6 +191,16 @@ func (w *Workspace) Sandboxed() (coreio.Medium, error) {
 		// expectations during tests.
 		return w.medium, nil
 	}
+	w.sandboxOnce.Do(func() {
+		w.sandboxMedium, w.sandboxErr = w.openSandboxed()
+	})
+	if w.sandboxErr != nil {
+		return nil, w.sandboxErr
+	}
+	return w.sandboxMedium, nil
+}
+
+func (w *Workspace) openSandboxed() (coreio.Medium, error) {
 	sandbox, err := coreio.NewSandboxed(w.Root)
 	if err != nil {
 		return nil, coreerr.E("app.Workspace.Sandboxed", "sandbox workspace failed", err)
@@ -193,11 +209,18 @@ func (w *Workspace) Sandboxed() (coreio.Medium, error) {
 	if err != nil {
 		return nil, coreerr.E("app.Workspace.Sandboxed", "derive workspace key failed", err)
 	}
+	defer zeroBytes(secret)
 	encrypted, err := cube.New(cube.Options{Inner: sandbox, Key: secret})
 	if err != nil {
 		return nil, coreerr.E("app.Workspace.Sandboxed", "encrypt workspace medium failed", err)
 	}
 	return encrypted, nil
+}
+
+func zeroBytes(data []byte) {
+	for i := range data {
+		data[i] = 0
+	}
 }
 
 // Wipe removes every layout sub-directory and the workspace root
