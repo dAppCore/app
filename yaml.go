@@ -7,7 +7,7 @@ import (
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
-	"gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v3" // Note: AX-6 — centralized YAML codec wrapper; manifest serialisation requires gopkg.in/yaml.v3 (no core.YAML primitive available yet)
 )
 
 const (
