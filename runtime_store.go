@@ -11,9 +11,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	enchantrix "forge.lthn.ai/Snider/Enchantrix/pkg/enchantrix"
-
 	core "dappco.re/go/core"
+	"dappco.re/go/io/sigil"
 	corestore "dappco.re/go/io/store"
 	coreerr "dappco.re/go/log"
 	"golang.org/x/crypto/argon2" // Note: AX-6 - password KDF primitive required to slow offline workspace-password attacks.
@@ -43,7 +42,7 @@ type workspaceSecretKeys struct {
 
 // workspaceObjectStore is the runtime object-store adapter backed by the
 // SQLite KV store shipped in core/io/store. Group + key identifiers are
-// hashed, and values are encrypted through Enchantrix before they hit disk.
+// hashed, and values are encrypted through Sigil before they hit disk.
 type workspaceObjectStore struct {
 	ws *Workspace
 
@@ -51,7 +50,7 @@ type workspaceObjectStore struct {
 	kv    *corestore.KeyValueStore
 	enc   []byte
 	hmac  []byte
-	sigil *enchantrix.ChaChaPolySigil
+	sigil *sigil.ChaChaPolySigil
 }
 
 func newWorkspaceObjectStore(ws *Workspace) *workspaceObjectStore {
@@ -151,7 +150,7 @@ func (store *workspaceObjectStore) ensureLocked() error {
 	if err != nil {
 		return coreerr.E("app.workspaceObjectStore.ensureLocked", "open store database failed", err)
 	}
-	sigil, err := enchantrix.NewChaChaPolySigilWithObfuscator(keys.encryption, &enchantrix.ShuffleMaskObfuscator{})
+	cipherSigil, err := sigil.NewChaChaPolySigil(keys.encryption, &sigil.ShuffleMaskObfuscator{})
 	if err != nil {
 		_ = kv.Close()
 		return coreerr.E("app.workspaceObjectStore.ensureLocked", "initialise sigil failed", err)
@@ -160,7 +159,7 @@ func (store *workspaceObjectStore) ensureLocked() error {
 	store.kv = kv
 	store.enc = keys.encryption
 	store.hmac = keys.hmac
-	store.sigil = sigil
+	store.sigil = cipherSigil
 	return nil
 }
 
