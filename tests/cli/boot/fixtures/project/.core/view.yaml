@@ -1,0 +1,10 @@
+code: ax10-boot
+name: AX-10 Boot
+version: 0.1.0
+layout: HLCRF
+slots:
+  H: header
+  C: content
+permissions:
+  read:
+    - ./data/

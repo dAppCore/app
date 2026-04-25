@@ -1,0 +1,65 @@
+version: "3"
+
+tasks:
+  test:
+    cmds:
+      - |
+          bash <<'EOF'
+          set -euo pipefail
+
+          run_capture_all() {
+            local expected_status="$1"
+            local output_file="$2"
+            shift 2
+
+            set +e
+            "$@" >"$output_file" 2>&1
+            local status=$?
+            set -e
+
+            if [[ "$status" -ne "$expected_status" ]]; then
+              printf 'expected exit %s, got %s\n' "$expected_status" "$status" >&2
+              if [[ -s "$output_file" ]]; then
+                printf 'output:\n' >&2
+                cat "$output_file" >&2
+              fi
+              return 1
+            fi
+          }
+
+          assert_contains() {
+            local needle="$1"
+            local input_file="$2"
+            if ! grep -Fq "$needle" "$input_file"; then
+              printf 'expected output to contain %q\n' "$needle" >&2
+              cat "$input_file" >&2
+              return 1
+            fi
+          }
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          export GOCACHE="$work/gocache"
+          export DIR_HOME="$work/home"
+
+          cp -R fixtures/project "$work/project"
+          mkdir -p bin
+          GOWORK=off go build -trimpath -ldflags="-s -w" -o bin/core-app ../../../cmd/core-app
+
+          keygen_output="$(mktemp)"
+          run_capture_all 0 "$keygen_output" ./bin/core-app keygen --dir "$work/keys" --name ax10
+          assert_contains "keypair generated" "$keygen_output"
+          assert_contains "private=" "$keygen_output"
+          assert_contains "public=" "$keygen_output"
+
+          sign_output="$(mktemp)"
+          run_capture_all 0 "$sign_output" ./bin/core-app sign --key "$work/keys/ax10.key" "$work/project"
+          assert_contains "signed" "$sign_output"
+          assert_contains ".core/view.yaml" "$sign_output"
+
+          if ! grep -Eq '^sign: .+' "$work/project/.core/view.yaml"; then
+            printf 'expected non-empty sign field in view.yaml\n' >&2
+            cat "$work/project/.core/view.yaml" >&2
+            exit 1
+          fi
+          EOF

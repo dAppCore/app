@@ -1,0 +1,37 @@
+version: "3"
+
+includes:
+  boot:
+    taskfile: ./boot/Taskfile.yaml
+    dir: ./boot
+  compile:
+    taskfile: ./compile/Taskfile.yaml
+    dir: ./compile
+  sign:
+    taskfile: ./sign/Taskfile.yaml
+    dir: ./sign
+  sdk:
+    taskfile: ./sdk/Taskfile.yaml
+    dir: ./sdk
+  marketplace:
+    taskfile: ./marketplace/Taskfile.yaml
+    dir: ./marketplace
+  pkg:
+    taskfile: ./pkg/Taskfile.yaml
+    dir: ./pkg
+
+tasks:
+  list:
+    desc: List AX-10 CLI artifact validation tasks.
+    cmds:
+      - task --list-all
+
+  test:
+    desc: Run AX-10 CLI artifact validation tests.
+    cmds:
+      - task boot:test
+      - task compile:test
+      - task sign:test
+      - task sdk:test
+      - task marketplace:test
+      - task pkg:test

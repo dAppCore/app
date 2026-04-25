@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "category": "tools",
+  "entries": [
+    {
+      "code": "ax10-tool",
+      "name": "AX-10 Tool",
+      "version": "0.1.0",
+      "type": "native",
+      "description": "AX-10 marketplace smoke fixture",
+      "repo": "https://example.com/ax10-tool.git"
+    }
+  ]
+}

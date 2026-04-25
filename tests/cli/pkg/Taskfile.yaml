@@ -1,0 +1,55 @@
+version: "3"
+
+tasks:
+  test:
+    cmds:
+      - |
+          bash <<'EOF'
+          set -euo pipefail
+
+          run_capture_all() {
+            local expected_status="$1"
+            local output_file="$2"
+            shift 2
+
+            set +e
+            "$@" >"$output_file" 2>&1
+            local status=$?
+            set -e
+
+            if [[ "$status" -ne "$expected_status" ]]; then
+              printf 'expected exit %s, got %s\n' "$expected_status" "$status" >&2
+              if [[ -s "$output_file" ]]; then
+                printf 'output:\n' >&2
+                cat "$output_file" >&2
+              fi
+              return 1
+            fi
+          }
+
+          assert_contains() {
+            local needle="$1"
+            local input_file="$2"
+            if ! grep -Fq "$needle" "$input_file"; then
+              printf 'expected output to contain %q\n' "$needle" >&2
+              cat "$input_file" >&2
+              return 1
+            fi
+          }
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          export GOCACHE="$work/gocache"
+          export DIR_HOME="$work/home"
+
+          cp -R fixtures/home "$work/home"
+          mkdir -p bin
+          GOWORK=off go build -trimpath -ldflags="-s -w" -o bin/core-app ../../../cmd/core-app
+
+          output="$(mktemp)"
+          run_capture_all 0 "$output" ./bin/core-app pkg list --json
+          assert_contains "\"name\":\"ax10-pkg\"" "$output"
+          assert_contains "\"type\":\"native\"" "$output"
+          assert_contains "\"version\":\"0.1.0\"" "$output"
+          assert_contains "\"source\":\"local\"" "$output"
+          EOF
