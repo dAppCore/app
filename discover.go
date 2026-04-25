@@ -3,8 +3,8 @@
 package app
 
 import (
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -129,7 +129,7 @@ func compiledToManifest(cm *CompiledManifest) config.ViewManifest {
 	return config.ViewManifest{
 		Code:        cm.Code,
 		Name:        cm.Name,
-		Version:     cm.Version,
+		Version:     config.ViewVersion(cm.Version),
 		Sign:        cm.Sign,
 		Layout:      cm.Layout,
 		Slots:       slots,

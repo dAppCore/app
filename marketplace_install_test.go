@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -63,7 +63,7 @@ func TestMarketplaceInstall_MarketplaceInstall_Good(t *testing.T) {
 		t.Fatalf("view.yaml missing at %s", viewPath)
 	}
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, viewPath, &round); err != nil {
+	if err := app.LoadViewManifest(medium, viewPath, &round); err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if round.Code != "play" {

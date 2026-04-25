@@ -5,8 +5,8 @@ package app
 import (
 	"strings"
 
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -82,7 +82,7 @@ func WrapWeb(medium coreio.Medium, dir string, opts WrapWebOptions) (*config.Vie
 	m := &config.ViewManifest{
 		Code:    code,
 		Name:    name,
-		Version: version,
+		Version: config.ViewVersion(version),
 		Layout:  "C",
 		Permissions: config.ViewPermissions{
 			Read: []string{"./"}, // static assets served from app root

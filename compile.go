@@ -5,8 +5,8 @@ package app
 import (
 	"time"
 
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -139,7 +139,7 @@ func Compile(m *config.ViewManifest, opts CompileOptions) (*CompiledManifest, er
 	out := &CompiledManifest{
 		Code:        m.Code,
 		Name:        m.Name,
-		Version:     m.Version,
+		Version:     string(m.Version),
 		Sign:        m.Sign,
 		CompiledAt:  now().UTC().Format(time.RFC3339),
 		CompiledBy:  compiledBy,

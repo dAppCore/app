@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	"gopkg.in/yaml.v3"
 )
@@ -256,7 +256,7 @@ func TestPkg_InstallWrappedPWA_Good(t *testing.T) {
 	}
 
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+	if err := app.LoadViewManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if src, _ := round.Config["source"].(string); src != "marketplace:play" {
@@ -340,7 +340,7 @@ func TestPkg_InstallWrappedPWA_Ugly(t *testing.T) {
 	}
 	var round config.ViewManifest
 	path := core.Path(home, ".core", app.AppsDirName, "dup", ".core", "view.yaml")
-	if err := config.LoadManifest(medium, path, &round); err != nil {
+	if err := app.LoadViewManifest(medium, path, &round); err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if round.Name != "Second" {
@@ -427,7 +427,7 @@ func TestPkg_InstallWrappedElectron_Good(t *testing.T) {
 	}
 
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+	if err := app.LoadViewManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if src, _ := round.Config["source"].(string); src != "wrap:electron:github.com/foo/bar" {
@@ -708,7 +708,7 @@ func TestPkg_InstallWrappedElectron_Ugly(t *testing.T) {
 	}
 	var round config.ViewManifest
 	path := core.Path(home, ".core", app.AppsDirName, "elec-dup", ".core", "view.yaml")
-	if err := config.LoadManifest(medium, path, &round); err != nil {
+	if err := app.LoadViewManifest(medium, path, &round); err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if round.Name != "Replaced" {
@@ -796,7 +796,7 @@ func TestPkg_PkgUpdate_Ugly(t *testing.T) {
 
 	var round config.ViewManifest
 	path := core.Path(home, ".core", app.AppsDirName, "v", ".core", "view.yaml")
-	if err := config.LoadManifest(medium, path, &round); err != nil {
+	if err := app.LoadViewManifest(medium, path, &round); err != nil {
 		t.Fatalf("reload after update: %v", err)
 	}
 	if round.Name != "V2" {
@@ -839,7 +839,7 @@ func TestPkg_PkgUpdate_LocalPWA(t *testing.T) {
 
 	var round config.ViewManifest
 	view := core.Path(home, ".core", app.AppsDirName, "local-v", ".core", "view.yaml")
-	if err := config.LoadManifest(medium, view, &round); err != nil {
+	if err := app.LoadViewManifest(medium, view, &round); err != nil {
 		t.Fatalf("reload local PWA after update: %v", err)
 	}
 	if round.Name != "Local V2" {

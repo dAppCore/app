@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	"gopkg.in/yaml.v3"
 )
@@ -616,6 +616,40 @@ func TestMain_runInstalled_Bad(t *testing.T) {
 	}
 	if rc := runInstalled([]string{"--help"}); rc != 0 {
 		t.Errorf("--help rc = %d; want 0", rc)
+	}
+}
+
+// TestMain_runInstalled_HelpShowsAppCode_Good pins the RFC-facing
+// `core run <app-code>` surface so the installed-app argument remains
+// visible in help output.
+func TestMain_runInstalled_HelpShowsAppCode_Good(t *testing.T) {
+	oldStdout := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = writer
+	defer func() { os.Stdout = oldStdout }()
+
+	rc := runInstalled([]string{"--help"})
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stdout pipe: %v", err)
+	}
+	os.Stdout = oldStdout
+
+	readResult := core.ReadAll(reader)
+	if !readResult.OK {
+		t.Fatalf("read help output: %v", readResult.Value)
+	}
+	output, ok := readResult.Value.(string)
+	if !ok {
+		t.Fatalf("help output type = %T; want string", readResult.Value)
+	}
+	if rc != 0 {
+		t.Fatalf("--help rc = %d; want 0", rc)
+	}
+	if !core.Contains(output, "<app-code>") {
+		t.Fatalf("run help = %q; want <app-code>", output)
 	}
 }
 

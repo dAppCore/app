@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -58,7 +58,7 @@ func TestPkgUpdate_PkgUpdate_Good_Web(t *testing.T) {
 	}
 
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+	if err := app.LoadViewManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if round.Code != "site" {
@@ -136,7 +136,7 @@ func TestPkgUpdate_PkgUpdate_Good_Electron(t *testing.T) {
 	}
 
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+	if err := app.LoadViewManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if round.Code != "electron-update" {
@@ -240,7 +240,7 @@ func TestPkgUpdate_PkgUpdate_Good_Local(t *testing.T) {
 	}
 
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+	if err := app.LoadViewManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	if round.Version != "0.3.0" {

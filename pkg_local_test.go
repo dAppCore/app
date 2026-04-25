@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	"gopkg.in/yaml.v3"
 )
@@ -70,7 +70,7 @@ func TestPkgLocal_PkgInstallLocal_Good(t *testing.T) {
 
 	// Source stamp recorded in Config.
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, installedView, &round); err != nil {
+	if err := app.LoadViewManifest(medium, installedView, &round); err != nil {
 		t.Fatalf("reload installed manifest: %v", err)
 	}
 	src2, _ := round.Config["source"].(string)
@@ -148,7 +148,7 @@ func TestPkgLocal_PkgInstallLocal_Ugly(t *testing.T) {
 	// Verify the destination picked up the mutated body.
 	var round config.ViewManifest
 	installedView := core.Path(dest, ".core", "view.yaml")
-	if err := config.LoadManifest(medium, installedView, &round); err != nil {
+	if err := app.LoadViewManifest(medium, installedView, &round); err != nil {
 		t.Fatalf("reload after force: %v", err)
 	}
 	if round.Name != "Force Updated" {

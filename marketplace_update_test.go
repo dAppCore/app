@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -50,7 +50,7 @@ func TestMarketplaceUpdate_MarketplaceUpdate_Good(t *testing.T) {
 	}
 
 	var round config.ViewManifest
-	if err := config.LoadManifest(coreio.Local, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+	if err := app.LoadViewManifest(coreio.Local, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
 		t.Fatalf("reload manifest: %v", err)
 	}
 	if round.Name != "Play 2" {

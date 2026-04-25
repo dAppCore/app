@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -26,7 +26,7 @@ func defaultPWARuntimeConfig(m *config.ViewManifest) map[string]any {
 		if trimmed := core.Trim(m.Code); trimmed != "" {
 			code = trimmed
 		}
-		if trimmed := core.Trim(m.Version); trimmed != "" {
+		if trimmed := core.Trim(string(m.Version)); trimmed != "" {
 			version = trimmed
 		}
 	}
@@ -145,7 +145,7 @@ func materializePWARuntimeAssets(medium coreio.Medium, dest string, manifest *co
 func renderPWAServiceWorker(manifest *config.ViewManifest, pwaCfg map[string]any) string {
 	payload := map[string]any{
 		"code":    coalesce(manifest.Code, "pwa-app"),
-		"version": coalesce(manifest.Version, "0.1.0"),
+		"version": coalesce(string(manifest.Version), "0.1.0"),
 		"pwa":     pwaCfg,
 	}
 	body, _ := json.Marshal(payload)
@@ -225,7 +225,7 @@ func renderPWABootstrap(manifest *config.ViewManifest, pwaCfg map[string]any) st
 	payload := map[string]any{
 		"code":    coalesce(manifest.Code, "pwa-app"),
 		"name":    coalesce(manifest.Name, manifest.Code, "PWA"),
-		"version": coalesce(manifest.Version, "0.1.0"),
+		"version": coalesce(string(manifest.Version), "0.1.0"),
 		"pwa":     pwaCfg,
 	}
 	body, _ := json.Marshal(payload)

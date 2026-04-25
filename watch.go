@@ -6,8 +6,8 @@ import (
 	"context"
 	"time"
 
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -236,7 +236,7 @@ func diffAndBroadcast(inst *Instance, prev, next map[string]watchEntry) {
 		}
 		inst.Core.ACTION(ActionManifestChanged{
 			Code:       inst.Manifest.Code,
-			Version:    inst.Manifest.Version,
+			Version:    string(inst.Manifest.Version),
 			Path:       path,
 			Kind:       kind,
 			ObservedAt: now,
@@ -256,7 +256,7 @@ func diffAndBroadcast(inst *Instance, prev, next map[string]watchEntry) {
 		}
 		inst.Core.ACTION(ActionManifestChanged{
 			Code:       inst.Manifest.Code,
-			Version:    inst.Manifest.Version,
+			Version:    string(inst.Manifest.Version),
 			Path:       path,
 			Kind:       "deleted",
 			ObservedAt: now,

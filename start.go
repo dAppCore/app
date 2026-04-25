@@ -77,7 +77,7 @@ func start(ctx context.Context, inst *Instance) core.Result {
 	c.ACTION(ActionAppStarted{
 		Code:    inst.Manifest.Code,
 		Name:    inst.Manifest.Name,
-		Version: inst.Manifest.Version,
+		Version: string(inst.Manifest.Version),
 		Mode:    inst.Mode.String(),
 		Root:    inst.Root,
 		Layout:  inst.Layout,
@@ -114,7 +114,7 @@ func stop(ctx context.Context, inst *Instance) core.Result {
 	c.ACTION(ActionAppStopping{
 		Code:    inst.Manifest.Code,
 		Name:    inst.Manifest.Name,
-		Version: inst.Manifest.Version,
+		Version: string(inst.Manifest.Version),
 		Mode:    inst.Mode.String(),
 	})
 	if inst.runtime != nil {

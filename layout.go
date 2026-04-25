@@ -3,8 +3,8 @@
 package app
 
 import (
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreerr "dappco.re/go/log"
 )
 
@@ -53,10 +53,9 @@ func (s *LayoutSpec) Has(slot string) bool {
 //
 //  1. Accept an empty layout (headless CLI app) — no-op.
 //  2. Validate the layout variant string (HLCRF, HCF, C, …).
-//  3. Check every slot referenced by the variant names a string
-//     component.
-//  4. Ignore manifest slots not referenced by the variant — they never
-//     mount at runtime.
+//  3. Keep every referenced slot that names a string component.
+//  4. Ignore missing, empty, or unreferenced slots — minimal manifests
+//     can declare a layout mode before shipping components.
 //  5. (owned by caller) stash the resolved spec on the booted Instance
 //     so Start / core/gui can pick it up without reparsing YAML.
 //
@@ -106,15 +105,10 @@ func resolveLayout(c *core.Core, m *config.ViewManifest) (*LayoutSpec, error) {
 			continue
 		}
 		seen[slot] = true
-		spec.Order = append(spec.Order, slot)
 
 		component, ok := m.Slots[slot]
 		if !ok || component == nil {
-			return nil, coreerr.E(
-				"app.layout",
-				"layout '"+m.Layout+"' references slot '"+slot+"' but no component is declared under slots."+slot,
-				nil,
-			)
+			continue
 		}
 
 		comp, ok := component.(string)
@@ -126,13 +120,10 @@ func resolveLayout(c *core.Core, m *config.ViewManifest) (*LayoutSpec, error) {
 			)
 		}
 		if comp == "" {
-			return nil, coreerr.E(
-				"app.layout",
-				"layout '"+m.Layout+"' references slot '"+slot+"' but no component is declared under slots."+slot,
-				nil,
-			)
+			continue
 		}
 
+		spec.Order = append(spec.Order, slot)
 		spec.Slots[slot] = comp
 		if !compSeen[comp] {
 			compSeen[comp] = true

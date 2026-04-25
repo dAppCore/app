@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -456,7 +456,7 @@ func TestPkgPwa_WritePWAWrap_Good(t *testing.T) {
 
 	// Round-trip parse.
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, path, &round); err != nil {
+	if err := app.LoadViewManifest(medium, path, &round); err != nil {
 		t.Fatalf("LoadManifest: %v", err)
 	}
 	if round.Code != manifest.Code {

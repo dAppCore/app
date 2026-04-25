@@ -5,8 +5,8 @@ package app
 import (
 	"context"
 
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -189,7 +189,7 @@ func manifestFromConclaveOptions(opts ConclaveOptions) config.ViewManifest {
 	m := config.ViewManifest{
 		Code:    opts.Code,
 		Name:    name,
-		Version: version,
+		Version: config.ViewVersion(version),
 		Layout:  "C", // single-surface; conclaves don't draw HLCRF chrome
 		Permissions: config.ViewPermissions{
 			Read: append([]string(nil), opts.ReadPaths...),

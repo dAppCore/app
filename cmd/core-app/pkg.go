@@ -7,8 +7,8 @@ import (
 	"os"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -527,7 +527,7 @@ func runPkgWrapElectron(opts pkgWrapArgs) int {
 		manifest.Name = opts.Name
 	}
 	if opts.Version != "" {
-		manifest.Version = opts.Version
+		manifest.Version = config.ViewVersion(opts.Version)
 	}
 	opts.AssetSource = dir
 	return persistWrap(manifest, opts)

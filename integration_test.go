@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	"gopkg.in/yaml.v3"
 )
@@ -332,7 +332,7 @@ func TestIntegration_CompileSignBoot_Good(t *testing.T) {
 
 	// 4. Compile + Write core.json.
 	var signed config.ViewManifest
-	if err := config.LoadManifest(medium, viewPath, &signed); err != nil {
+	if err := app.LoadViewManifest(medium, viewPath, &signed); err != nil {
 		t.Fatalf("reload signed manifest: %v", err)
 	}
 	cm, err := app.Compile(&signed, app.CompileOptions{})
@@ -417,7 +417,7 @@ func TestIntegration_Compile_Preserves_Config(t *testing.T) {
 
 	// Compile so prod mode reads core.json, not view.yaml.
 	var signed config.ViewManifest
-	if err := config.LoadManifest(medium, viewPath, &signed); err != nil {
+	if err := app.LoadViewManifest(medium, viewPath, &signed); err != nil {
 		t.Fatalf("reload manifest: %v", err)
 	}
 	cm, err := app.Compile(&signed, app.CompileOptions{})

@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	"gopkg.in/yaml.v3"
 )
@@ -396,7 +396,7 @@ func TestMarketplace_StampSource_Good(t *testing.T) {
 		t.Fatalf("StampSource: %v", err)
 	}
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+	if err := app.LoadViewManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
 		t.Fatalf("LoadManifest: %v", err)
 	}
 	if src, _ := round.Config["source"].(string); src != "marketplace:photo-browser" {
@@ -431,7 +431,7 @@ func TestMarketplace_StampSource_Ugly(t *testing.T) {
 		t.Fatalf("StampSource: %v", err)
 	}
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
+	if err := app.LoadViewManifest(medium, core.Path(dest, ".core", "view.yaml"), &round); err != nil {
 		t.Fatalf("LoadManifest: %v", err)
 	}
 	if src, _ := round.Config["source"].(string); src != "marketplace:fresh" {

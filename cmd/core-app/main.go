@@ -93,9 +93,9 @@ func main() {
 // `core run <app-code>`). Resolves the path under
 // `$DIR_HOME/.core/apps/<code>/` and delegates to runBoot.
 //
-//	core-app run photo-browser
-//	core-app run --dev photo-browser
-//	core-app run --dev --watch photo-browser
+//	core-app run <app-code>
+//	core-app run --dev <app-code>
+//	core-app run --dev --watch <app-code>
 func runInstalled(args []string) int {
 	mode := app.ModeProd
 	code := ""
@@ -108,8 +108,8 @@ func runInstalled(args []string) int {
 			watch = true
 			mode = app.ModeDev // watch implies dev (prod refuses it)
 		case "--help", "-h":
-			core.Println("core-app run [--dev] [--watch] CODE")
-			core.Println("  CODE     the installed package code (under ~/.core/apps/CODE/)")
+			core.Println("core-app run [--dev] [--watch] <app-code>")
+			core.Println("  app-code  installed package code (under ~/.core/apps/<app-code>/)")
 			core.Println("  --watch  hot-reload on .core/view.yaml changes (RFC §4.2)")
 			return 0
 		default:
@@ -121,7 +121,7 @@ func runInstalled(args []string) int {
 		}
 	}
 	if code == "" {
-		core.Error("run: CODE is required")
+		core.Error("run: app-code is required")
 		return 64
 	}
 	dir, err := app.DiscoverInstalled(coreio.Local, "", code)
@@ -269,7 +269,7 @@ func parseArgs(args []string) (mode app.Mode, start string, watch bool) {
 			core.Println("  keygen       generate a paired ed25519 keypair")
 			core.Println("  validate     lint .core/view.yaml against RFC §2 rules")
 			core.Println("  sdk          generate client SDKs (openapi, ts, go, php, python)")
-			core.Println("  run CODE     boot an installed package by code")
+			core.Println("  run <app-code>  boot an installed package by code")
 			core.Println("  pkg ...      manage packages (list, info, wrap, install, remove, update)")
 			core.Println("  marketplace  search/install/fetch from the marketplace")
 			os.Exit(0)

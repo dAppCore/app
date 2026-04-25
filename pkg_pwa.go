@@ -189,7 +189,7 @@ func WrapPWA(src *PWAManifest, opts WrapPWAOptions) *config.ViewManifest {
 	m := &config.ViewManifest{
 		Code:    code,
 		Name:    coalesce(src.Name, src.ShortName, code),
-		Version: version,
+		Version: config.ViewVersion(version),
 		Layout:  "C", // PWA single-surface app — Centre slot only
 	}
 

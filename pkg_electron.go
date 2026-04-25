@@ -5,8 +5,8 @@ package app
 import (
 	"context"
 
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -309,7 +309,7 @@ func WrapElectron(pkg *ElectronPackageJSON, scan *ElectronScanResult, opts WrapE
 	m := &config.ViewManifest{
 		Code:    code,
 		Name:    coalesce(pkg.ProductName, pkg.Name, code),
-		Version: coalesce(pkg.Version, "0.1.0"),
+		Version: config.ViewVersion(coalesce(pkg.Version, "0.1.0")),
 		Layout:  "C",
 	}
 
@@ -495,7 +495,7 @@ func WrapElectronRepo(ctx context.Context, medium coreio.Medium, ref string, opt
 		manifest.Name = opts.Name
 	}
 	if opts.Version != "" {
-		manifest.Version = opts.Version
+		manifest.Version = config.ViewVersion(opts.Version)
 	}
 	return manifest, rendererDir, nil
 }

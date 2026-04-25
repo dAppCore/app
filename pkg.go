@@ -5,8 +5,8 @@ package app
 import (
 	"context"
 
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -230,7 +230,7 @@ func pkgEntryFromManifest(medium coreio.Medium, viewPath, appPath string) (PkgEn
 	entry := PkgEntry{
 		Name:    manifest.Code,
 		Type:    PackageTypeNative,
-		Version: manifest.Version,
+		Version: string(manifest.Version),
 		Path:    appPath,
 	}
 	if manifest.Config != nil {
@@ -908,7 +908,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		updated := WrapPWA(pwa, WrapPWAOptions{
 			TargetURL: ResolvePWAAppURL(targetURL, pwa),
 			Code:      manifest.Code,
-			Version:   manifest.Version,
+			Version:   string(manifest.Version),
 		})
 		if updated == nil {
 			return appPath, coreerr.E("app.PkgUpdate", "WrapPWA returned nil", nil)
@@ -939,7 +939,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		updated, err := WrapWeb(medium, dir, WrapWebOptions{
 			Code:    manifest.Code,
 			Name:    manifest.Name,
-			Version: manifest.Version,
+			Version: string(manifest.Version),
 		})
 		if err != nil {
 			return appPath, coreerr.E("app.PkgUpdate", "web rewrap failed", err)
@@ -962,7 +962,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 	if dir, ok := stripPrefix(source, "wrap:electron:"); ok {
 		if !medium.IsDir(dir) {
 			if _, _, _, ok := ParseGitHubRepo(dir); ok {
-				installed, err := installElectronRepoSource(ctx, medium, home, manifest.Code, manifest.Name, manifest.Version, dir, true)
+				installed, err := installElectronRepoSource(ctx, medium, home, manifest.Code, manifest.Name, string(manifest.Version), dir, true)
 				if err != nil {
 					return appPath, err
 				}

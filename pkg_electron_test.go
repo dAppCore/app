@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -267,7 +267,7 @@ func TestPkgElectron_WriteElectronWrap_Good(t *testing.T) {
 		t.Fatalf("WriteElectronWrap: %v", err)
 	}
 	var round config.ViewManifest
-	if err := config.LoadManifest(medium, core.Path(dir, ".core", "view.yaml"), &round); err != nil {
+	if err := app.LoadViewManifest(medium, core.Path(dir, ".core", "view.yaml"), &round); err != nil {
 		t.Fatalf("LoadManifest: %v", err)
 	}
 	if round.Code != "x" {

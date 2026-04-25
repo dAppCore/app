@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
+	core "dappco.re/go/core"
 )
 
 // TestLayout_layout_Good — an HLCRF manifest with named components
@@ -29,23 +29,22 @@ func TestLayout_layout_Good(t *testing.T) {
 	}
 }
 
-// TestLayout_layout_Bad — a layout variant that references a missing
-// slot fails cleanly instead of silently producing a partial spec.
+// TestLayout_layout_Bad — a present slot with a non-string component
+// fails cleanly instead of leaking a malformed spec to the host.
 func TestLayout_layout_Bad(t *testing.T) {
 	c := core.New()
 	m := &config.ViewManifest{
-		Layout: "HCF",
+		Layout: "C",
 		Slots: map[string]any{
-			"H": "nav-breadcrumb",
-			"F": "status-bar",
+			"C": 42,
 		},
 	}
 	err := layout(c, m)
 	if err == nil {
-		t.Fatal("layout should reject a missing slot component")
+		t.Fatal("layout should reject a non-string slot component")
 	}
-	if !strings.Contains(err.Error(), "slots.C") {
-		t.Fatalf("layout error should name missing slot C; got %v", err)
+	if !strings.Contains(err.Error(), "must name a string component") {
+		t.Fatalf("layout error should name the malformed slot; got %v", err)
 	}
 }
 
@@ -165,8 +164,7 @@ func TestLayout_resolveLayout_Good(t *testing.T) {
 }
 
 // TestLayout_resolveLayout_Bad — a slot with a non-string component is
-// rejected; missing required slots, a nil manifest and a nil core also
-// error.
+// rejected; a nil manifest and a nil core also error.
 func TestLayout_resolveLayout_Bad(t *testing.T) {
 	c := core.New()
 	m := &config.ViewManifest{
@@ -178,15 +176,6 @@ func TestLayout_resolveLayout_Bad(t *testing.T) {
 	if _, err := resolveLayout(c, m); err == nil {
 		t.Fatal("resolveLayout should reject non-string component")
 	}
-	m = &config.ViewManifest{
-		Layout: "HC",
-		Slots: map[string]any{
-			"H": "nav-breadcrumb",
-		},
-	}
-	if _, err := resolveLayout(c, m); err == nil {
-		t.Fatal("resolveLayout should reject a missing slot declared by the layout")
-	}
 	if _, err := resolveLayout(c, nil); err == nil {
 		t.Fatal("resolveLayout should reject nil manifest")
 	}
@@ -196,8 +185,8 @@ func TestLayout_resolveLayout_Bad(t *testing.T) {
 }
 
 // TestLayout_resolveLayout_Ugly — an empty manifest returns (nil, nil)
-// so headless CLI apps don't leak a spec object. Extra slots declared
-// outside the variant string are ignored during composition.
+// so headless CLI apps don't leak a spec object. Missing and extra slots
+// are ignored during composition.
 func TestLayout_resolveLayout_Ugly(t *testing.T) {
 	c := core.New()
 	if spec, err := resolveLayout(c, &config.ViewManifest{}); err != nil || spec != nil {
@@ -221,6 +210,24 @@ func TestLayout_resolveLayout_Ugly(t *testing.T) {
 	}
 	if containsString(spec.Order, "X") {
 		t.Errorf("slot outside variant should not appear in Order; got %v", spec.Order)
+	}
+
+	partial := &config.ViewManifest{
+		Layout: "HCF",
+		Slots: map[string]any{
+			"H": "a",
+			"F": "c",
+		},
+	}
+	spec, err = resolveLayout(c, partial)
+	if err != nil {
+		t.Fatalf("partial resolveLayout: %v", err)
+	}
+	if spec.Has("C") {
+		t.Errorf("missing slot C should be skipped; got %v", spec.Slots)
+	}
+	if containsString(spec.Order, "C") {
+		t.Errorf("missing slot C should not appear in Order; got %v", spec.Order)
 	}
 }
 
