@@ -3,6 +3,7 @@
 package app
 
 import (
+	"crypto/hkdf" // Note: AX-6 - structural KDF primitive for workspace key separation; no core HKDF wrapper exists.
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -15,9 +16,30 @@ import (
 	core "dappco.re/go/core"
 	corestore "dappco.re/go/io/store"
 	coreerr "dappco.re/go/log"
+	"golang.org/x/crypto/argon2" // Note: AX-6 - password KDF primitive required to slow offline workspace-password attacks.
 )
 
 const workspaceStoreDBName = "store.db"
+
+const (
+	workspaceSecretKeyBytes = 32
+
+	workspaceArgon2Memory      uint32 = 64 * 1024
+	workspaceArgon2Time        uint32 = 3
+	workspaceArgon2Parallelism uint8  = 4
+)
+
+type workspaceSecretMaterialMode string
+
+const (
+	workspaceSecretMaterialKeyfile  workspaceSecretMaterialMode = "keyfile"
+	workspaceSecretMaterialPassword workspaceSecretMaterialMode = "password"
+)
+
+type workspaceSecretKeys struct {
+	encryption []byte
+	hmac       []byte
+}
 
 // workspaceObjectStore is the runtime object-store adapter backed by the
 // SQLite KV store shipped in core/io/store. Group + key identifiers are
@@ -27,7 +49,8 @@ type workspaceObjectStore struct {
 
 	mu    sync.Mutex
 	kv    *corestore.KeyValueStore
-	key   []byte
+	enc   []byte
+	hmac  []byte
 	sigil *enchantrix.ChaChaPolySigil
 }
 
@@ -46,7 +69,8 @@ func (store *workspaceObjectStore) Close() error {
 	}
 	err := store.kv.Close()
 	store.kv = nil
-	store.key = nil
+	store.enc = nil
+	store.hmac = nil
 	store.sigil = nil
 	return err
 }
@@ -112,11 +136,13 @@ func (store *workspaceObjectStore) ensureLocked() error {
 	if store.ws == nil {
 		return coreerr.E("app.workspaceObjectStore.ensureLocked", "workspace unavailable", nil)
 	}
-	if store.kv != nil && store.sigil != nil && len(store.key) == 32 {
+	if store.kv != nil && store.sigil != nil &&
+		len(store.enc) == workspaceSecretKeyBytes &&
+		len(store.hmac) == workspaceSecretKeyBytes {
 		return nil
 	}
 
-	secret, err := deriveWorkspaceSecret(store.ws)
+	keys, err := deriveWorkspaceSecrets(store.ws)
 	if err != nil {
 		return err
 	}
@@ -125,20 +151,21 @@ func (store *workspaceObjectStore) ensureLocked() error {
 	if err != nil {
 		return coreerr.E("app.workspaceObjectStore.ensureLocked", "open store database failed", err)
 	}
-	sigil, err := enchantrix.NewChaChaPolySigilWithObfuscator(secret, &enchantrix.ShuffleMaskObfuscator{})
+	sigil, err := enchantrix.NewChaChaPolySigilWithObfuscator(keys.encryption, &enchantrix.ShuffleMaskObfuscator{})
 	if err != nil {
 		_ = kv.Close()
 		return coreerr.E("app.workspaceObjectStore.ensureLocked", "initialise sigil failed", err)
 	}
 
 	store.kv = kv
-	store.key = secret
+	store.enc = keys.encryption
+	store.hmac = keys.hmac
 	store.sigil = sigil
 	return nil
 }
 
 func (store *workspaceObjectStore) hashLocked(scope, value string) string {
-	mac := hmac.New(sha256.New, store.key)
+	mac := hmac.New(sha256.New, store.hmac)
 	mac.Write([]byte(scope))
 	mac.Write([]byte{0})
 	mac.Write([]byte(value))
@@ -166,43 +193,84 @@ func (store *workspaceObjectStore) decryptLocked(value string) (string, error) {
 }
 
 func deriveWorkspaceSecret(ws *Workspace) ([]byte, error) {
+	keys, err := deriveWorkspaceSecrets(ws)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, len(keys.encryption))
+	copy(out, keys.encryption)
+	return out, nil
+}
+
+func deriveWorkspaceSecrets(ws *Workspace) (workspaceSecretKeys, error) {
 	if ws == nil {
-		return nil, coreerr.E("app.deriveWorkspaceSecret", "nil workspace", nil)
+		return workspaceSecretKeys{}, coreerr.E("app.deriveWorkspaceSecrets", "nil workspace", nil)
+	}
+	salt, err := ensureWorkspaceSecretSalt(ws)
+	if err != nil {
+		return workspaceSecretKeys{}, coreerr.E("app.deriveWorkspaceSecrets", "resolve workspace salt failed", err)
 	}
 
 	switch secret := core.Trim(core.Env("CORE_WORKSPACE_KEY")); secret {
 	case "":
 	default:
-		return deriveWorkspaceSecretMaterial(ws.Code, []byte(secret)), nil
+		return deriveWorkspaceSecretMaterial(ws.Code, workspaceSecretMaterialKeyfile, []byte(secret), salt)
 	}
 	switch password := core.Trim(core.Env("CORE_WORKSPACE_PASSWORD")); password {
 	case "":
 	default:
-		return deriveWorkspaceSecretMaterial(ws.Code, []byte(password)), nil
+		return deriveWorkspaceSecretMaterial(ws.Code, workspaceSecretMaterialPassword, []byte(password), salt)
 	}
 
 	home := workspaceHomeFromRoot(ws.Root)
 	if home == "" {
-		return nil, coreerr.E("app.deriveWorkspaceSecret", "cannot resolve workspace home", nil)
+		return workspaceSecretKeys{}, coreerr.E("app.deriveWorkspaceSecrets", "cannot resolve workspace home", nil)
 	}
 	priv, err := ensureDefaultPrivateKey(ws.medium, home)
 	if err != nil {
-		return nil, coreerr.E("app.deriveWorkspaceSecret", "resolve workspace key failed", err)
+		return workspaceSecretKeys{}, coreerr.E("app.deriveWorkspaceSecrets", "resolve workspace key failed", err)
 	}
-	return deriveWorkspaceSecretMaterial(ws.Code, []byte(priv)), nil
+	return deriveWorkspaceSecretMaterial(ws.Code, workspaceSecretMaterialKeyfile, []byte(priv), salt)
 }
 
-func deriveWorkspaceSecretMaterial(code string, material []byte) []byte {
-	h := sha256.New()
-	h.Write([]byte("core.app.workspace"))
-	h.Write([]byte{0})
-	h.Write(material)
-	h.Write([]byte{0})
-	h.Write([]byte(code))
-	sum := h.Sum(nil)
-	out := make([]byte, len(sum))
-	copy(out, sum)
-	return out
+func deriveWorkspaceSecretMaterial(code string, mode workspaceSecretMaterialMode, material, salt []byte) (workspaceSecretKeys, error) {
+	switch mode {
+	case workspaceSecretMaterialKeyfile:
+		return deriveWorkspaceSecretSubKeys(code, mode, material, salt)
+	case workspaceSecretMaterialPassword:
+		master := argon2.IDKey(
+			material,
+			salt,
+			workspaceArgon2Time,
+			workspaceArgon2Memory,
+			workspaceArgon2Parallelism,
+			workspaceSecretKeyBytes,
+		)
+		return deriveWorkspaceSecretSubKeys(code, mode, master, salt)
+	default:
+		return workspaceSecretKeys{}, coreerr.E("app.deriveWorkspaceSecretMaterial", "unknown secret material mode", nil)
+	}
+}
+
+func deriveWorkspaceSecretSubKeys(code string, mode workspaceSecretMaterialMode, material, salt []byte) (workspaceSecretKeys, error) {
+	enc, err := deriveWorkspaceSecretSubKey(code, mode, "enc", material, salt)
+	if err != nil {
+		return workspaceSecretKeys{}, err
+	}
+	mac, err := deriveWorkspaceSecretSubKey(code, mode, "hmac", material, salt)
+	if err != nil {
+		return workspaceSecretKeys{}, err
+	}
+	return workspaceSecretKeys{encryption: enc, hmac: mac}, nil
+}
+
+func deriveWorkspaceSecretSubKey(code string, mode workspaceSecretMaterialMode, purpose string, material, salt []byte) ([]byte, error) {
+	info := "core.app.workspace.v1\x00" + string(mode) + "\x00" + purpose + "\x00" + code
+	key, err := hkdf.Key(sha256.New, material, salt, info, workspaceSecretKeyBytes)
+	if err != nil {
+		return nil, coreerr.E("app.deriveWorkspaceSecretSubKey", "HKDF-SHA256 failed", err)
+	}
+	return key, nil
 }
 
 func workspaceHomeFromRoot(root string) string {
