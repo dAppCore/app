@@ -4,6 +4,11 @@ package app
 
 import (
 	"crypto/rand" // Note: AX-6 - workspace KDF salts require cryptographic randomness; no core CSPRNG wrapper exists.
+	"errors"
+	"io"
+	"io/fs"
+	"os" // Note: AX-6 - O_CREATE|O_EXCL is required for atomic salt-file creation; no core primitive exists.
+	"time"
 
 	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
@@ -13,6 +18,16 @@ import (
 const (
 	workspaceCryptoMetadataFileName = "workspace.crypto.json"
 	workspaceSecretSaltBytes        = 32
+	workspaceSecretSaltReadAttempts = 100
+	workspaceSecretSaltReadDelay    = time.Millisecond
+)
+
+var (
+	openWorkspaceCryptoMetadataFile  = os.OpenFile
+	writeWorkspaceCryptoMetadataBody = func(w io.Writer, body string) error {
+		_, err := io.WriteString(w, body)
+		return err
+	}
 )
 
 type workspaceCryptoMetadata struct {
@@ -23,6 +38,11 @@ type workspaceCryptoMetadata struct {
 func ensureWorkspaceSecretSalt(ws *Workspace) ([]byte, error) {
 	metadata, err := readWorkspaceCryptoMetadata(ws)
 	if err != nil {
+		if workspaceCryptoMetadataFileExists(ws) {
+			if salt, retryErr := readWorkspaceSecretSaltAfterCreateRace(ws); retryErr == nil {
+				return salt, nil
+			}
+		}
 		return nil, err
 	}
 	if core.Trim(metadata.Salt) != "" {
@@ -37,6 +57,9 @@ func ensureWorkspaceSecretSalt(ws *Workspace) ([]byte, error) {
 	metadata.Version = 1
 	metadata.Salt = core.Base64Encode(salt)
 	if err := writeWorkspaceCryptoMetadata(ws, metadata); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return readWorkspaceSecretSaltAfterCreateRace(ws)
+		}
 		return nil, err
 	}
 
@@ -93,10 +116,65 @@ func writeWorkspaceCryptoMetadata(ws *Workspace, metadata workspaceCryptoMetadat
 	if err := medium.EnsureDir(ws.Root); err != nil {
 		return coreerr.E("app.writeWorkspaceCryptoMetadata", "ensure workspace root failed", err)
 	}
-	if err := medium.WriteMode(workspaceCryptoMetadataPath(ws), string(body), 0600); err != nil {
+	if err := createWorkspaceCryptoMetadata(medium, workspaceCryptoMetadataPath(ws), string(body)); err != nil {
 		return coreerr.E("app.writeWorkspaceCryptoMetadata", "write workspace crypto metadata failed", err)
 	}
 	return nil
+}
+
+func createWorkspaceCryptoMetadata(medium coreio.Medium, path, body string) error {
+	if medium != coreio.Local {
+		if medium.IsFile(path) {
+			return fs.ErrExist
+		}
+		return medium.WriteMode(path, body, 0600)
+	}
+
+	file, err := openWorkspaceCryptoMetadataFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	if err := writeWorkspaceCryptoMetadataBody(file, body); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return err
+	}
+	return nil
+}
+
+func readWorkspaceSecretSaltAfterCreateRace(ws *Workspace) ([]byte, error) {
+	var lastErr error
+	for i := 0; i < workspaceSecretSaltReadAttempts; i++ {
+		metadata, err := readWorkspaceCryptoMetadata(ws)
+		if err == nil && core.Trim(metadata.Salt) != "" {
+			salt, err := decodeWorkspaceSecretSalt(metadata.Salt)
+			if err == nil {
+				return salt, nil
+			}
+			lastErr = err
+		} else if err != nil {
+			lastErr = err
+		}
+
+		if i+1 < workspaceSecretSaltReadAttempts {
+			time.Sleep(workspaceSecretSaltReadDelay)
+		}
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, coreerr.E("app.ensureWorkspaceSecretSalt", "workspace salt race winner did not persist salt", nil)
+}
+
+func workspaceCryptoMetadataFileExists(ws *Workspace) bool {
+	if ws == nil {
+		return false
+	}
+	return workspaceMetadataMedium(ws).IsFile(workspaceCryptoMetadataPath(ws))
 }
 
 func decodeWorkspaceSecretSalt(encoded string) ([]byte, error) {
