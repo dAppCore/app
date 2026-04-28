@@ -47,7 +47,7 @@ require (
 	modernc.org/sqlite v1.47.0 // indirect
 )
 
-replace dappco.re/go/config => ../config.codex-v090
+replace dappco.re/go/config => ../config
 
 replace dappco.re/go/io => ../go-io
 
