@@ -404,3 +404,61 @@ func TestYaml_yamlMarshalBytes_Ugly_GUICompatDedup(t *testing.T) {
 		}
 	}
 }
+
+func TestYaml_LoadViewManifest_Good(t *testing.T) {
+	path := t.TempDir() + "/view.yaml"
+	if err := coreio.Local.Write(path, "code: load-good\nname: Load Good\nversion: 0.1.0\n"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	var m config.ViewManifest
+	if err := LoadViewManifest(coreio.Local, path, &m); err != nil {
+		t.Fatalf("LoadViewManifest: %v", err)
+	}
+	if m.Code != "load-good" {
+		t.Fatalf("Code = %q; want load-good", m.Code)
+	}
+}
+
+func TestYaml_LoadViewManifest_Bad(t *testing.T) {
+	var m config.ViewManifest
+	if err := LoadViewManifest(coreio.Local, "", &m); err == nil {
+		t.Fatal("empty path should fail")
+	}
+	if err := LoadViewManifest(coreio.Local, t.TempDir()+"/missing.yaml", &m); err == nil {
+		t.Fatal("missing file should fail")
+	}
+}
+
+func TestYaml_LoadViewManifest_Ugly(t *testing.T) {
+	path := t.TempDir() + "/view.yaml"
+	if err := coreio.Local.Write(path, "::: not yaml :::"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	var m config.ViewManifest
+	if err := LoadViewManifest(coreio.Local, path, &m); err == nil {
+		t.Fatal("malformed manifest should fail")
+	}
+}
+
+func TestYaml_UnmarshalViewManifest_Good(t *testing.T) {
+	var m config.ViewManifest
+	if err := UnmarshalViewManifest([]byte("code: unmarshal-good\nname: Unmarshal Good\nversion: 0.1.0\n"), &m); err != nil {
+		t.Fatalf("UnmarshalViewManifest: %v", err)
+	}
+	if m.Code != "unmarshal-good" {
+		t.Fatalf("Code = %q; want unmarshal-good", m.Code)
+	}
+}
+
+func TestYaml_UnmarshalViewManifest_Bad(t *testing.T) {
+	if err := UnmarshalViewManifest([]byte("code: x\n"), nil); err == nil {
+		t.Fatal("nil destination should fail")
+	}
+}
+
+func TestYaml_UnmarshalViewManifest_Ugly(t *testing.T) {
+	var m config.ViewManifest
+	if err := UnmarshalViewManifest([]byte("::: not yaml :::"), &m); err == nil {
+		t.Fatal("malformed YAML should fail")
+	}
+}

@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 

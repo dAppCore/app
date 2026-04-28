@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
 )
@@ -76,9 +76,9 @@ func newSignedHostTestFixture(t *testing.T, code, name string) (string, string, 
 	return home, root, hex.EncodeToString(pub), priv
 }
 
-// TestHost_Launch_Good — a fresh host launches an installed plugin
+// TestHost_Host_Launch_Good — a fresh host launches an installed plugin
 // by code and registers it under Running().
-func TestHost_Launch_Good(t *testing.T) {
+func TestHost_Host_Launch_Good(t *testing.T) {
 	home := newHostTestFixture(t, "photo-browser")
 	h := NewHost(HostOptions{Home: home, Mode: ModeDev})
 	inst, err := h.Launch(context.Background(), "photo-browser", LaunchOptions{})
@@ -116,10 +116,10 @@ func TestHost_Launch_ProdVerify_Good(t *testing.T) {
 	}
 }
 
-// TestHost_Launch_Bad — re-launching the same code without a prior
+// TestHost_Host_Launch_Bad — re-launching the same code without a prior
 // Stop returns a typed error so a confused UI can't clobber the
 // existing Instance.
-func TestHost_Launch_Bad(t *testing.T) {
+func TestHost_Host_Launch_Bad(t *testing.T) {
 	home := newHostTestFixture(t, "markdown-editor")
 	h := NewHost(HostOptions{Home: home, Mode: ModeDev})
 	if _, err := h.Launch(context.Background(), "markdown-editor", LaunchOptions{}); err != nil {
@@ -144,9 +144,9 @@ func TestHost_Launch_ProdVerify_Bad(t *testing.T) {
 	}
 }
 
-// TestHost_Launch_Ugly — empty code is rejected up front so the host
+// TestHost_Host_Launch_Ugly — empty code is rejected up front so the host
 // never registers an entry under the empty string.
-func TestHost_Launch_Ugly(t *testing.T) {
+func TestHost_Host_Launch_Ugly(t *testing.T) {
 	h := NewHost(HostOptions{Home: t.TempDir(), Mode: ModeDev})
 	if _, err := h.Launch(context.Background(), "", LaunchOptions{}); err == nil {
 		t.Error("empty code should produce a typed error")
@@ -233,9 +233,9 @@ func TestHost_Launch_ProdPrefersCompiled_Good(t *testing.T) {
 	}
 }
 
-// TestHost_Stop_Good — Stop tears down the Instance and removes it
+// TestHost_Host_Stop_Good — Stop tears down the Instance and removes it
 // from Running() so the code can be re-Launched afterwards.
-func TestHost_Stop_Good(t *testing.T) {
+func TestHost_Host_Stop_Good(t *testing.T) {
 	home := newHostTestFixture(t, "calculator")
 	h := NewHost(HostOptions{Home: home, Mode: ModeDev})
 	inst, err := h.Launch(context.Background(), "calculator", LaunchOptions{})
@@ -259,9 +259,9 @@ func TestHost_Stop_Good(t *testing.T) {
 	}
 }
 
-// TestHost_Stop_Bad — Stop on an unknown code returns a typed error
+// TestHost_Host_Stop_Bad — Stop on an unknown code returns a typed error
 // (not a panic).
-func TestHost_Stop_Bad(t *testing.T) {
+func TestHost_Host_Stop_Bad(t *testing.T) {
 	h := NewHost(HostOptions{Home: t.TempDir(), Mode: ModeDev})
 	r := h.Stop(context.Background(), "ghost-plugin")
 	if r.OK {
@@ -269,8 +269,8 @@ func TestHost_Stop_Bad(t *testing.T) {
 	}
 }
 
-// TestHost_Stop_Ugly — empty code is rejected.
-func TestHost_Stop_Ugly(t *testing.T) {
+// TestHost_Host_Stop_Ugly — empty code is rejected.
+func TestHost_Host_Stop_Ugly(t *testing.T) {
 	h := NewHost(HostOptions{Home: t.TempDir(), Mode: ModeDev})
 	r := h.Stop(context.Background(), "")
 	if r.OK {
@@ -278,9 +278,9 @@ func TestHost_Stop_Ugly(t *testing.T) {
 	}
 }
 
-// TestHost_Shutdown_Good — Shutdown stops every running plugin and
+// TestHost_Host_Shutdown_Good — Shutdown stops every running plugin and
 // leaves Running() empty.
-func TestHost_Shutdown_Good(t *testing.T) {
+func TestHost_Host_Shutdown_Good(t *testing.T) {
 	home := t.TempDir()
 	for _, code := range []string{"a-plugin", "b-plugin", "c-plugin"} {
 		newHostTestPluginAt(t, home, code)
@@ -304,8 +304,8 @@ func TestHost_Shutdown_Good(t *testing.T) {
 	}
 }
 
-// TestHost_Shutdown_Bad — Shutdown on an empty host is a no-op OK.
-func TestHost_Shutdown_Bad(t *testing.T) {
+// TestHost_Host_Shutdown_Bad — Shutdown on an empty host is a no-op OK.
+func TestHost_Host_Shutdown_Bad(t *testing.T) {
 	h := NewHost(HostOptions{Home: t.TempDir()})
 	if r := h.Shutdown(context.Background()); !r.OK {
 		t.Errorf("empty-host Shutdown: %v", r.Value)
@@ -316,18 +316,18 @@ func TestHost_Shutdown_Bad(t *testing.T) {
 	}
 }
 
-// TestHost_Shutdown_Ugly — a nil receiver produces a typed Result
+// TestHost_Host_Shutdown_Ugly — a nil receiver produces a typed Result
 // instead of a panic.
-func TestHost_Shutdown_Ugly(t *testing.T) {
+func TestHost_Host_Shutdown_Ugly(t *testing.T) {
 	var h *Host
 	if r := h.Shutdown(context.Background()); r.OK {
 		t.Error("nil-host Shutdown should fail")
 	}
 }
 
-// TestHost_Dispatch_Good — routing an action that the target plugin
+// TestHost_Host_Dispatch_Good — routing an action that the target plugin
 // registered returns the handler's result to the caller.
-func TestHost_Dispatch_Good(t *testing.T) {
+func TestHost_Host_Dispatch_Good(t *testing.T) {
 	home := newHostTestFixture(t, "editor")
 	h := NewHost(HostOptions{Home: home, Mode: ModeDev})
 	inst, err := h.Launch(context.Background(), "editor", LaunchOptions{})
@@ -348,10 +348,10 @@ func TestHost_Dispatch_Good(t *testing.T) {
 	}
 }
 
-// TestHost_Dispatch_Bad — dispatching to a target that did not
+// TestHost_Host_Dispatch_Bad — dispatching to a target that did not
 // register the action returns a typed error so the caller can surface
 // a "feature not available" message.
-func TestHost_Dispatch_Bad(t *testing.T) {
+func TestHost_Host_Dispatch_Bad(t *testing.T) {
 	home := newHostTestFixture(t, "target")
 	h := NewHost(HostOptions{Home: home, Mode: ModeDev})
 	if _, err := h.Launch(context.Background(), "target", LaunchOptions{}); err != nil {
@@ -363,10 +363,10 @@ func TestHost_Dispatch_Bad(t *testing.T) {
 	}
 }
 
-// TestHost_Dispatch_Ugly — an empty sourceCode / targetCode / action
+// TestHost_Host_Dispatch_Ugly — an empty sourceCode / targetCode / action
 // is rejected before any lookup so a buggy caller cannot silently
 // dispatch into the void.
-func TestHost_Dispatch_Ugly(t *testing.T) {
+func TestHost_Host_Dispatch_Ugly(t *testing.T) {
 	h := NewHost(HostOptions{Home: t.TempDir()})
 	cases := []struct {
 		name                            string
@@ -384,9 +384,9 @@ func TestHost_Dispatch_Ugly(t *testing.T) {
 	}
 }
 
-// TestHost_Each_Good — Each walks plugins in lexicographic order so
+// TestHost_Host_Each_Good — Each walks plugins in lexicographic order so
 // tests can assert a stable render sequence.
-func TestHost_Each_Good(t *testing.T) {
+func TestHost_Host_Each_Good(t *testing.T) {
 	home := t.TempDir()
 	for _, code := range []string{"zulu", "alpha", "mike"} {
 		newHostTestPluginAt(t, home, code)
@@ -414,9 +414,9 @@ func TestHost_Each_Good(t *testing.T) {
 	}
 }
 
-// TestHost_Each_Bad — a false return from fn stops the iteration
+// TestHost_Host_Each_Bad — a false return from fn stops the iteration
 // early.
-func TestHost_Each_Bad(t *testing.T) {
+func TestHost_Host_Each_Bad(t *testing.T) {
 	home := t.TempDir()
 	for _, code := range []string{"a", "b", "c"} {
 		newHostTestPluginAt(t, home, code)
@@ -437,12 +437,93 @@ func TestHost_Each_Bad(t *testing.T) {
 	}
 }
 
-// TestHost_Each_Ugly — nil fn or nil receiver is a no-op, not a panic.
-func TestHost_Each_Ugly(t *testing.T) {
+// TestHost_Host_Each_Ugly — nil fn or nil receiver is a no-op, not a panic.
+func TestHost_Host_Each_Ugly(t *testing.T) {
 	var h *Host
 	h.Each(nil) // must not panic
 	h2 := NewHost(HostOptions{})
 	h2.Each(nil) // also no-op on a live host
+}
+
+func TestHost_NewHost_Good(t *testing.T) {
+	home := t.TempDir()
+	h := NewHost(HostOptions{Home: home, Mode: ModeDev})
+	if h == nil {
+		t.Fatal("NewHost returned nil")
+	}
+	if h.opts.Home != home || h.opts.Mode != ModeDev {
+		t.Fatalf("NewHost fields = (%q,%v); want (%q,%v)", h.opts.Home, h.opts.Mode, home, ModeDev)
+	}
+}
+
+func TestHost_NewHost_Bad(t *testing.T) {
+	h := NewHost(HostOptions{})
+	if h == nil {
+		t.Fatal("NewHost zero value returned nil")
+	}
+	if h.opts.Mode != ModeProd {
+		t.Fatalf("zero-value host mode = %v; want ModeProd", h.opts.Mode)
+	}
+}
+
+func TestHost_NewHost_Ugly(t *testing.T) {
+	h := NewHost(HostOptions{DisableKeyLoad: true})
+	if !h.opts.DisableKeyLoad {
+		t.Fatal("NewHost did not preserve DisableKeyLoad")
+	}
+}
+
+func TestHost_Host_Get_Good(t *testing.T) {
+	home := newHostTestFixture(t, "get-good")
+	h := NewHost(HostOptions{Home: home, Mode: ModeDev})
+	inst, err := h.Launch(context.Background(), "get-good", LaunchOptions{})
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	got, ok := h.Get("get-good")
+	if !ok || got != inst {
+		t.Fatalf("Get returned (%v,%v); want launched instance,true", got, ok)
+	}
+}
+
+func TestHost_Host_Get_Bad(t *testing.T) {
+	h := NewHost(HostOptions{Home: t.TempDir(), Mode: ModeDev})
+	if got, ok := h.Get("missing"); ok || got != nil {
+		t.Fatalf("Get(missing) = (%v,%v); want nil,false", got, ok)
+	}
+}
+
+func TestHost_Host_Get_Ugly(t *testing.T) {
+	var h *Host
+	if got, ok := h.Get("anything"); ok || got != nil {
+		t.Fatalf("nil.Get = (%v,%v); want nil,false", got, ok)
+	}
+}
+
+func TestHost_Host_Running_Good(t *testing.T) {
+	home := newHostTestFixture(t, "running-good")
+	h := NewHost(HostOptions{Home: home, Mode: ModeDev})
+	if _, err := h.Launch(context.Background(), "running-good", LaunchOptions{}); err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	got := h.Running()
+	if len(got) != 1 || got[0] != "running-good" {
+		t.Fatalf("Running = %v; want [running-good]", got)
+	}
+}
+
+func TestHost_Host_Running_Bad(t *testing.T) {
+	h := NewHost(HostOptions{Home: t.TempDir(), Mode: ModeDev})
+	if got := h.Running(); len(got) != 0 {
+		t.Fatalf("empty host Running = %v; want empty", got)
+	}
+}
+
+func TestHost_Host_Running_Ugly(t *testing.T) {
+	var h *Host
+	if got := h.Running(); len(got) != 0 {
+		t.Fatalf("nil host Running = %v; want empty", got)
+	}
 }
 
 // newHostTestPluginAt is a tiny test helper that writes a stub

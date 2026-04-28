@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	"dappco.re/go/config"
 )
 
@@ -46,6 +46,41 @@ func captureLog(t *testing.T, fn func(), phrase string, wantCount int) {
 // caller with a closed handle.
 func stderrFallback() io.Writer {
 	return io.Discard
+}
+
+func TestPermissions_Field_String_Good(t *testing.T) {
+	cases := []struct {
+		field permissionField
+		want  string
+	}{
+		{fieldRead, "read"},
+		{fieldWrite, "write"},
+		{fieldNet, "net"},
+		{fieldRun, "run"},
+		{fieldStore, "store"},
+		{fieldNotification, "notifications"},
+		{fieldClipboardRead, "clipboard"},
+		{fieldDialogOpen, "gui.dialog.open"},
+		{fieldCamera, "camera"},
+		{fieldLocation, "location"},
+	}
+	for _, tc := range cases {
+		if got := tc.field.String(); got != tc.want {
+			t.Fatalf("%v.String() = %q; want %q", tc.field, got, tc.want)
+		}
+	}
+}
+
+func TestPermissions_Field_String_Bad(t *testing.T) {
+	if got := permissionField(99).String(); got != "unknown" {
+		t.Fatalf("permissionField(99).String() = %q; want unknown", got)
+	}
+}
+
+func TestPermissions_Field_String_Ugly(t *testing.T) {
+	if got := permissionField(-1).String(); got != "unknown" {
+		t.Fatalf("permissionField(-1).String() = %q; want unknown", got)
+	}
 }
 
 // TestPermissions_permissions_Good — a manifest that declares `read`

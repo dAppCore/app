@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	"dappco.re/go/io/sigil"
 	corestore "dappco.re/go/io/store"
 	coreerr "dappco.re/go/log"
@@ -152,7 +152,9 @@ func (store *workspaceObjectStore) ensureLocked() error {
 	}
 	cipherSigil, err := sigil.NewChaChaPolySigil(keys.encryption, &sigil.ShuffleMaskObfuscator{})
 	if err != nil {
-		_ = kv.Close()
+		if closeErr := kv.Close(); closeErr != nil {
+			return coreerr.E("app.workspaceObjectStore.ensureLocked", "initialise sigil failed and close failed", err)
+		}
 		return coreerr.E("app.workspaceObjectStore.ensureLocked", "initialise sigil failed", err)
 	}
 

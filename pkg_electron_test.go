@@ -3,11 +3,12 @@
 package app_test
 
 import (
+	"context"
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -279,5 +280,45 @@ func TestPkgElectron_WriteElectronWrap_Good(t *testing.T) {
 func TestPkgElectron_WriteElectronWrap_Bad(t *testing.T) {
 	if err := app.WriteElectronWrap(coreio.Local, t.TempDir(), nil); err == nil {
 		t.Error("WriteElectronWrap(nil) returned no error")
+	}
+}
+
+func TestPkgElectron_WriteElectronWrap_Ugly(t *testing.T) {
+	dir := t.TempDir()
+	m := &config.ViewManifest{Code: "nil-medium-electron", Name: "Nil Medium Electron", Version: "0.1.0"}
+	if err := app.WriteElectronWrap(nil, dir, m); err != nil {
+		t.Fatalf("WriteElectronWrap nil medium: %v", err)
+	}
+	var round config.ViewManifest
+	if err := app.LoadViewManifest(coreio.Local, core.Path(dir, ".core", "view.yaml"), &round); err != nil {
+		t.Fatalf("LoadViewManifest: %v", err)
+	}
+	if round.Code != "nil-medium-electron" {
+		t.Fatalf("Code = %q; want nil-medium-electron", round.Code)
+	}
+}
+
+func TestPkgElectron_WrapElectronRepo_Good(t *testing.T) {
+	if _, _, err := app.WrapElectronRepo(context.Background(), coreio.Local,
+		"gitlab.com/owner/repo", app.WrapElectronRepoOptions{ScratchDir: t.TempDir()}); err == nil {
+		t.Fatal("unsupported repo host should fail before release fetch")
+	}
+}
+
+func TestPkgElectron_WrapElectronRepo_Bad(t *testing.T) {
+	if _, _, err := app.WrapElectronRepo(context.Background(), coreio.Local, "",
+		app.WrapElectronRepoOptions{ScratchDir: t.TempDir()}); err == nil {
+		t.Fatal("empty repo reference should fail")
+	}
+	if _, _, err := app.WrapElectronRepo(context.Background(), coreio.Local, "github.com/owner/repo",
+		app.WrapElectronRepoOptions{}); err == nil {
+		t.Fatal("empty scratch dir should fail")
+	}
+}
+
+func TestPkgElectron_WrapElectronRepo_Ugly(t *testing.T) {
+	if _, _, err := app.WrapElectronRepo(context.Background(), nil,
+		"forge.example/owner/repo", app.WrapElectronRepoOptions{ScratchDir: t.TempDir()}); err == nil {
+		t.Fatal("nil medium with unsupported host should fail cleanly")
 	}
 }

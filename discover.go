@@ -3,8 +3,8 @@
 package app
 
 import (
+	core "dappco.re/go"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )

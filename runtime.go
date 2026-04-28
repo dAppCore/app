@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -110,7 +110,9 @@ func (rt *runtimeBindings) shutdown() {
 	rt.store = nil
 	rt.storeMu.Unlock()
 	if store != nil {
-		_ = store.Close()
+		if err := store.Close(); err != nil {
+			core.Warn("app.runtimeBindings.shutdown: store close failed", "err", err)
+		}
 	}
 }
 
@@ -124,7 +126,9 @@ func (rt *runtimeBindings) workspaceStore() (*workspaceObjectStore, error) {
 		return rt.store, nil
 	}
 	if rt.store != nil {
-		_ = rt.store.Close()
+		if err := rt.store.Close(); err != nil {
+			return nil, coreerr.E("app.runtimeBindings.workspaceStore", "close previous store failed", err)
+		}
 		rt.store = nil
 	}
 	rt.store = newWorkspaceObjectStore(rt.inst.Workspace)
@@ -549,7 +553,9 @@ func (rt *runtimeBindings) handleI18NTranslate(_ context.Context, opts core.Opti
 		return resultError("app.runtime.handleI18NTranslate", "key is required", nil)
 	}
 	if locale := strings.TrimSpace(opts.String("locale")); locale != "" {
-		_ = rt.inst.Core.I18n().SetLanguage(locale)
+		if r := rt.inst.Core.I18n().SetLanguage(locale); !r.OK {
+			return resultError("app.runtime.handleI18NTranslate", "set language failed", extractErr(r))
+		}
 	}
 	result := rt.inst.Core.I18n().Translate(key)
 	if !result.OK {

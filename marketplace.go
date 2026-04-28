@@ -5,7 +5,7 @@ package app
 import (
 	"context"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
@@ -450,7 +450,9 @@ func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInsta
 		if listing.Category != "" {
 			// Best-effort category stamp so `pkg info` can show it
 			// regardless of which install path landed the manifest.
-			_ = stampCategory(medium, installed, listing.Category)
+			if stampErr := stampCategory(medium, installed, listing.Category); stampErr != nil {
+				core.Warn("marketplace install: category stamp failed", "code", listing.Code, "err", stampErr)
+			}
 		}
 		// PWA wraps are unsigned by construction (the CoreApp signs the
 		// wrapped manifest only when the user supplies a key) so there
@@ -471,7 +473,9 @@ func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInsta
 			return dest, err
 		}
 		if listing.Category != "" {
-			_ = stampCategory(medium, installed, listing.Category)
+			if stampErr := stampCategory(medium, installed, listing.Category); stampErr != nil {
+				core.Warn("marketplace install: category stamp failed", "code", listing.Code, "err", stampErr)
+			}
 		}
 		// Electron wraps are unsigned by construction (same as PWA) —
 		// the listing's pinned `sign_key` applies only to native
@@ -564,7 +568,9 @@ func installElectronListing(ctx context.Context, c *core.Core, listing *Marketpl
 		AssetSource: rendererDir,
 	})
 	if medium.IsDir(scratch) {
-		_ = medium.DeleteAll(scratch)
+		if cleanupErr := medium.DeleteAll(scratch); cleanupErr != nil {
+			core.Warn("marketplace install: scratch cleanup failed", "path", scratch, "err", cleanupErr)
+		}
 	}
 	if err != nil {
 		return installed, coreerr.E("app.installElectronListing", "install failed", err)
@@ -605,7 +611,9 @@ func verifyListingAfterInstall(medium coreio.Medium, dest string, listing *Marke
 		// Roll back — the install was incomplete from a security
 		// standpoint, so we delete the destination so the next install
 		// attempt starts clean.
-		_ = medium.DeleteAll(dest)
+		if cleanupErr := medium.DeleteAll(dest); cleanupErr != nil {
+			return coreerr.E("app.verifyListingAfterInstall", "verify failed and cleanup failed", err)
+		}
 		return err
 	}
 	return nil
@@ -846,7 +854,9 @@ func MarketplaceUpdate(ctx context.Context, c *core.Core, opts MarketplaceUpdate
 		if listing.Category != "" {
 			// Re-stamp so a category rename in the marketplace catches up
 			// on the next update rather than waiting for a fresh install.
-			_ = stampCategory(medium, dest, listing.Category)
+			if stampErr := stampCategory(medium, dest, listing.Category); stampErr != nil {
+				core.Warn("marketplace update: category stamp failed", "code", listing.Code, "err", stampErr)
+			}
 		}
 		if !opts.SkipVerify {
 			if err := VerifyListing(medium, dest, listing); err != nil {
@@ -885,7 +895,9 @@ func MarketplaceUpdate(ctx context.Context, c *core.Core, opts MarketplaceUpdate
 			return dest, err
 		}
 		if listing.Category != "" {
-			_ = stampCategory(medium, dest, listing.Category)
+			if stampErr := stampCategory(medium, dest, listing.Category); stampErr != nil {
+				core.Warn("marketplace update: category stamp failed", "code", listing.Code, "err", stampErr)
+			}
 		}
 		return dest, nil
 	case PackageTypeElectron:
@@ -899,7 +911,9 @@ func MarketplaceUpdate(ctx context.Context, c *core.Core, opts MarketplaceUpdate
 			return dest, err
 		}
 		if listing.Category != "" {
-			_ = stampCategory(medium, installed, listing.Category)
+			if stampErr := stampCategory(medium, installed, listing.Category); stampErr != nil {
+				core.Warn("marketplace update: category stamp failed", "code", listing.Code, "err", stampErr)
+			}
 		}
 		return installed, nil
 	case PackageTypeWeb, PackageTypeUnknown:

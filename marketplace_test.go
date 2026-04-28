@@ -7,9 +7,9 @@ import (
 	"encoding/hex"
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	"gopkg.in/yaml.v3"
 )
@@ -109,6 +109,20 @@ func TestMarketplace_LoadMarketplaceCategory_Bad(t *testing.T) {
 	}
 }
 
+func TestMarketplace_LoadMarketplaceCategory_Ugly(t *testing.T) {
+	root := t.TempDir()
+	cat := core.Path(root, "media")
+	if err := coreio.Local.EnsureDir(cat); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := coreio.Local.Write(core.Path(cat, app.MarketplaceIndexFileName), "{not json"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if _, err := app.LoadMarketplaceCategory(coreio.Local, root, "media"); err == nil {
+		t.Fatal("malformed category JSON should fail")
+	}
+}
+
 // TestMarketplace_MarketplaceSearch_Good builds a two-category index
 // and confirms a substring search returns the expected listings with
 // the parent category stamped on each row.
@@ -203,6 +217,16 @@ func TestMarketplace_MarketplaceResolve_Bad(t *testing.T) {
 	}
 	if _, err := app.MarketplaceResolve(coreio.Local, root, "missing"); err == nil {
 		t.Error("missing code produced no error")
+	}
+}
+
+func TestMarketplace_MarketplaceResolve_Ugly(t *testing.T) {
+	root := t.TempDir()
+	if err := coreio.Local.Write(core.Path(root, app.MarketplaceIndexFileName), `{"version":1,"categories":["missing"]}`); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if _, err := app.MarketplaceResolve(coreio.Local, root, "anything"); err == nil {
+		t.Fatal("resolve should fail when categories cannot be loaded")
 	}
 }
 

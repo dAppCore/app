@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -79,9 +79,9 @@ func TestWorkspace_OpenWorkspace_Ugly(t *testing.T) {
 	}
 }
 
-// TestWorkspace_Sandboxed_Good — the sandbox medium honours go-io's
+// TestWorkspace_Workspace_Sandboxed_Good — the sandbox medium honours go-io's
 // SASE containment, so reads outside the workspace root are rejected.
-func TestWorkspace_Sandboxed_Good(t *testing.T) {
+func TestWorkspace_Workspace_Sandboxed_Good(t *testing.T) {
 	home := t.TempDir()
 	medium := coreio.Local
 
@@ -156,18 +156,18 @@ func TestWorkspace_Sandboxed_CachesLocalMedium(t *testing.T) {
 	}
 }
 
-// TestWorkspace_Sandboxed_Bad — Sandboxed on a nil receiver must
+// TestWorkspace_Workspace_Sandboxed_Bad — Sandboxed on a nil receiver must
 // surface a typed error rather than panic.
-func TestWorkspace_Sandboxed_Bad(t *testing.T) {
+func TestWorkspace_Workspace_Sandboxed_Bad(t *testing.T) {
 	var ws *app.Workspace
 	if _, err := ws.Sandboxed(); err == nil {
 		t.Fatal("nil.Sandboxed should error")
 	}
 }
 
-// TestWorkspace_Sandboxed_Ugly — calling Sandboxed against a memory
+// TestWorkspace_Workspace_Sandboxed_Ugly — calling Sandboxed against a memory
 // medium returns the medium unchanged so tests compose naturally.
-func TestWorkspace_Sandboxed_Ugly(t *testing.T) {
+func TestWorkspace_Workspace_Sandboxed_Ugly(t *testing.T) {
 	mem := coreio.NewMemoryMedium()
 	// MemoryMedium's EnsureDir is a no-op so OpenWorkspace succeeds.
 	ws, err := app.OpenWorkspace(mem, "/tmp/home", "memory-app")
@@ -185,9 +185,9 @@ func TestWorkspace_Sandboxed_Ugly(t *testing.T) {
 	}
 }
 
-// TestWorkspace_Wipe_Good — Wipe removes the workspace root and every
+// TestWorkspace_Workspace_Wipe_Good — Wipe removes the workspace root and every
 // layout sub-folder beneath it.
-func TestWorkspace_Wipe_Good(t *testing.T) {
+func TestWorkspace_Workspace_Wipe_Good(t *testing.T) {
 	home := t.TempDir()
 	medium := coreio.Local
 
@@ -208,9 +208,9 @@ func TestWorkspace_Wipe_Good(t *testing.T) {
 	}
 }
 
-// TestWorkspace_Wipe_Bad — Wiping a workspace whose root never existed
+// TestWorkspace_Workspace_Wipe_Bad — Wiping a workspace whose root never existed
 // is a no-op (idempotent).
-func TestWorkspace_Wipe_Bad(t *testing.T) {
+func TestWorkspace_Workspace_Wipe_Bad(t *testing.T) {
 	home := t.TempDir()
 	medium := coreio.Local
 
@@ -234,9 +234,9 @@ func TestWorkspace_Wipe_Bad(t *testing.T) {
 	_ = ws
 }
 
-// TestWorkspace_Wipe_Ugly — Wipe on a nil receiver surfaces a typed
+// TestWorkspace_Workspace_Wipe_Ugly — Wipe on a nil receiver surfaces a typed
 // error rather than a nil-pointer dereference.
-func TestWorkspace_Wipe_Ugly(t *testing.T) {
+func TestWorkspace_Workspace_Wipe_Ugly(t *testing.T) {
 	var ws *app.Workspace
 	if err := ws.Wipe(); err == nil {
 		t.Fatal("nil.Wipe should return a typed error")
@@ -274,5 +274,59 @@ func TestWorkspace_WorkspaceForManifest_Ugly(t *testing.T) {
 	if _, err := app.WorkspaceForManifest(coreio.Local, t.TempDir(),
 		&config.ViewManifest{Code: ""}); err == nil {
 		t.Fatal("WorkspaceForManifest should reject a manifest with empty code")
+	}
+}
+
+func TestWorkspace_Workspace_Path_Good(t *testing.T) {
+	ws, err := app.OpenWorkspace(coreio.Local, t.TempDir(), "path-good")
+	if err != nil {
+		t.Fatalf("OpenWorkspace: %v", err)
+	}
+	got := ws.Path(app.WorkspaceLayoutStore)
+	want := core.Path(ws.Root, "store")
+	if got != want {
+		t.Fatalf("Path(store) = %q; want %q", got, want)
+	}
+}
+
+func TestWorkspace_Workspace_Path_Bad(t *testing.T) {
+	var ws *app.Workspace
+	if got := ws.Path(app.WorkspaceLayoutStore); got != "" {
+		t.Fatalf("nil Path = %q; want empty", got)
+	}
+}
+
+func TestWorkspace_Workspace_Path_Ugly(t *testing.T) {
+	ws := &app.Workspace{Root: "/tmp/root"}
+	if got := ws.Path(app.WorkspaceLayout("custom")); got != core.Path("/tmp/root", "custom") {
+		t.Fatalf("Path(custom) = %q", got)
+	}
+}
+
+func TestWorkspace_Workspace_Resolve_Good(t *testing.T) {
+	ws, err := app.OpenWorkspace(coreio.Local, t.TempDir(), "resolve-good")
+	if err != nil {
+		t.Fatalf("OpenWorkspace: %v", err)
+	}
+	got := ws.Resolve(app.WorkspaceLayoutCache, "images/thumb.jpg")
+	want := core.Path(ws.Path(app.WorkspaceLayoutCache), "images/thumb.jpg")
+	if got != want {
+		t.Fatalf("Resolve = %q; want %q", got, want)
+	}
+}
+
+func TestWorkspace_Workspace_Resolve_Bad(t *testing.T) {
+	var ws *app.Workspace
+	if got := ws.Resolve(app.WorkspaceLayoutCache, "x"); got != "" {
+		t.Fatalf("nil Resolve = %q; want empty", got)
+	}
+}
+
+func TestWorkspace_Workspace_Resolve_Ugly(t *testing.T) {
+	ws := &app.Workspace{Root: "/tmp/root"}
+	got := ws.Resolve(app.WorkspaceLayoutTmp, "")
+	want := core.Path("/tmp/root", "tmp")
+	if got != want {
+		t.Fatalf("Resolve empty rel = %q; want %q", got, want)
 	}
 }

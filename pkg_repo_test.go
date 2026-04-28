@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	coreio "dappco.re/go/io"
 )
 
@@ -71,6 +71,42 @@ func TestPkgRepo_FetchRepoSourceURL_Ugly(t *testing.T) {
 	want := core.Path(scratch, "repo-source", "outer", "inner")
 	if root != want {
 		t.Fatalf("root = %q; want %q", root, want)
+	}
+}
+
+func TestPkgRepo_FetchRepoSource_Good(t *testing.T) {
+	if _, err := FetchRepoSource(context.Background(), coreio.Local, "gitlab.com/owner/repo", t.TempDir()); err == nil {
+		t.Fatal("unsupported repo host should fail before network fetch")
+	}
+}
+
+func TestPkgRepo_FetchRepoSource_Bad(t *testing.T) {
+	if _, err := FetchRepoSource(context.Background(), coreio.Local, "", t.TempDir()); err == nil {
+		t.Fatal("empty repo ref should fail")
+	}
+}
+
+func TestPkgRepo_FetchRepoSource_Ugly(t *testing.T) {
+	if _, err := FetchRepoSource(context.Background(), nil, "forge.example/owner/repo", t.TempDir()); err == nil {
+		t.Fatal("nil medium with unsupported repo host should still fail cleanly")
+	}
+}
+
+func TestPkgRepo_LoadRepoPWAManifest_Good(t *testing.T) {
+	if _, _, err := LoadRepoPWAManifest(context.Background(), coreio.Local, "gitlab.com/owner/repo", t.TempDir()); err == nil {
+		t.Fatal("unsupported repo host should fail before PWA manifest lookup")
+	}
+}
+
+func TestPkgRepo_LoadRepoPWAManifest_Bad(t *testing.T) {
+	if _, _, err := LoadRepoPWAManifest(context.Background(), coreio.Local, "", t.TempDir()); err == nil {
+		t.Fatal("empty repo ref should fail")
+	}
+}
+
+func TestPkgRepo_LoadRepoPWAManifest_Ugly(t *testing.T) {
+	if _, _, err := LoadRepoPWAManifest(context.Background(), nil, "forge.example/owner/repo", t.TempDir()); err == nil {
+		t.Fatal("nil medium with unsupported repo host should fail cleanly")
 	}
 }
 

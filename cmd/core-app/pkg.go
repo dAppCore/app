@@ -6,9 +6,9 @@ import (
 	"context"
 	"os"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -497,7 +497,9 @@ func runPkgWrapElectron(opts pkgWrapArgs) int {
 		opts.AssetSource = rendererDir
 		rc := persistWrap(manifest, opts)
 		if medium.IsDir(scratch) {
-			_ = medium.DeleteAll(scratch)
+			if err := medium.DeleteAll(scratch); err != nil {
+				core.Warn("pkg wrap --electron: scratch cleanup failed", "path", scratch, "err", err)
+			}
 		}
 		return rc
 	}
@@ -1094,7 +1096,9 @@ func runPkgInstallElectron(ctx context.Context, home, ref string) int {
 		AssetSource: rendererDir,
 	})
 	if coreio.Local.IsDir(scratch) {
-		_ = coreio.Local.DeleteAll(scratch)
+		if cleanupErr := coreio.Local.DeleteAll(scratch); cleanupErr != nil {
+			core.Warn("pkg install: scratch cleanup failed", "path", scratch, "err", cleanupErr)
+		}
 	}
 	if err != nil {
 		core.Error("pkg install: Electron install failed", "err", err)

@@ -10,8 +10,8 @@ import (
 	neturl "net/url"
 	"time"
 
+	core "dappco.re/go"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -412,7 +412,9 @@ func fetchPWAURL(ctx context.Context, url string) ([]byte, error) {
 		return nil, coreerr.E("app.fetchPWAURL", "HTTP GET failed", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		_ = resp.Body.Close()
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			core.Warn("app.fetchPWAURL: response body close failed", "url", url, "err", closeErr)
+		}
 		return nil, coreerr.E(
 			"app.fetchPWAURL",
 			"non-2xx status: "+core.Sprint(resp.StatusCode),

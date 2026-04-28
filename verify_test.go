@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
 	"gopkg.in/yaml.v3"

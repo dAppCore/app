@@ -5,9 +5,9 @@ package app_test
 import (
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -105,5 +105,20 @@ func TestPkgWeb_WriteWebWrap_Good(t *testing.T) {
 func TestPkgWeb_WriteWebWrap_Bad(t *testing.T) {
 	if err := app.WriteWebWrap(coreio.Local, t.TempDir(), nil); err == nil {
 		t.Error("WriteWebWrap(nil) returned no error")
+	}
+}
+
+func TestPkgWeb_WriteWebWrap_Ugly(t *testing.T) {
+	dir := t.TempDir()
+	m := &config.ViewManifest{Code: "nil-medium-web", Name: "Nil Medium Web", Version: "0.1.0"}
+	if err := app.WriteWebWrap(nil, dir, m); err != nil {
+		t.Fatalf("WriteWebWrap nil medium: %v", err)
+	}
+	var round config.ViewManifest
+	if err := app.LoadViewManifest(coreio.Local, core.Path(dir, ".core", "view.yaml"), &round); err != nil {
+		t.Fatalf("LoadViewManifest: %v", err)
+	}
+	if round.Code != "nil-medium-web" {
+		t.Fatalf("Code = %q; want nil-medium-web", round.Code)
 	}
 }

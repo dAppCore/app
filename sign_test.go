@@ -3,11 +3,12 @@
 package app
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"testing"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
 	"gopkg.in/yaml.v3"
@@ -344,5 +345,103 @@ func TestSign_LoadDefaultPrivateKey_Bad(t *testing.T) {
 	}
 	if _, err := LoadDefaultPrivateKey(coreio.Local); err == nil {
 		t.Error("LoadDefaultPrivateKey produced no error when no key file exists")
+	}
+}
+
+func TestSign_DefaultPrivateKeyPath_Bad(t *testing.T) {
+	got := DefaultPrivateKeyPath()
+	if got != "" && !core.HasSuffix(got, core.Path(".core", "keys", DefaultKeyName)) {
+		t.Fatalf("DefaultPrivateKeyPath() = %q; want empty or conventional suffix", got)
+	}
+}
+
+func TestSign_DefaultPrivateKeyPath_Ugly(t *testing.T) {
+	first := DefaultPrivateKeyPath()
+	second := DefaultPrivateKeyPath()
+	if first != second {
+		t.Fatalf("DefaultPrivateKeyPath changed between calls: %q then %q", first, second)
+	}
+	if first != "" && !core.HasSuffix(first, core.Path(".core", "keys", DefaultKeyName)) {
+		t.Fatalf("DefaultPrivateKeyPath() = %q; want conventional suffix", first)
+	}
+}
+
+func TestSign_LoadDefaultPrivateKey_Good(t *testing.T) {
+	path := DefaultPrivateKeyPath()
+	if path == "" {
+		t.Fatal("DefaultPrivateKeyPath returned empty path")
+	}
+	medium := coreio.NewMemoryMedium()
+	_, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	if err := WritePrivateKey(medium, path, priv); err != nil {
+		t.Fatalf("WritePrivateKey: %v", err)
+	}
+	got, err := LoadDefaultPrivateKey(medium)
+	if err != nil {
+		t.Fatalf("LoadDefaultPrivateKey: %v", err)
+	}
+	if !bytes.Equal(got, priv) {
+		t.Fatal("loaded default private key differs from written key")
+	}
+}
+
+func TestSign_LoadDefaultPrivateKey_Ugly(t *testing.T) {
+	path := DefaultPrivateKeyPath()
+	if path == "" {
+		t.Fatal("DefaultPrivateKeyPath returned empty path")
+	}
+	medium := coreio.NewMemoryMedium()
+	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	if err := medium.Write(path, "not-hex"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if _, err := LoadDefaultPrivateKey(medium); err == nil {
+		t.Fatal("invalid default key body should fail")
+	}
+}
+
+func TestSign_WritePrivateKey_Good(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	path := core.Path(t.TempDir(), "keys", "app.key")
+	if err := WritePrivateKey(coreio.Local, path, priv); err != nil {
+		t.Fatalf("WritePrivateKey: %v", err)
+	}
+	loaded, err := LoadPrivateKey(coreio.Local, path)
+	if err != nil {
+		t.Fatalf("LoadPrivateKey: %v", err)
+	}
+	if !bytes.Equal(loaded, priv) {
+		t.Fatal("loaded private key differs from written key")
+	}
+}
+
+func TestSign_WritePrivateKey_Bad(t *testing.T) {
+	if err := WritePrivateKey(coreio.Local, "", ed25519.PrivateKey{}); err == nil {
+		t.Fatal("empty path should fail")
+	}
+	if err := WritePrivateKey(coreio.Local, core.Path(t.TempDir(), "bad.key"), ed25519.PrivateKey{1, 2, 3}); err == nil {
+		t.Fatal("short private key should fail")
+	}
+}
+
+func TestSign_WritePrivateKey_Ugly(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	path := core.Path(t.TempDir(), "default-medium.key")
+	if err := WritePrivateKey(nil, path, priv); err != nil {
+		t.Fatalf("WritePrivateKey nil medium: %v", err)
+	}
+	if !coreio.Local.Exists(path) {
+		t.Fatal("private key missing after nil-medium write")
 	}
 }

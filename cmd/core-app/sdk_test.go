@@ -5,8 +5,8 @@ package main
 import (
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 

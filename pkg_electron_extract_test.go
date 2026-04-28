@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: EUPL-1.2
 
-package app_test
+package app
 
 import (
 	"archive/zip"
 	"bytes"
-	"testing"
-
-	"dappco.re/go/app"
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	coreio "dappco.re/go/io"
+	"testing"
 )
 
 // TestPkgElectronExtract_ExtractZip_Good — a well-formed zip archive
@@ -20,9 +18,9 @@ func TestPkgElectronExtract_ExtractZip_Good(t *testing.T) {
 
 	// Build a minimal renderer-shaped zip in memory.
 	body, err := buildZip(map[string]string{
-		"index.html":     "<html><body>hi</body></html>",
-		"assets/app.js":  "console.log('hi');",
-		"assets/app.css": "body { margin: 0; }",
+		"index.html": "<html><body>hi</body></html>",
+		"assets/js":  "console.log('hi');",
+		"assets/css": "body { margin: 0; }",
 	})
 	if err != nil {
 		t.Fatalf("buildZip: %v", err)
@@ -34,7 +32,7 @@ func TestPkgElectronExtract_ExtractZip_Good(t *testing.T) {
 	}
 
 	dest := core.Path(dir, "renderer-out")
-	if err := app.ExtractZip(medium, archivePath, dest); err != nil {
+	if err := ExtractZip(medium, archivePath, dest); err != nil {
 		t.Fatalf("ExtractZip: %v", err)
 	}
 
@@ -42,8 +40,8 @@ func TestPkgElectronExtract_ExtractZip_Good(t *testing.T) {
 		path, body string
 	}{
 		{core.Path(dest, "index.html"), "<html><body>hi</body></html>"},
-		{core.Path(dest, "assets", "app.js"), "console.log('hi');"},
-		{core.Path(dest, "assets", "app.css"), "body { margin: 0; }"},
+		{core.Path(dest, "assets", "js"), "console.log('hi');"},
+		{core.Path(dest, "assets", "css"), "body { margin: 0; }"},
 	} {
 		got, err := medium.Read(want.path)
 		if err != nil {
@@ -61,10 +59,10 @@ func TestPkgElectronExtract_ExtractZip_Good(t *testing.T) {
 func TestPkgElectronExtract_ExtractZip_Bad(t *testing.T) {
 	medium := coreio.Local
 
-	if err := app.ExtractZip(medium, "", t.TempDir()); err == nil {
+	if err := ExtractZip(medium, "", t.TempDir()); err == nil {
 		t.Error("empty archive path should error")
 	}
-	if err := app.ExtractZip(medium, t.TempDir()+"/nope.zip", t.TempDir()); err == nil {
+	if err := ExtractZip(medium, t.TempDir()+"/nope.zip", t.TempDir()); err == nil {
 		t.Error("missing archive should error")
 	}
 
@@ -74,7 +72,7 @@ func TestPkgElectronExtract_ExtractZip_Bad(t *testing.T) {
 	if err := medium.Write(emptyPath, ""); err != nil {
 		t.Fatalf("Write empty: %v", err)
 	}
-	if err := app.ExtractZip(medium, emptyPath, t.TempDir()); err == nil {
+	if err := ExtractZip(medium, emptyPath, t.TempDir()); err == nil {
 		t.Error("empty archive body should error")
 	}
 
@@ -83,7 +81,7 @@ func TestPkgElectronExtract_ExtractZip_Bad(t *testing.T) {
 	if err := medium.Write(junkPath, "not a zip file"); err != nil {
 		t.Fatalf("Write junk: %v", err)
 	}
-	if err := app.ExtractZip(medium, junkPath, t.TempDir()); err == nil {
+	if err := ExtractZip(medium, junkPath, t.TempDir()); err == nil {
 		t.Error("garbage archive body should error")
 	}
 }
@@ -107,8 +105,38 @@ func TestPkgElectronExtract_ExtractZip_Ugly(t *testing.T) {
 	}
 
 	dest := core.Path(dir, "out")
-	if err := app.ExtractZip(medium, archivePath, dest); err == nil {
+	if err := ExtractZip(medium, archivePath, dest); err == nil {
 		t.Error("ExtractZip should reject ../ traversal")
+	}
+}
+
+func TestPkgElectronExtract_ReaderAt_ReadAt_Good(t *testing.T) {
+	reader := stringReaderAt("renderer")
+	buf := make([]byte, 4)
+	n, err := reader.ReadAt(buf, 0)
+	if err != nil {
+		t.Fatalf("ReadAt: %v", err)
+	}
+	if n != 4 || string(buf) != "rend" {
+		t.Fatalf("ReadAt = (%d,%q); want (4,rend)", n, string(buf))
+	}
+}
+
+func TestPkgElectronExtract_ReaderAt_ReadAt_Bad(t *testing.T) {
+	reader := stringReaderAt("renderer")
+	buf := make([]byte, 4)
+	n, err := reader.ReadAt(buf, int64(len(reader)))
+	if err == nil || n != 0 {
+		t.Fatalf("ReadAt at EOF = (%d,%v); want 0,EOF", n, err)
+	}
+}
+
+func TestPkgElectronExtract_ReaderAt_ReadAt_Ugly(t *testing.T) {
+	reader := stringReaderAt("go")
+	buf := make([]byte, 4)
+	n, err := reader.ReadAt(buf, 1)
+	if err == nil || n != 1 || string(buf[:n]) != "o" {
+		t.Fatalf("short ReadAt = (%d,%q,%v); want 1,o,EOF", n, string(buf[:n]), err)
 	}
 }
 

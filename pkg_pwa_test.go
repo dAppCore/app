@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -539,6 +539,63 @@ func TestPkgPwa_WritePWAWrap_Bad(t *testing.T) {
 	err := app.WritePWAWrap(coreio.Local, t.TempDir(), nil)
 	if err == nil {
 		t.Fatal("WritePWAWrap(nil) returned no error")
+	}
+}
+
+func TestPkgPwa_ResolvePWAAppURL_Good(t *testing.T) {
+	manifest := &app.PWAManifest{StartURL: "/app"}
+	got := app.ResolvePWAAppURL("https://play.example.com/manifest.json", manifest)
+	if got != "https://play.example.com/app" {
+		t.Fatalf("ResolvePWAAppURL = %q; want https://play.example.com/app", got)
+	}
+}
+
+func TestPkgPwa_ResolvePWAAppURL_Bad(t *testing.T) {
+	got := app.ResolvePWAAppURL(" https://play.example.com/root ", nil)
+	if got != "https://play.example.com/root" {
+		t.Fatalf("nil manifest should trim source URL, got %q", got)
+	}
+}
+
+func TestPkgPwa_ResolvePWAAppURL_Ugly(t *testing.T) {
+	manifest := &app.PWAManifest{StartURL: "../launch"}
+	got := app.ResolvePWAAppURL("https://play.example.com/apps/manifest.json", manifest)
+	if got != "https://play.example.com/launch" {
+		t.Fatalf("ResolvePWAAppURL relative parent = %q; want https://play.example.com/launch", got)
+	}
+}
+
+func TestPkgPwa_FindLocalPWAManifest_Bad(t *testing.T) {
+	if path, ok := app.FindLocalPWAManifest(coreio.Local, ""); ok || path != "" {
+		t.Fatalf("empty dir = (%q,%v); want empty,false", path, ok)
+	}
+	if path, ok := app.FindLocalPWAManifest(coreio.Local, t.TempDir()); ok || path != "" {
+		t.Fatalf("missing manifest = (%q,%v); want empty,false", path, ok)
+	}
+}
+
+func TestPkgPwa_FindLocalPWAManifest_Ugly(t *testing.T) {
+	dir := t.TempDir()
+	if err := coreio.Local.Write(core.Path(dir, "manifest.json"), `{"name":"JSON","start_url":"/"}`); err != nil {
+		t.Fatalf("Write manifest.json: %v", err)
+	}
+	if err := coreio.Local.Write(core.Path(dir, "manifest.webmanifest"), `{"name":"WebManifest","start_url":"/"}`); err != nil {
+		t.Fatalf("Write manifest.webmanifest: %v", err)
+	}
+	path, ok := app.FindLocalPWAManifest(coreio.Local, dir)
+	if !ok || path != core.Path(dir, "manifest.json") {
+		t.Fatalf("FindLocalPWAManifest = (%q,%v); want manifest.json,true", path, ok)
+	}
+}
+
+func TestPkgPwa_WritePWAWrap_Ugly(t *testing.T) {
+	dir := t.TempDir()
+	manifest := app.WrapPWA(&app.PWAManifest{Name: "Nil Medium", StartURL: "https://example.com/"}, app.WrapPWAOptions{})
+	if err := app.WritePWAWrap(nil, dir, manifest); err != nil {
+		t.Fatalf("WritePWAWrap nil medium: %v", err)
+	}
+	if !coreio.Local.Exists(core.Path(dir, ".core", "view.yaml")) {
+		t.Fatal("view.yaml missing after nil-medium WritePWAWrap")
 	}
 }
 

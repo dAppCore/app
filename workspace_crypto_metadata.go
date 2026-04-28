@@ -10,7 +10,7 @@ import (
 	"os" // Note: AX-6 - O_CREATE|O_EXCL is required for atomic salt-file creation; no core primitive exists.
 	"time"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -135,12 +135,18 @@ func createWorkspaceCryptoMetadata(medium coreio.Medium, path, body string) erro
 		return err
 	}
 	if err := writeWorkspaceCryptoMetadataBody(file, body); err != nil {
-		_ = file.Close()
-		_ = os.Remove(path)
+		if closeErr := file.Close(); closeErr != nil {
+			return coreerr.E("app.createWorkspaceCryptoMetadata", "write failed and close failed", err)
+		}
+		if removeErr := os.Remove(path); removeErr != nil {
+			return coreerr.E("app.createWorkspaceCryptoMetadata", "write failed and cleanup failed", err)
+		}
 		return err
 	}
 	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
+		if removeErr := os.Remove(path); removeErr != nil {
+			return coreerr.E("app.createWorkspaceCryptoMetadata", "close failed and cleanup failed", err)
+		}
 		return err
 	}
 	return nil

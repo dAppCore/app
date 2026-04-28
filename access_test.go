@@ -557,3 +557,27 @@ func TestAccess_CheckActionAccess_Bad(t *testing.T) {
 		t.Error("nil manifest should error")
 	}
 }
+
+func TestAccess_ActionAccessMode_Ugly(t *testing.T) {
+	got, ok := ActionAccessMode("brain.recall.semantic")
+	if !ok {
+		t.Fatal("brain.recall.* should inherit the net gate")
+	}
+	if got != AccessNet {
+		t.Fatalf("ActionAccessMode(brain.recall.semantic) = %v; want AccessNet", got)
+	}
+}
+
+func TestAccess_CheckActionAccess_Ugly(t *testing.T) {
+	m := &config.ViewManifest{
+		Permissions: config.ViewPermissions{
+			Net: []string{"api.example.com:443"},
+		},
+	}
+	if err := CheckActionAccess(m, "brain.recall.semantic", "api.example.com:443"); err != nil {
+		t.Fatalf("brain recall against declared net host should pass: %v", err)
+	}
+	if err := CheckActionAccess(m, "brain.recall.semantic", "other.example.com:443"); err == nil {
+		t.Fatal("brain recall against undeclared host should fail")
+	}
+}

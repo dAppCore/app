@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
 )

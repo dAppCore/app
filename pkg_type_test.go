@@ -5,8 +5,8 @@ package app_test
 import (
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -217,6 +217,25 @@ func TestPkgType_DetectPackageTypeFromManifestJSON_Bad(t *testing.T) {
 		if got := app.DetectPackageTypeFromManifestJSON(in); got != app.PackageTypeUnknown {
 			t.Errorf("Detect(%q) = %v; want Unknown", in, got)
 		}
+	}
+}
+
+func TestPkgType_PackageType_String_Ugly(t *testing.T) {
+	if got := app.PackageType(-1).String(); got != "unknown" {
+		t.Fatalf("PackageType(-1).String() = %q; want unknown", got)
+	}
+}
+
+func TestPkgType_ParsePackageType_Ugly(t *testing.T) {
+	if got := app.ParsePackageType("\n\tPWA\t"); got != app.PackageTypePWA {
+		t.Fatalf("ParsePackageType with whitespace = %v; want PWA", got)
+	}
+}
+
+func TestPkgType_DetectPackageTypeFromManifestJSON_Ugly(t *testing.T) {
+	body := `{"short_name":"tiny"}`
+	if got := app.DetectPackageTypeFromManifestJSON(body); got != app.PackageTypePWA {
+		t.Fatalf("short_name-only manifest = %v; want PWA", got)
 	}
 }
 

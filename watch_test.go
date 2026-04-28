@@ -8,16 +8,16 @@ import (
 	"testing"
 	"time"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
 )
 
-// TestWatch_Watch_Good exercises the full dev-mode hot-reload loop —
+// TestWatch_Instance_Watch_Good exercises the full dev-mode hot-reload loop —
 // write a manifest, start the watcher, rewrite the manifest, confirm
 // ActionManifestChanged lands. Each subtest targets one branch of the
 // public Watch contract described in watch.go.
-func TestWatch_Watch_Good(t *testing.T) {
+func TestWatch_Instance_Watch_Good(t *testing.T) {
 	t.Run("modified fires ActionManifestChanged", func(t *testing.T) {
 		root := t.TempDir()
 		medium := coreio.Local
@@ -92,10 +92,10 @@ func TestWatch_Watch_Good(t *testing.T) {
 	})
 }
 
-// TestWatch_Watch_Bad covers the refusal branches — prod mode,
+// TestWatch_Instance_Watch_Bad covers the refusal branches — prod mode,
 // nil instance, empty root — every path that short-circuits to a
 // no-op cancel.
-func TestWatch_Watch_Bad(t *testing.T) {
+func TestWatch_Instance_Watch_Bad(t *testing.T) {
 	t.Run("prod mode returns noop cancel", func(t *testing.T) {
 		inst := &Instance{
 			Manifest: config.ViewManifest{Code: "prod"},
@@ -132,10 +132,10 @@ func TestWatch_Watch_Bad(t *testing.T) {
 	})
 }
 
-// TestWatch_Watch_Ugly exercises the edge cases — file deleted after
+// TestWatch_Instance_Watch_Ugly exercises the edge cases — file deleted after
 // baseline, absolute-path escapes rejected, bad poll interval falls
 // back to the default.
-func TestWatch_Watch_Ugly(t *testing.T) {
+func TestWatch_Instance_Watch_Ugly(t *testing.T) {
 	t.Run("deleted manifest broadcasts deleted event", func(t *testing.T) {
 		root := t.TempDir()
 		medium := coreio.Local
@@ -287,9 +287,9 @@ func TestWatch_ClassifyChange_Ugly(t *testing.T) {
 	}
 }
 
-// TestWatch_WatchManifest_Good confirms WatchManifest calls the supplied
+// TestWatch_Instance_WatchManifest_Good confirms WatchManifest calls the supplied
 // reload callback when the manifest changes on disk.
-func TestWatch_WatchManifest_Good(t *testing.T) {
+func TestWatch_Instance_WatchManifest_Good(t *testing.T) {
 	root := t.TempDir()
 	medium := coreio.Local
 	viewPath := core.Path(root, ".core", "view.yaml")
@@ -345,9 +345,9 @@ func TestWatch_WatchManifest_Good(t *testing.T) {
 	}
 }
 
-// TestWatch_WatchManifest_Bad ensures prod mode and nil instance both
+// TestWatch_Instance_WatchManifest_Bad ensures prod mode and nil instance both
 // short-circuit WatchManifest without spinning a watcher.
-func TestWatch_WatchManifest_Bad(t *testing.T) {
+func TestWatch_Instance_WatchManifest_Bad(t *testing.T) {
 	t.Run("prod mode no-ops", func(t *testing.T) {
 		inst := &Instance{
 			Manifest: config.ViewManifest{Code: "prod"},
@@ -366,10 +366,10 @@ func TestWatch_WatchManifest_Bad(t *testing.T) {
 	})
 }
 
-// TestWatch_WatchManifest_Ugly drives the delete + bad-parse branches
+// TestWatch_Instance_WatchManifest_Ugly drives the delete + bad-parse branches
 // of WatchManifest. Both are tolerated — the watcher survives and
 // keeps running.
-func TestWatch_WatchManifest_Ugly(t *testing.T) {
+func TestWatch_Instance_WatchManifest_Ugly(t *testing.T) {
 	root := t.TempDir()
 	medium := coreio.Local
 	viewPath := core.Path(root, ".core", "view.yaml")

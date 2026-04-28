@@ -5,7 +5,7 @@ package app
 import (
 	"context"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	coreerr "dappco.re/go/log"
 )
 

@@ -5,8 +5,8 @@ package app
 import (
 	"context"
 
+	core "dappco.re/go"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	coreerr "dappco.re/go/log"
 )
@@ -1112,7 +1112,9 @@ func installElectronRepoSource(ctx context.Context, medium coreio.Medium, home, 
 		AssetSource: rendererDir,
 	})
 	if medium.IsDir(scratch) {
-		_ = medium.DeleteAll(scratch)
+		if cleanupErr := medium.DeleteAll(scratch); cleanupErr != nil {
+			core.Warn("app.installElectronRepoSource: scratch cleanup failed", "path", scratch, "err", cleanupErr)
+		}
 	}
 	if err != nil {
 		return installed, coreerr.E("app.installElectronRepoSource", "install failed", err)

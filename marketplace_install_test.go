@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -114,6 +114,53 @@ func TestMarketplaceInstall_MarketplaceFetch_Bad(t *testing.T) {
 	}
 }
 
+func TestMarketplaceInstall_MarketplaceFetch_Good(t *testing.T) {
+	c := core.New()
+	var command string
+	var args []string
+	c.Action("process.run", func(_ core.Context, opts core.Options) core.Result {
+		command = opts.String("command")
+		if raw := opts.Get("args"); raw.OK {
+			args, _ = raw.Value.([]string)
+		}
+		return core.Ok("cloned")
+	})
+	dir := core.Path(t.TempDir(), "marketplace")
+	err := app.MarketplaceFetch(context.Background(), c, app.MarketplaceFetchOptions{
+		URL: "https://example.com/marketplace.git",
+		Dir: dir,
+	})
+	if err != nil {
+		t.Fatalf("MarketplaceFetch: %v", err)
+	}
+	if command != "git" || len(args) != 4 || args[0] != "clone" || args[3] != dir {
+		t.Fatalf("process args = %q %v; want git clone ... %s", command, args, dir)
+	}
+}
+
+func TestMarketplaceInstall_MarketplaceFetch_Ugly(t *testing.T) {
+	c := core.New()
+	var dirSeen string
+	c.Action("process.run", func(_ core.Context, opts core.Options) core.Result {
+		dirSeen = opts.String("dir")
+		return core.Ok("pulled")
+	})
+	dir := t.TempDir()
+	if err := coreio.Local.EnsureDir(core.Path(dir, ".git")); err != nil {
+		t.Fatalf("EnsureDir .git: %v", err)
+	}
+	err := app.MarketplaceFetch(context.Background(), c, app.MarketplaceFetchOptions{
+		URL: "https://example.com/marketplace.git",
+		Dir: dir,
+	})
+	if err != nil {
+		t.Fatalf("MarketplaceFetch pull path: %v", err)
+	}
+	if dirSeen != dir {
+		t.Fatalf("pull path dir = %q; want %q", dirSeen, dir)
+	}
+}
+
 // TestMarketplaceInstall_MarketplaceInstall_ElectronUnreachable confirms
 // that an Electron listing whose GitHub release is unreachable surfaces
 // a typed error rather than falling through to a plain git clone. The
@@ -146,6 +193,43 @@ func TestMarketplaceInstall_MarketplaceInstall_ElectronUnreachable(t *testing.T)
 		Code: "ghost-electron",
 	}); err == nil {
 		t.Error("Electron listing with unreachable release produced no error")
+	}
+}
+
+func TestMarketplaceInstall_MarketplaceInstall_Ugly(t *testing.T) {
+	manifestSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"name":"Play","short_name":"play","start_url":"/"}`))
+	}))
+	defer manifestSrv.Close()
+
+	root := t.TempDir()
+	if err := coreio.Local.Write(core.Path(root, app.MarketplaceIndexFileName),
+		`{"version":1,"categories":["media"]}`); err != nil {
+		t.Fatalf("Write index: %v", err)
+	}
+	if err := coreio.Local.EnsureDir(core.Path(root, "media")); err != nil {
+		t.Fatalf("EnsureDir: %v", err)
+	}
+	body := `{"version":1,"category":"media","entries":[{"code":"play-ugly","type":"pwa","url":"` + manifestSrv.URL + `/manifest.json"}]}`
+	if err := coreio.Local.Write(core.Path(root, "media", app.MarketplaceIndexFileName), body); err != nil {
+		t.Fatalf("Write category: %v", err)
+	}
+	home := t.TempDir()
+	c := core.New()
+	if _, err := app.MarketplaceInstall(context.Background(), c, app.MarketplaceInstallOptions{
+		Root: root, Home: home, Code: "play-ugly",
+	}); err != nil {
+		t.Fatalf("first MarketplaceInstall: %v", err)
+	}
+	if _, err := app.MarketplaceInstall(context.Background(), c, app.MarketplaceInstallOptions{
+		Root: root, Home: home, Code: "play-ugly",
+	}); err == nil {
+		t.Fatal("second MarketplaceInstall without Force should fail")
+	}
+	if _, err := app.MarketplaceInstall(context.Background(), c, app.MarketplaceInstallOptions{
+		Root: root, Home: home, Code: "play-ugly", Force: true,
+	}); err != nil {
+		t.Fatalf("forced MarketplaceInstall should pass: %v", err)
 	}
 }
 

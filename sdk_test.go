@@ -5,7 +5,7 @@ package app
 import (
 	"testing"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
 )
@@ -56,9 +56,9 @@ func TestSdk_ParseSDKLanguage_Ugly(t *testing.T) {
 	}
 }
 
-// TestSdk_String_Good — every variant returns the canonical CLI token so
+// TestSdk_SDKLanguage_String_Good — every variant returns the canonical CLI token so
 // the round-trip with ParseSDKLanguage is symmetric.
-func TestSdk_String_Good(t *testing.T) {
+func TestSdk_SDKLanguage_String_Good(t *testing.T) {
 	cases := map[SDKLanguage]string{
 		SDKLanguageOpenAPI:    "openapi",
 		SDKLanguageTypeScript: "ts",
@@ -73,17 +73,17 @@ func TestSdk_String_Good(t *testing.T) {
 	}
 }
 
-// TestSdk_String_Bad — an out-of-range value falls back to "unknown"
+// TestSdk_SDKLanguage_String_Bad — an out-of-range value falls back to "unknown"
 // rather than panicking.
-func TestSdk_String_Bad(t *testing.T) {
+func TestSdk_SDKLanguage_String_Bad(t *testing.T) {
 	if got := SDKLanguage(99).String(); got != "unknown" {
 		t.Errorf("SDKLanguage(99).String() = %q; want 'unknown'", got)
 	}
 }
 
-// TestSdk_String_Ugly — ParseSDKLanguage of String() round-trips for the
+// TestSdk_SDKLanguage_String_Ugly — ParseSDKLanguage of String() round-trips for the
 // canonical five values, which is the contract callers rely on.
-func TestSdk_String_Ugly(t *testing.T) {
+func TestSdk_SDKLanguage_String_Ugly(t *testing.T) {
 	for _, lang := range []SDKLanguage{
 		SDKLanguageOpenAPI, SDKLanguageTypeScript,
 		SDKLanguageGo, SDKLanguagePHP, SDKLanguagePython,

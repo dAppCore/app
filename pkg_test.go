@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
 	"dappco.re/go/config"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 	"gopkg.in/yaml.v3"
 )
@@ -922,9 +922,9 @@ func TestPkg_ParseInstallSpec_Ugly(t *testing.T) {
 	}
 }
 
-// TestPkg_DisplaySource_Good — every documented prefix is stripped
+// TestPkg_PkgEntry_DisplaySource_Good — every documented prefix is stripped
 // to the human-friendly form per RFC §16.3 (`pkg list` example).
-func TestPkg_DisplaySource_Good(t *testing.T) {
+func TestPkg_PkgEntry_DisplaySource_Good(t *testing.T) {
 	cases := []struct {
 		raw  string
 		want string
@@ -942,24 +942,158 @@ func TestPkg_DisplaySource_Good(t *testing.T) {
 	}
 }
 
-// TestPkg_DisplaySource_Bad — undocumented prefixes pass through
+// TestPkg_PkgEntry_DisplaySource_Bad — undocumented prefixes pass through
 // untouched so an operator can spot a stale install rather than
 // having the value silently rewritten.
-func TestPkg_DisplaySource_Bad(t *testing.T) {
+func TestPkg_PkgEntry_DisplaySource_Bad(t *testing.T) {
 	got := app.PkgEntry{Source: "weird:custom:value"}.DisplaySource()
 	if got != "weird:custom:value" {
 		t.Errorf("DisplaySource(weird) = %q; want pass-through", got)
 	}
 }
 
-// TestPkg_DisplaySource_Ugly — empty Source and the legacy `local:`
+// TestPkg_PkgEntry_DisplaySource_Ugly — empty Source and the legacy `local:`
 // stamp both render as "local" so `pkg list` always shows a value.
-func TestPkg_DisplaySource_Ugly(t *testing.T) {
+func TestPkg_PkgEntry_DisplaySource_Ugly(t *testing.T) {
 	if got := (app.PkgEntry{}).DisplaySource(); got != "local" {
 		t.Errorf("DisplaySource(empty) = %q; want local", got)
 	}
 	if got := (app.PkgEntry{Source: "local:/srv/app"}).DisplaySource(); got != "local" {
 		t.Errorf("DisplaySource(local:) = %q; want local", got)
+	}
+}
+
+func TestPkg_PkgRemove_Ugly(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	writeInstalled(t, medium, home, "nil-medium-remove", &config.ViewManifest{
+		Code: "nil-medium-remove", Name: "Nil Medium Remove", Version: "0.1.0",
+	})
+	if err := app.PkgRemove(nil, home, "nil-medium-remove"); err != nil {
+		t.Fatalf("PkgRemove nil medium: %v", err)
+	}
+	if medium.IsDir(core.Path(home, ".core", app.AppsDirName, "nil-medium-remove")) {
+		t.Fatal("install dir still exists after nil-medium PkgRemove")
+	}
+}
+
+func TestPkg_PkgRemoveWith_Good(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	writeInstalled(t, medium, home, "remove-with-good", &config.ViewManifest{
+		Code: "remove-with-good", Name: "Remove With Good", Version: "0.1.0",
+	})
+	if err := app.PkgRemoveWith(medium, home, "remove-with-good", app.PkgRemoveOptions{}); err != nil {
+		t.Fatalf("PkgRemoveWith: %v", err)
+	}
+	if medium.IsDir(core.Path(home, ".core", app.AppsDirName, "remove-with-good")) {
+		t.Fatal("install dir survived PkgRemoveWith")
+	}
+}
+
+func TestPkg_PkgRemoveWith_Ugly(t *testing.T) {
+	home := t.TempDir()
+	medium := coreio.Local
+	writeInstalled(t, medium, home, "remove-with-ugly", &config.ViewManifest{
+		Code: "remove-with-ugly", Name: "Remove With Ugly", Version: "0.1.0",
+	})
+	if err := app.PkgRemoveWith(nil, home, "remove-with-ugly", app.PkgRemoveOptions{}); err != nil {
+		t.Fatalf("PkgRemoveWith nil medium: %v", err)
+	}
+	if medium.IsDir(core.Path(home, ".core", app.AppsDirName, "remove-with-ugly")) {
+		t.Fatal("install dir survived nil-medium PkgRemoveWith")
+	}
+}
+
+func TestPkg_InstallWrappedWeb_Good(t *testing.T) {
+	home := t.TempDir()
+	manifest := &config.ViewManifest{Code: "install-web-good", Name: "Install Web Good", Version: "0.1.0"}
+	dest, err := app.InstallWrappedWeb(coreio.Local, manifest, app.PkgInstallOptions{Home: home, Force: true})
+	if err != nil {
+		t.Fatalf("InstallWrappedWeb: %v", err)
+	}
+	if !coreio.Local.Exists(core.Path(dest, ".core", "view.yaml")) {
+		t.Fatal("view.yaml missing after InstallWrappedWeb")
+	}
+}
+
+func TestPkg_InstallWrappedWeb_Bad(t *testing.T) {
+	if _, err := app.InstallWrappedWeb(coreio.Local, nil, app.PkgInstallOptions{Home: t.TempDir()}); err == nil {
+		t.Fatal("nil manifest should fail")
+	}
+	if _, err := app.InstallWrappedWeb(coreio.Local, &config.ViewManifest{}, app.PkgInstallOptions{Home: t.TempDir()}); err == nil {
+		t.Fatal("empty manifest code should fail")
+	}
+}
+
+func TestPkg_InstallWrappedWeb_Ugly(t *testing.T) {
+	home := t.TempDir()
+	manifest := &config.ViewManifest{Code: "install-web-ugly", Name: "Install Web Ugly", Version: "0.1.0"}
+	if _, err := app.InstallWrappedWeb(nil, manifest, app.PkgInstallOptions{Home: home}); err != nil {
+		t.Fatalf("InstallWrappedWeb nil medium: %v", err)
+	}
+	if _, err := app.InstallWrappedWeb(nil, manifest, app.PkgInstallOptions{Home: home}); err == nil {
+		t.Fatal("second install without Force should fail")
+	}
+	if _, err := app.InstallWrappedWeb(nil, manifest, app.PkgInstallOptions{Home: home, Force: true}); err != nil {
+		t.Fatalf("Force reinstall should pass: %v", err)
+	}
+}
+
+func TestPkg_WriteWrappedApp_Good(t *testing.T) {
+	dest := t.TempDir()
+	manifest := &config.ViewManifest{Code: "write-wrap-good", Name: "Write Wrap Good", Version: "0.1.0"}
+	if err := app.WriteWrappedApp(coreio.Local, dest, manifest, ""); err != nil {
+		t.Fatalf("WriteWrappedApp: %v", err)
+	}
+	if !coreio.Local.Exists(core.Path(dest, ".core", "view.yaml")) {
+		t.Fatal("view.yaml missing after WriteWrappedApp")
+	}
+}
+
+func TestPkg_WriteWrappedApp_Bad(t *testing.T) {
+	if err := app.WriteWrappedApp(coreio.Local, t.TempDir(), nil, ""); err == nil {
+		t.Fatal("nil manifest should fail")
+	}
+}
+
+func TestPkg_WriteWrappedApp_Ugly(t *testing.T) {
+	dest := t.TempDir()
+	manifest := &config.ViewManifest{Code: "write-wrap-ugly", Name: "Write Wrap Ugly", Version: "0.1.0"}
+	if err := app.WriteWrappedApp(nil, dest, manifest, ""); err != nil {
+		t.Fatalf("WriteWrappedApp nil medium: %v", err)
+	}
+}
+
+func TestPkg_WriteWrappedAppWithOptions_Good(t *testing.T) {
+	dest := t.TempDir()
+	manifest := &config.ViewManifest{Code: "write-options-good", Name: "Write Options Good", Version: "0.1.0"}
+	if err := app.WriteWrappedAppWithOptions(coreio.Local, dest, manifest, app.WriteWrappedOptions{}); err != nil {
+		t.Fatalf("WriteWrappedAppWithOptions: %v", err)
+	}
+	if !coreio.Local.Exists(core.Path(dest, ".core", "view.yaml")) {
+		t.Fatal("view.yaml missing after WriteWrappedAppWithOptions")
+	}
+}
+
+func TestPkg_WriteWrappedAppWithOptions_Bad(t *testing.T) {
+	if err := app.WriteWrappedAppWithOptions(coreio.Local, t.TempDir(), nil, app.WriteWrappedOptions{}); err == nil {
+		t.Fatal("nil manifest should fail")
+	}
+}
+
+func TestPkg_WriteWrappedAppWithOptions_Ugly(t *testing.T) {
+	src := t.TempDir()
+	if err := coreio.Local.Write(core.Path(src, "index.html"), "<html/>"); err != nil {
+		t.Fatalf("Write source: %v", err)
+	}
+	dest := t.TempDir()
+	manifest := &config.ViewManifest{Code: "write-options-ugly", Name: "Write Options Ugly", Version: "0.1.0"}
+	if err := app.WriteWrappedAppWithOptions(nil, dest, manifest, app.WriteWrappedOptions{AssetSource: src}); err != nil {
+		t.Fatalf("WriteWrappedAppWithOptions nil medium/assets: %v", err)
+	}
+	if !coreio.Local.Exists(core.Path(dest, "index.html")) {
+		t.Fatal("asset source was not copied")
 	}
 }
 

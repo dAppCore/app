@@ -79,6 +79,29 @@ func TestPkgElectronFetch_FetchElectronRelease_Ugly(t *testing.T) {
 	}
 }
 
+func TestPkgElectronFetch_FetchElectronRelease_Good(t *testing.T) {
+	_, err := app.FetchElectronRelease(context.Background(), "127.0.0.1:1", "owner", "repo")
+	if err == nil {
+		t.Fatal("unreachable release endpoint should return a typed error")
+	}
+}
+
+func TestPkgElectronFetch_FetchElectronReleaseURL_Bad(t *testing.T) {
+	if _, err := app.FetchElectronReleaseURL(context.Background(), ""); err == nil {
+		t.Fatal("empty URL should fail")
+	}
+}
+
+func TestPkgElectronFetch_FetchElectronReleaseURL_Ugly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{not json`))
+	}))
+	defer srv.Close()
+	if _, err := app.FetchElectronReleaseURL(context.Background(), srv.URL); err == nil {
+		t.Fatal("malformed release JSON should fail")
+	}
+}
+
 // TestPkgElectronFetch_IsRendererAsset_Good catches the obvious good
 // shapes: zip/tar/asar without platform markers.
 func TestPkgElectronFetch_IsRendererAsset_Good(t *testing.T) {
@@ -177,6 +200,13 @@ func TestPkgElectronFetch_DownloadAsset_Bad(t *testing.T) {
 	}
 }
 
+func TestPkgElectronFetch_DownloadAsset_Ugly(t *testing.T) {
+	if _, err := app.DownloadAsset(context.Background(), nil,
+		app.GitHubAsset{Name: "x", DownloadURL: "://bad-url"}, t.TempDir()); err == nil {
+		t.Fatal("malformed download URL should fail")
+	}
+}
+
 // TestPkgElectronFetch_SelectRendererAsset_Good prefers the first
 // renderer-shaped asset in a release.
 func TestPkgElectronFetch_SelectRendererAsset_Good(t *testing.T) {
@@ -207,6 +237,17 @@ func TestPkgElectronFetch_SelectRendererAsset_Bad(t *testing.T) {
 	}}
 	if _, ok := app.SelectRendererAsset(rel); ok {
 		t.Error("installer-only release returned ok=true")
+	}
+}
+
+func TestPkgElectronFetch_SelectRendererAsset_Ugly(t *testing.T) {
+	rel := &app.GitHubRelease{Assets: []app.GitHubAsset{
+		{Name: "README.txt"},
+		{Name: "renderer.TAR.GZ"},
+	}}
+	got, ok := app.SelectRendererAsset(rel)
+	if !ok || got.Name != "renderer.TAR.GZ" {
+		t.Fatalf("SelectRendererAsset mixed-case archive = (%+v,%v); want renderer.TAR.GZ,true", got, ok)
 	}
 }
 

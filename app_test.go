@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
+	core "dappco.re/go"
 	"dappco.re/go/app"
-	core "dappco.re/go/core"
 	coreio "dappco.re/go/io"
 )
 
@@ -298,5 +298,164 @@ func TestApp_WithoutWorkspace_Ugly(t *testing.T) {
 	opts := app.NewOptions(app.WithoutWorkspace(), app.WithoutWorkspace())
 	if !opts.SkipWorkspace {
 		t.Error("two WithoutWorkspace calls did not leave SkipWorkspace=true")
+	}
+}
+
+func TestApp_WithMode_Good(t *testing.T) {
+	opts := app.NewOptions(app.WithMode(app.ModeDev))
+	if opts.Mode != app.ModeDev {
+		t.Fatalf("WithMode(ModeDev) = %v; want ModeDev", opts.Mode)
+	}
+}
+
+func TestApp_WithMode_Bad(t *testing.T) {
+	opts := app.NewOptions(app.WithMode(app.Mode(99)))
+	if opts.Mode.String() != "prod" {
+		t.Fatalf("unknown mode String() = %q; want prod", opts.Mode.String())
+	}
+}
+
+func TestApp_WithMode_Ugly(t *testing.T) {
+	opts := app.NewOptions(app.WithMode(app.ModeDev), app.WithMode(app.ModeProd))
+	if opts.Mode != app.ModeProd {
+		t.Fatalf("last WithMode should win; got %v", opts.Mode)
+	}
+}
+
+func TestApp_WithMedium_Good(t *testing.T) {
+	medium := coreio.NewMemoryMedium()
+	opts := app.NewOptions(app.WithMedium(medium))
+	if opts.Medium != medium {
+		t.Fatal("WithMedium did not preserve the supplied medium")
+	}
+}
+
+func TestApp_WithMedium_Bad(t *testing.T) {
+	opts := app.NewOptions(app.WithMedium(nil))
+	if opts.Medium == nil {
+		t.Fatal("nil WithMedium should fall back to a usable medium")
+	}
+}
+
+func TestApp_WithMedium_Ugly(t *testing.T) {
+	first := coreio.NewMemoryMedium()
+	second := coreio.NewMemoryMedium()
+	opts := app.NewOptions(app.WithMedium(first), app.WithMedium(second))
+	if opts.Medium != second {
+		t.Fatal("last WithMedium should win")
+	}
+}
+
+func TestApp_WithPublicKey_Good(t *testing.T) {
+	opts := app.NewOptions(app.WithPublicKey("abc123"))
+	if opts.PublicKeyHex != "abc123" {
+		t.Fatalf("PublicKeyHex = %q; want abc123", opts.PublicKeyHex)
+	}
+}
+
+func TestApp_WithPublicKey_Bad(t *testing.T) {
+	opts := app.NewOptions(app.WithPublicKey(""))
+	if opts.PublicKeyHex != "" {
+		t.Fatalf("empty WithPublicKey should be a no-op, got %q", opts.PublicKeyHex)
+	}
+}
+
+func TestApp_WithPublicKey_Ugly(t *testing.T) {
+	opts := app.NewOptions(app.WithPublicKey("first"), app.WithPublicKey(""), app.WithPublicKey("second"))
+	if opts.PublicKeyHex != "second" {
+		t.Fatalf("PublicKeyHex = %q; want second", opts.PublicKeyHex)
+	}
+}
+
+func TestApp_WithTrustedKeysDir_Good(t *testing.T) {
+	dir := t.TempDir()
+	opts := app.NewOptions(app.WithTrustedKeysDir(dir))
+	if opts.TrustedKeysDir != dir {
+		t.Fatalf("TrustedKeysDir = %q; want %q", opts.TrustedKeysDir, dir)
+	}
+}
+
+func TestApp_WithTrustedKeysDir_Bad(t *testing.T) {
+	opts := app.NewOptions(app.WithTrustedKeysDir(""))
+	if opts.TrustedKeysDir != "" && !core.HasSuffix(opts.TrustedKeysDir, core.Path(".core", "keys")) {
+		t.Fatalf("empty WithTrustedKeysDir fallback = %q; want empty or conventional suffix", opts.TrustedKeysDir)
+	}
+}
+
+func TestApp_WithTrustedKeysDir_Ugly(t *testing.T) {
+	first := t.TempDir()
+	second := t.TempDir()
+	opts := app.NewOptions(app.WithTrustedKeysDir(first), app.WithTrustedKeysDir(second))
+	if opts.TrustedKeysDir != second {
+		t.Fatalf("TrustedKeysDir = %q; want %q", opts.TrustedKeysDir, second)
+	}
+}
+
+func TestApp_WithoutKeyLoad_Good(t *testing.T) {
+	opts := app.NewOptions(app.WithoutKeyLoad())
+	if !opts.DisableKeyLoad {
+		t.Fatal("WithoutKeyLoad did not set DisableKeyLoad")
+	}
+}
+
+func TestApp_WithoutKeyLoad_Bad(t *testing.T) {
+	opts := app.NewOptions()
+	if opts.DisableKeyLoad {
+		t.Fatal("DisableKeyLoad should default false")
+	}
+}
+
+func TestApp_WithoutKeyLoad_Ugly(t *testing.T) {
+	opts := app.NewOptions(app.WithoutKeyLoad(), app.WithoutKeyLoad())
+	if !opts.DisableKeyLoad {
+		t.Fatal("WithoutKeyLoad should be idempotent")
+	}
+}
+
+func TestApp_WithWorkspaceHome_Good(t *testing.T) {
+	home := t.TempDir()
+	opts := app.NewOptions(app.WithWorkspaceHome(home))
+	if opts.WorkspaceHome != home {
+		t.Fatalf("WorkspaceHome = %q; want %q", opts.WorkspaceHome, home)
+	}
+}
+
+func TestApp_WithWorkspaceHome_Bad(t *testing.T) {
+	opts := app.NewOptions(app.WithWorkspaceHome(""))
+	if opts.WorkspaceHome != "" {
+		t.Fatalf("empty WithWorkspaceHome should be a no-op, got %q", opts.WorkspaceHome)
+	}
+}
+
+func TestApp_WithWorkspaceHome_Ugly(t *testing.T) {
+	first := t.TempDir()
+	second := t.TempDir()
+	opts := app.NewOptions(app.WithWorkspaceHome(first), app.WithWorkspaceHome(second))
+	if opts.WorkspaceHome != second {
+		t.Fatalf("WorkspaceHome = %q; want %q", opts.WorkspaceHome, second)
+	}
+}
+
+func TestApp_Instance_Stop_Good(t *testing.T) {
+	inst := &app.Instance{Core: core.New()}
+	r := inst.Stop(context.Background())
+	if !r.OK {
+		t.Fatalf("Stop returned !OK: %v", r.Value)
+	}
+}
+
+func TestApp_Instance_Stop_Bad(t *testing.T) {
+	var inst *app.Instance
+	r := inst.Stop(context.Background())
+	if r.OK {
+		t.Fatal("Stop on nil instance should fail")
+	}
+}
+
+func TestApp_Instance_Stop_Ugly(t *testing.T) {
+	inst := &app.Instance{}
+	r := inst.Stop(context.Background())
+	if r.OK {
+		t.Fatal("Stop with nil Core should fail")
 	}
 }

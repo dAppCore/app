@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: EUPL-1.2
 
-package app_test
+package app
 
 import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	core "dappco.re/go"
+	coreio "dappco.re/go/io"
 	"strings"
 	"testing"
-
-	"dappco.re/go/app"
-	core "dappco.re/go/core"
-	coreio "dappco.re/go/io"
 )
 
 // TestPkgElectronExtractTar_ExtractTar_Good — a plain (uncompressed) tar
@@ -25,19 +23,19 @@ func TestPkgElectronExtractTar_ExtractTar_Good(t *testing.T) {
 
 	body := buildTar(t, false, []tarEntry{
 		{Name: "index.html", Body: "<!doctype html><html></html>"},
-		{Name: "assets/app.js", Body: "console.log('ok');"},
+		{Name: "assets/js", Body: "console.log('ok');"},
 		{Name: "assets/", IsDir: true},
 	})
 	if err := medium.Write(archivePath, body); err != nil {
 		t.Fatalf("Write archive: %v", err)
 	}
-	if err := app.ExtractTar(medium, archivePath, dest); err != nil {
+	if err := ExtractTar(medium, archivePath, dest); err != nil {
 		t.Fatalf("ExtractTar: %v", err)
 	}
 
 	for _, want := range []string{
 		core.Path(dest, "index.html"),
-		core.Path(dest, "assets", "app.js"),
+		core.Path(dest, "assets", "js"),
 	} {
 		if !medium.Exists(want) {
 			t.Errorf("expected extracted file at %s", want)
@@ -49,10 +47,10 @@ func TestPkgElectronExtractTar_ExtractTar_Good(t *testing.T) {
 // archive paths surface as typed errors before any disk write.
 func TestPkgElectronExtractTar_ExtractTar_Bad(t *testing.T) {
 	medium := coreio.Local
-	if err := app.ExtractTar(medium, "", t.TempDir()); err == nil {
+	if err := ExtractTar(medium, "", t.TempDir()); err == nil {
 		t.Error("ExtractTar with empty archive should fail")
 	}
-	if err := app.ExtractTar(medium, t.TempDir()+"/missing.tar", t.TempDir()); err == nil {
+	if err := ExtractTar(medium, t.TempDir()+"/missing.tar", t.TempDir()); err == nil {
 		t.Error("ExtractTar with missing archive should fail")
 	}
 
@@ -61,7 +59,7 @@ func TestPkgElectronExtractTar_ExtractTar_Bad(t *testing.T) {
 	if err := medium.Write(archivePath, ""); err != nil {
 		t.Fatalf("Write empty archive: %v", err)
 	}
-	if err := app.ExtractTar(medium, archivePath, t.TempDir()); err == nil {
+	if err := ExtractTar(medium, archivePath, t.TempDir()); err == nil {
 		t.Error("ExtractTar against an empty archive should fail")
 	}
 }
@@ -80,7 +78,7 @@ func TestPkgElectronExtractTar_ExtractTar_Ugly(t *testing.T) {
 	if err := medium.Write(archivePath, body); err != nil {
 		t.Fatalf("Write archive: %v", err)
 	}
-	if err := app.ExtractTar(medium, archivePath, dest); err == nil {
+	if err := ExtractTar(medium, archivePath, dest); err == nil {
 		t.Error("ExtractTar should reject ../ traversal")
 	}
 }
@@ -100,7 +98,7 @@ func TestPkgElectronExtractTar_ExtractTarGz_Good(t *testing.T) {
 	if err := medium.Write(archivePath, body); err != nil {
 		t.Fatalf("Write archive: %v", err)
 	}
-	if err := app.ExtractTar(medium, archivePath, dest); err != nil {
+	if err := ExtractTar(medium, archivePath, dest); err != nil {
 		t.Fatalf("ExtractTar: %v", err)
 	}
 	if !medium.Exists(core.Path(dest, "index.html")) {
@@ -121,7 +119,7 @@ func TestPkgElectronExtractTar_ExtractArchive_Good(t *testing.T) {
 		t.Fatalf("Write tgz: %v", err)
 	}
 	tgzDest := core.Path(dir, "tgz-out")
-	if err := app.ExtractArchive(medium, tgzPath, tgzDest); err != nil {
+	if err := ExtractArchive(medium, tgzPath, tgzDest); err != nil {
 		t.Fatalf("ExtractArchive(tgz): %v", err)
 	}
 	if !medium.Exists(core.Path(tgzDest, "a.txt")) {
@@ -133,10 +131,10 @@ func TestPkgElectronExtractTar_ExtractArchive_Good(t *testing.T) {
 // unsupported suffix surface typed errors.
 func TestPkgElectronExtractTar_ExtractArchive_Bad(t *testing.T) {
 	medium := coreio.Local
-	if err := app.ExtractArchive(medium, "", t.TempDir()); err == nil {
+	if err := ExtractArchive(medium, "", t.TempDir()); err == nil {
 		t.Error("ExtractArchive with empty path should fail")
 	}
-	if err := app.ExtractArchive(medium, "/tmp/foo.7z", t.TempDir()); err == nil {
+	if err := ExtractArchive(medium, "/tmp/foo.7z", t.TempDir()); err == nil {
 		t.Error("ExtractArchive with unsupported suffix should fail")
 	}
 }
@@ -148,7 +146,7 @@ func TestPkgElectronExtractTar_ExtractArchive_Ugly(t *testing.T) {
 	// Routing test only — no real zip body required for this. The
 	// dispatcher will surface the ExtractZip error if the file does not
 	// exist (which is what we want — proves the suffix dispatch).
-	err := app.ExtractArchive(coreio.Local, "/tmp/notreal.zip", t.TempDir())
+	err := ExtractArchive(coreio.Local, "/tmp/notreal.zip", t.TempDir())
 	if err == nil {
 		t.Error("ExtractArchive should error on missing .zip (dispatch reached ExtractZip)")
 	}
@@ -166,7 +164,7 @@ func TestPkgElectronExtractTar_ArchiveExtractedDir_Good(t *testing.T) {
 		"plain":           "/tmp/dest/plain",
 	}
 	for archive, want := range cases {
-		got := app.ArchiveExtractedDir("/tmp/dest", archive)
+		got := ArchiveExtractedDir("/tmp/dest", archive)
 		if got != want {
 			t.Errorf("ArchiveExtractedDir(/tmp/dest, %q) = %q; want %q", archive, got, want)
 		}
@@ -177,7 +175,7 @@ func TestPkgElectronExtractTar_ArchiveExtractedDir_Good(t *testing.T) {
 // name returns the destination unchanged so the caller never gets a
 // bogus path.
 func TestPkgElectronExtractTar_ArchiveExtractedDir_Bad(t *testing.T) {
-	if got := app.ArchiveExtractedDir("/tmp/dest", ""); got != "/tmp/dest" {
+	if got := ArchiveExtractedDir("/tmp/dest", ""); got != "/tmp/dest" {
 		t.Errorf("ArchiveExtractedDir empty archive = %q; want '/tmp/dest'", got)
 	}
 }
@@ -185,9 +183,39 @@ func TestPkgElectronExtractTar_ArchiveExtractedDir_Bad(t *testing.T) {
 // TestPkgElectronExtractTar_ArchiveExtractedDir_Ugly — an absolute
 // archive path is reduced to its basename before stripping the suffix.
 func TestPkgElectronExtractTar_ArchiveExtractedDir_Ugly(t *testing.T) {
-	got := app.ArchiveExtractedDir("/tmp/dest", "/some/long/path/bundle.tar.gz")
+	got := ArchiveExtractedDir("/tmp/dest", "/some/long/path/bundle.tar.gz")
 	if got != "/tmp/dest/bundle" {
 		t.Errorf("ArchiveExtractedDir abs path = %q; want '/tmp/dest/bundle'", got)
+	}
+}
+
+func TestPkgElectronExtractTar_Reader_Read_Good(t *testing.T) {
+	reader := newStringReader("renderer")
+	buf := make([]byte, 4)
+	n, err := reader.Read(buf)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if n != 4 || string(buf) != "rend" {
+		t.Fatalf("Read = (%d,%q); want (4,rend)", n, string(buf))
+	}
+}
+
+func TestPkgElectronExtractTar_Reader_Read_Bad(t *testing.T) {
+	reader := newStringReader("")
+	buf := make([]byte, 1)
+	n, err := reader.Read(buf)
+	if err == nil || n != 0 {
+		t.Fatalf("empty Read = (%d,%v); want 0,EOF", n, err)
+	}
+}
+
+func TestPkgElectronExtractTar_Reader_Read_Ugly(t *testing.T) {
+	var reader *stringReader
+	buf := make([]byte, 1)
+	n, err := reader.Read(buf)
+	if err == nil || n != 0 {
+		t.Fatalf("nil Read = (%d,%v); want 0,EOF", n, err)
 	}
 }
 

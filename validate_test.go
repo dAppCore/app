@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	"dappco.re/go/config"
 )
 
@@ -271,9 +271,9 @@ func TestValidate_ReservedCategoryKey_Good(t *testing.T) {
 	}
 }
 
-// TestValidate_ValidateIssueSeverity_Good — String returns the
+// TestValidate_ValidateIssueSeverity_String_Good — String returns the
 // canonical lowercase name used in CLI output.
-func TestValidate_ValidateIssueSeverity_Good(t *testing.T) {
+func TestValidate_ValidateIssueSeverity_String_Good(t *testing.T) {
 	cases := []struct {
 		sev  ValidateIssueSeverity
 		want string
@@ -286,5 +286,108 @@ func TestValidate_ValidateIssueSeverity_Good(t *testing.T) {
 		if got := c.sev.String(); got != c.want {
 			t.Errorf("String(%v) = %q; want %q", c.sev, got, c.want)
 		}
+	}
+}
+
+func TestValidate_ValidateIssueSeverity_String_Bad(t *testing.T) {
+	if got := ValidateIssueSeverity(99).String(); got != "unknown" {
+		t.Fatalf("ValidateIssueSeverity(99).String() = %q; want unknown", got)
+	}
+}
+
+func TestValidate_ValidateIssueSeverity_String_Ugly(t *testing.T) {
+	if got := ValidateIssueSeverity(-1).String(); got != "unknown" {
+		t.Fatalf("ValidateIssueSeverity(-1).String() = %q; want unknown", got)
+	}
+}
+
+func TestValidate_ValidateReport_OK_Good(t *testing.T) {
+	report := ValidateReport{Issues: []ValidateIssue{{Severity: ValidateWarning, Field: "modules"}}}
+	if !report.OK() {
+		t.Fatal("warning-only report should be OK")
+	}
+}
+
+func TestValidate_ValidateReport_OK_Bad(t *testing.T) {
+	report := ValidateReport{Issues: []ValidateIssue{{Severity: ValidateError, Field: "code"}}}
+	if report.OK() {
+		t.Fatal("error report should not be OK")
+	}
+}
+
+func TestValidate_ValidateReport_OK_Ugly(t *testing.T) {
+	var report ValidateReport
+	if !report.OK() {
+		t.Fatal("zero-value report should be OK")
+	}
+}
+
+func TestValidate_ValidateReport_Errors_Good(t *testing.T) {
+	report := ValidateReport{Issues: []ValidateIssue{
+		{Severity: ValidateWarning, Field: "modules"},
+		{Severity: ValidateError, Field: "code"},
+	}}
+	errs := report.Errors()
+	if len(errs) != 1 || errs[0].Field != "code" {
+		t.Fatalf("Errors = %+v; want only code error", errs)
+	}
+}
+
+func TestValidate_ValidateReport_Errors_Bad(t *testing.T) {
+	report := ValidateReport{Issues: []ValidateIssue{{Severity: ValidateWarning, Field: "modules"}}}
+	if errs := report.Errors(); len(errs) != 0 {
+		t.Fatalf("Errors = %+v; want none", errs)
+	}
+}
+
+func TestValidate_ValidateReport_Errors_Ugly(t *testing.T) {
+	var report ValidateReport
+	if errs := report.Errors(); len(errs) != 0 {
+		t.Fatalf("zero-value Errors = %+v; want none", errs)
+	}
+}
+
+func TestValidate_ValidateReport_Warnings_Good(t *testing.T) {
+	report := ValidateReport{Issues: []ValidateIssue{
+		{Severity: ValidateWarning, Field: "modules"},
+		{Severity: ValidateError, Field: "code"},
+	}}
+	warnings := report.Warnings()
+	if len(warnings) != 1 || warnings[0].Field != "modules" {
+		t.Fatalf("Warnings = %+v; want only modules warning", warnings)
+	}
+}
+
+func TestValidate_ValidateReport_Warnings_Bad(t *testing.T) {
+	report := ValidateReport{Issues: []ValidateIssue{{Severity: ValidateError, Field: "code"}}}
+	if warnings := report.Warnings(); len(warnings) != 0 {
+		t.Fatalf("Warnings = %+v; want none", warnings)
+	}
+}
+
+func TestValidate_ValidateReport_Warnings_Ugly(t *testing.T) {
+	var report ValidateReport
+	if warnings := report.Warnings(); len(warnings) != 0 {
+		t.Fatalf("zero-value Warnings = %+v; want none", warnings)
+	}
+}
+
+func TestValidate_ValidateManifestErr_Good(t *testing.T) {
+	m := &config.ViewManifest{Code: "ok", Name: "OK", Version: "0.1.0"}
+	if err := ValidateManifestErr(m, ValidateOptions{}); err != nil {
+		t.Fatalf("ValidateManifestErr good manifest: %v", err)
+	}
+}
+
+func TestValidate_ValidateManifestErr_Bad(t *testing.T) {
+	m := &config.ViewManifest{Name: "Missing Code", Version: "0.1.0"}
+	if err := ValidateManifestErr(m, ValidateOptions{}); err == nil {
+		t.Fatal("ValidateManifestErr should reject missing code")
+	}
+}
+
+func TestValidate_ValidateManifestErr_Ugly(t *testing.T) {
+	if err := ValidateManifestErr(nil, ValidateOptions{}); err == nil {
+		t.Fatal("ValidateManifestErr should reject nil manifest")
 	}
 }

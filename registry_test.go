@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	core "dappco.re/go/core"
+	core "dappco.re/go"
 	"dappco.re/go/config"
 )
 
@@ -346,5 +346,35 @@ func TestRegistry_loadModules_Ugly(t *testing.T) {
 	m := &config.ViewManifest{}
 	if err := loadModules(context.Background(), c, m, ModeProd); err != nil {
 		t.Errorf("empty modules should succeed; got %v", err)
+	}
+}
+
+func TestRegistry_UnregisterModule_Good(t *testing.T) {
+	const name = "core/test-UnregisterModule-good"
+	RegisterModule(name, func() core.CoreOption {
+		return func(_ *core.Core) core.Result { return core.Result{OK: true} }
+	})
+	if _, ok := LookupModule(name); !ok {
+		t.Fatal("module should be registered before unregister")
+	}
+	UnregisterModule(name)
+	if _, ok := LookupModule(name); ok {
+		t.Fatal("module still registered after UnregisterModule")
+	}
+}
+
+func TestRegistry_UnregisterModule_Bad(t *testing.T) {
+	UnregisterModule("")
+	if _, ok := LookupModule(""); ok {
+		t.Fatal("empty module name should not be registered")
+	}
+}
+
+func TestRegistry_UnregisterModule_Ugly(t *testing.T) {
+	const name = "core/test-UnregisterModule-ugly"
+	UnregisterModule(name)
+	UnregisterModule(name)
+	if _, ok := LookupModule(name); ok {
+		t.Fatal("double unregister should leave module absent")
 	}
 }
