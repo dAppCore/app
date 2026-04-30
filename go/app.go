@@ -22,7 +22,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // Mode selects which enforcement regime the boot uses.
@@ -245,7 +244,7 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 	// so a running app picks up YAML edits on reboot without a recompile.
 	manifest, root, err := discoverCompiled(o.Medium, start, o.Mode)
 	if err != nil {
-		return nil, coreerr.E("app.Boot", "discover failed", err)
+		return nil, core.E("app.Boot", "discover failed", err)
 	}
 	inst.Manifest = manifest
 	inst.Root = root
@@ -253,30 +252,30 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 	// Step 2 — Verify
 	trusted, err := resolveTrustedKeys(o)
 	if err != nil {
-		return nil, coreerr.E("app.Boot", "resolve trusted keys failed", err)
+		return nil, core.E("app.Boot", "resolve trusted keys failed", err)
 	}
 	if err := verify(&manifest, o.Mode, trusted); err != nil {
-		return nil, coreerr.E("app.Boot", "verify failed", err)
+		return nil, core.E("app.Boot", "verify failed", err)
 	}
 	if err := verifyAssetIntegrity(o.Medium, root, &manifest, o.Mode); err != nil {
-		return nil, coreerr.E("app.Boot", "asset integrity failed", err)
+		return nil, core.E("app.Boot", "asset integrity failed", err)
 	}
 
 	// Step 3 — Permissions
 	if err := permissions(c, &manifest, o.Mode); err != nil {
-		return nil, coreerr.E("app.Boot", "permission binding failed", err)
+		return nil, core.E("app.Boot", "permission binding failed", err)
 	}
 
 	// Step 4 — Modules
 	if err := modulesWithMode(ctx, c, &manifest, o.Mode); err != nil {
-		return nil, coreerr.E("app.Boot", "module load failed", err)
+		return nil, core.E("app.Boot", "module load failed", err)
 	}
 
 	// Step 5 — Layout. The resolved spec is stashed on the Instance so
 	// core/gui can compose the window without re-parsing the manifest.
 	spec, err := resolveLayout(c, &manifest)
 	if err != nil {
-		return nil, coreerr.E("app.Boot", "layout composition failed", err)
+		return nil, core.E("app.Boot", "layout composition failed", err)
 	}
 	inst.Layout = spec
 
@@ -288,7 +287,7 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 		ws, wsErr := OpenWorkspace(o.Medium, o.WorkspaceHome, manifest.Code)
 		if wsErr != nil {
 			if o.Mode == ModeProd {
-				return nil, coreerr.E("app.Boot", "workspace bootstrap failed", wsErr)
+				return nil, core.E("app.Boot", "workspace bootstrap failed", wsErr)
 			}
 			// Dev mode: workspace is best-effort so the boot keeps
 			// flowing when DIR_HOME is empty (CI containers, sandbox
@@ -302,10 +301,10 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 	// Step 6 — Config. Render after the workspace exists so template vars
 	// can hydrate from the runtime object store.
 	if err := renderManifestConfigTemplatesWithMode(c, &manifest, o.Medium, root, inst.Workspace, o.Mode); err != nil {
-		return nil, coreerr.E("app.Boot", "config template failed", err)
+		return nil, core.E("app.Boot", "config template failed", err)
 	}
 	if err := registerRuntimeActions(inst); err != nil {
-		return nil, coreerr.E("app.Boot", "runtime action registration failed", err)
+		return nil, core.E("app.Boot", "runtime action registration failed", err)
 	}
 
 	// Note: Step 7 (Start) is the caller's explicit trigger — Boot returns
@@ -322,7 +321,7 @@ func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) 
 //	if !r.OK { core.Error("start failed", "err", r.Value) }
 func (inst *Instance) Start(ctx context.Context) core.Result {
 	if inst == nil || inst.Core == nil {
-		return core.Result{Value: coreerr.E("app.Instance.Start", "nil instance", nil), OK: false}
+		return core.Result{Value: core.E("app.Instance.Start", "nil instance", nil), OK: false}
 	}
 	return start(ctx, inst)
 }
@@ -355,7 +354,7 @@ func (inst *Instance) Start(ctx context.Context) core.Result {
 //     boot.
 func (inst *Instance) Stop(ctx context.Context) core.Result {
 	if inst == nil || inst.Core == nil {
-		return core.Result{Value: coreerr.E("app.Instance.Stop", "nil instance", nil), OK: false}
+		return core.Result{Value: core.E("app.Instance.Stop", "nil instance", nil), OK: false}
 	}
 	return stop(ctx, inst)
 }

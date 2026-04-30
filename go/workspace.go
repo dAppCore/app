@@ -9,7 +9,6 @@ import (
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
 	"dappco.re/go/io/cube"
-	coreerr "dappco.re/go/log"
 )
 
 // DataDirName is the component that follows `$DIR_HOME/.core/` for the
@@ -101,13 +100,13 @@ func OpenWorkspace(medium coreio.Medium, home, code string) (*Workspace, error) 
 		medium = coreio.Local
 	}
 	if code == "" {
-		return nil, coreerr.E("app.OpenWorkspace", "empty app code", nil)
+		return nil, core.E("app.OpenWorkspace", "empty app code", nil)
 	}
 	if home == "" {
 		home = core.Env("DIR_HOME")
 	}
 	if home == "" {
-		return nil, coreerr.E("app.OpenWorkspace", "cannot resolve home directory", nil)
+		return nil, core.E("app.OpenWorkspace", "cannot resolve home directory", nil)
 	}
 
 	root := core.Path(home, ".core", DataDirName, code)
@@ -120,7 +119,7 @@ func OpenWorkspace(medium coreio.Medium, home, code string) (*Workspace, error) 
 		WorkspaceLayoutTmp,
 	} {
 		if err := medium.EnsureDir(ws.Path(layout)); err != nil {
-			return nil, coreerr.E("app.OpenWorkspace", "ensure layout dir failed: "+string(layout), err)
+			return nil, core.E("app.OpenWorkspace", "ensure layout dir failed: "+string(layout), err)
 		}
 	}
 	return ws, nil
@@ -183,7 +182,7 @@ func (w *Workspace) Resolve(layout WorkspaceLayout, rel string) string {
 // underlying medium is returned unchanged so tests compose naturally.
 func (w *Workspace) Sandboxed() (coreio.Medium, error) {
 	if w == nil {
-		return nil, coreerr.E("app.Workspace.Sandboxed", "nil workspace", nil)
+		return nil, core.E("app.Workspace.Sandboxed", "nil workspace", nil)
 	}
 	if w.medium != coreio.Local {
 		// Mock and memory mediums have no notion of an OS root —
@@ -203,16 +202,16 @@ func (w *Workspace) Sandboxed() (coreio.Medium, error) {
 func (w *Workspace) openSandboxed() (coreio.Medium, error) {
 	sandbox, err := coreio.NewSandboxed(w.Root)
 	if err != nil {
-		return nil, coreerr.E("app.Workspace.Sandboxed", "sandbox workspace failed", err)
+		return nil, core.E("app.Workspace.Sandboxed", "sandbox workspace failed", err)
 	}
 	secret, err := deriveWorkspaceSecret(w)
 	if err != nil {
-		return nil, coreerr.E("app.Workspace.Sandboxed", "derive workspace key failed", err)
+		return nil, core.E("app.Workspace.Sandboxed", "derive workspace key failed", err)
 	}
 	defer zeroBytes(secret)
 	encrypted, err := cube.New(cube.Options{Inner: sandbox, Key: secret})
 	if err != nil {
-		return nil, coreerr.E("app.Workspace.Sandboxed", "encrypt workspace medium failed", err)
+		return nil, core.E("app.Workspace.Sandboxed", "encrypt workspace medium failed", err)
 	}
 	return encrypted, nil
 }
@@ -231,13 +230,13 @@ func zeroBytes(data []byte) {
 //	err := ws.Wipe()
 func (w *Workspace) Wipe() error {
 	if w == nil {
-		return coreerr.E("app.Workspace.Wipe", "nil workspace", nil)
+		return core.E("app.Workspace.Wipe", "nil workspace", nil)
 	}
 	if !w.medium.IsDir(w.Root) {
 		return nil
 	}
 	if err := w.medium.DeleteAll(w.Root); err != nil {
-		return coreerr.E("app.Workspace.Wipe", "delete workspace failed: "+w.Root, err)
+		return core.E("app.Workspace.Wipe", "delete workspace failed: "+w.Root, err)
 	}
 	return nil
 }
@@ -249,7 +248,7 @@ func (w *Workspace) Wipe() error {
 //	ws, err := app.WorkspaceForManifest(coreio.Local, home, &inst.Manifest)
 func WorkspaceForManifest(medium coreio.Medium, home string, m *config.ViewManifest) (*Workspace, error) {
 	if m == nil {
-		return nil, coreerr.E("app.WorkspaceForManifest", "nil manifest", nil)
+		return nil, core.E("app.WorkspaceForManifest", "nil manifest", nil)
 	}
 	return OpenWorkspace(medium, home, m.Code)
 }

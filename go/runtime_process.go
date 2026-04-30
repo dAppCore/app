@@ -5,16 +5,14 @@ package app
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
-	"os"
 	"os/exec"
 	"runtime"
 	"sync"
 	"syscall"
 	"time"
 
-	coreerr "dappco.re/go/log"
+	core "dappco.re/go"
 )
 
 type managedProcesses struct {
@@ -66,7 +64,7 @@ func (procs *managedProcesses) runOnce(ctx context.Context, command string, args
 		cmd.Dir = dir
 	}
 	if len(env) > 0 {
-		cmd.Env = append(os.Environ(), env...)
+		cmd.Env = append(core.Environ(), env...)
 	}
 	stdout := cmd.Stdout.(*bytes.Buffer)
 	stderr := cmd.Stderr.(*bytes.Buffer)
@@ -76,7 +74,7 @@ func (procs *managedProcesses) runOnce(ctx context.Context, command string, args
 	if err != nil {
 		var exitErr *exec.ExitError
 		if !errorAs(err, &exitErr) {
-			return nil, coreerr.E("app.managedProcesses.runOnce", "start process failed", err)
+			return nil, core.E("app.managedProcesses.runOnce", "start process failed", err)
 		}
 		if exitCode < 0 {
 			exitCode = exitErr.ExitCode()
@@ -91,10 +89,10 @@ func (procs *managedProcesses) runOnce(ctx context.Context, command string, args
 
 func (procs *managedProcesses) add(key, command string, args, env []string, dir string) error {
 	if procs == nil {
-		return coreerr.E("app.managedProcesses.add", "nil registry", nil)
+		return core.E("app.managedProcesses.add", "nil registry", nil)
 	}
 	if key == "" {
-		return coreerr.E("app.managedProcesses.add", "key is required", nil)
+		return core.E("app.managedProcesses.add", "key is required", nil)
 	}
 	procs.mu.Lock()
 	defer procs.mu.Unlock()
@@ -114,7 +112,7 @@ func (procs *managedProcesses) start(ctx context.Context, key string) (bool, err
 	entry, ok := procs.entries[key]
 	if !ok {
 		procs.mu.Unlock()
-		return false, coreerr.E("app.managedProcesses.start", "process not found: "+key, nil)
+		return false, core.E("app.managedProcesses.start", "process not found: "+key, nil)
 	}
 	if entry.running {
 		procs.mu.Unlock()
@@ -128,16 +126,16 @@ func (procs *managedProcesses) start(ctx context.Context, key string) (bool, err
 		cmd.Dir = entry.dir
 	}
 	if len(entry.env) > 0 {
-		cmd.Env = append(os.Environ(), entry.env...)
+		cmd.Env = append(core.Environ(), entry.env...)
 	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		procs.mu.Unlock()
-		return false, coreerr.E("app.managedProcesses.start", "open stdin failed", err)
+		return false, core.E("app.managedProcesses.start", "open stdin failed", err)
 	}
 	if err := cmd.Start(); err != nil {
 		procs.mu.Unlock()
-		return false, coreerr.E("app.managedProcesses.start", "start failed", err)
+		return false, core.E("app.managedProcesses.start", "start failed", err)
 	}
 
 	entry.stdout.Reset()
@@ -174,7 +172,7 @@ func (procs *managedProcesses) stop(key string) (bool, error) {
 	entry, ok := procs.entries[key]
 	if !ok {
 		procs.mu.Unlock()
-		return false, coreerr.E("app.managedProcesses.stop", "process not found: "+key, nil)
+		return false, core.E("app.managedProcesses.stop", "process not found: "+key, nil)
 	}
 	cmd := entry.cmd
 	running := entry.running
@@ -187,7 +185,7 @@ func (procs *managedProcesses) stop(key string) (bool, error) {
 		return procs.kill(key)
 	}
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		return false, coreerr.E("app.managedProcesses.stop", "signal failed", err)
+		return false, core.E("app.managedProcesses.stop", "signal failed", err)
 	}
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -208,7 +206,7 @@ func (procs *managedProcesses) kill(key string) (bool, error) {
 	entry, ok := procs.entries[key]
 	if !ok {
 		procs.mu.Unlock()
-		return false, coreerr.E("app.managedProcesses.kill", "process not found: "+key, nil)
+		return false, core.E("app.managedProcesses.kill", "process not found: "+key, nil)
 	}
 	cmd := entry.cmd
 	running := entry.running
@@ -217,7 +215,7 @@ func (procs *managedProcesses) kill(key string) (bool, error) {
 		return false, nil
 	}
 	if err := cmd.Process.Kill(); err != nil {
-		return false, coreerr.E("app.managedProcesses.kill", "kill failed", err)
+		return false, core.E("app.managedProcesses.kill", "kill failed", err)
 	}
 	return true, nil
 }
@@ -227,7 +225,7 @@ func (procs *managedProcesses) info(key string) (map[string]any, error) {
 	defer procs.mu.Unlock()
 	entry, ok := procs.entries[key]
 	if !ok {
-		return nil, coreerr.E("app.managedProcesses.info", "process not found: "+key, nil)
+		return nil, core.E("app.managedProcesses.info", "process not found: "+key, nil)
 	}
 	return entry.info(), nil
 }
@@ -255,7 +253,7 @@ func (procs *managedProcesses) stdoutValue(key string) (string, error) {
 	defer procs.mu.Unlock()
 	entry, ok := procs.entries[key]
 	if !ok {
-		return "", coreerr.E("app.managedProcesses.stdoutValue", "process not found: "+key, nil)
+		return "", core.E("app.managedProcesses.stdoutValue", "process not found: "+key, nil)
 	}
 	return entry.stdout.String(), nil
 }
@@ -265,15 +263,15 @@ func (procs *managedProcesses) writeStdin(key, data string) error {
 	entry, ok := procs.entries[key]
 	if !ok {
 		procs.mu.Unlock()
-		return coreerr.E("app.managedProcesses.writeStdin", "process not found: "+key, nil)
+		return core.E("app.managedProcesses.writeStdin", "process not found: "+key, nil)
 	}
 	stdin := entry.stdin
 	procs.mu.Unlock()
 	if stdin == nil {
-		return coreerr.E("app.managedProcesses.writeStdin", "stdin unavailable for "+key, nil)
+		return core.E("app.managedProcesses.writeStdin", "stdin unavailable for "+key, nil)
 	}
 	if _, err := io.WriteString(stdin, data); err != nil {
-		return coreerr.E("app.managedProcesses.writeStdin", "write failed", err)
+		return core.E("app.managedProcesses.writeStdin", "write failed", err)
 	}
 	return nil
 }
@@ -290,7 +288,7 @@ func (entry *managedProcess) info() map[string]any {
 	}
 }
 
-func exitCodeOf(state *os.ProcessState) int {
+func exitCodeOf(state interface{ ExitCode() int }) int {
 	if state == nil {
 		return -1
 	}
@@ -298,5 +296,5 @@ func exitCodeOf(state *os.ProcessState) int {
 }
 
 func errorAs(err error, target any) bool {
-	return errors.As(err, target)
+	return core.As(err, target)
 }

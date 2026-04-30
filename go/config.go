@@ -6,7 +6,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // TemplateSuffix is the canonical extension for config template
@@ -65,10 +64,10 @@ func applyConfig(c *core.Core, m *config.ViewManifest, medium coreio.Medium, roo
 // dev-mode config misses warn instead of aborting the boot.
 func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Medium, root string, mode Mode) error {
 	if c == nil {
-		return coreerr.E("app.applyConfigWithMode", "nil core", nil)
+		return core.E("app.applyConfigWithMode", "nil core", nil)
 	}
 	if m == nil {
-		return coreerr.E("app.applyConfigWithMode", "nil manifest", nil)
+		return core.E("app.applyConfigWithMode", "nil manifest", nil)
 	}
 	if len(m.Config) == 0 {
 		return nil
@@ -87,7 +86,7 @@ func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Med
 			if isReservedConfigKey(name) {
 				continue
 			}
-			err := coreerr.E(
+			err := core.E(
 				"app.applyConfigWithMode",
 				"config entry '"+name+"' is not a {template, vars} map",
 				nil,
@@ -104,7 +103,7 @@ func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Med
 			if isReservedConfigKey(name) {
 				continue
 			}
-			err := coreerr.E(
+			err := core.E(
 				"app.applyConfigWithMode",
 				"config entry '"+name+"' is missing the template path",
 				nil,
@@ -118,7 +117,7 @@ func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Med
 
 		full := core.Path(root, entry.Template)
 		if !medium.Exists(full) {
-			err := coreerr.E(
+			err := core.E(
 				"app.applyConfigWithMode",
 				"config template '"+full+"' (declared by '"+name+"') does not exist",
 				nil,
@@ -132,7 +131,7 @@ func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Med
 
 		body, err := medium.Read(full)
 		if err != nil {
-			err = coreerr.E(
+			err = core.E(
 				"app.applyConfigWithMode",
 				"read template '"+full+"' (declared by '"+name+"') failed",
 				err,
@@ -148,7 +147,7 @@ func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Med
 
 		dst := destinationOf(full)
 		if err := medium.EnsureDir(core.PathDir(dst)); err != nil {
-			err = coreerr.E(
+			err = core.E(
 				"app.applyConfigWithMode",
 				"ensure destination dir for '"+dst+"' failed",
 				err,
@@ -160,7 +159,7 @@ func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Med
 			return err
 		}
 		if err := medium.Write(dst, rendered); err != nil {
-			err = coreerr.E(
+			err = core.E(
 				"app.applyConfigWithMode",
 				"write rendered template '"+dst+"' failed",
 				err,

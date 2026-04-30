@@ -3,12 +3,9 @@
 package app
 
 import (
-	"strings"
-
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // WrapWebOptions tunes the plain-web wrap. Web wrapping is the
@@ -42,10 +39,10 @@ func WrapWeb(medium coreio.Medium, dir string, opts WrapWebOptions) (*config.Vie
 		medium = coreio.Local
 	}
 	if dir == "" {
-		return nil, coreerr.E("app.WrapWeb", "empty directory", nil)
+		return nil, core.E("app.WrapWeb", "empty directory", nil)
 	}
 	if !medium.IsDir(dir) {
-		return nil, coreerr.E("app.WrapWeb", "not a directory: "+dir, nil)
+		return nil, core.E("app.WrapWeb", "not a directory: "+dir, nil)
 	}
 
 	entry := opts.Entry
@@ -55,7 +52,7 @@ func WrapWeb(medium coreio.Medium, dir string, opts WrapWebOptions) (*config.Vie
 
 	entryPath := core.Path(dir, entry)
 	if !medium.Exists(entryPath) {
-		return nil, coreerr.E("app.WrapWeb", "entry not found: "+entryPath, nil)
+		return nil, core.E("app.WrapWeb", "entry not found: "+entryPath, nil)
 	}
 
 	code := core.Trim(opts.Code)
@@ -102,7 +99,7 @@ func WrapWeb(medium coreio.Medium, dir string, opts WrapWebOptions) (*config.Vie
 //	err := app.WriteWebWrap(coreio.Local, dest, manifest)
 func WriteWebWrap(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
 	if manifest == nil {
-		return coreerr.E("app.WriteWebWrap", "nil manifest", nil)
+		return core.E("app.WriteWebWrap", "nil manifest", nil)
 	}
 	return writeWrappedManifest(medium, dest, manifest)
 }
@@ -112,8 +109,18 @@ func defaultWebWrapName(dir string) string {
 	if base == "" {
 		return ""
 	}
-	base = strings.NewReplacer("-", " ", "_", " ", ".", " ").Replace(base)
-	parts := strings.Fields(base)
+	base = core.Replace(base, "-", " ")
+	base = core.Replace(base, "_", " ")
+	base = core.Replace(base, ".", " ")
+	rawParts := core.Split(base, " ")
+	parts := make([]string, 0, len(rawParts))
+	for _, raw := range rawParts {
+		part := core.Trim(raw)
+		if part == "" {
+			continue
+		}
+		parts = append(parts, part)
+	}
 	if len(parts) == 0 {
 		return ""
 	}
@@ -121,7 +128,7 @@ func defaultWebWrapName(dir string) string {
 		if part == "" {
 			continue
 		}
-		parts[i] = strings.ToUpper(part[:1]) + part[1:]
+		parts[i] = core.Upper(part[:1]) + part[1:]
 	}
-	return strings.Join(parts, " ")
+	return core.Join(" ", parts...)
 }

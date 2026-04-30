@@ -46,10 +46,6 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
-	// AX-6 process-lifecycle exception: this file is the binary boundary.
-	// The CLI layer owns argv/signal wrappers, but core/app does
-	// not depend on that module in this lane, and go.mod is off-limits here.
-	"os"
 	"os/signal"
 	"syscall"
 
@@ -60,7 +56,7 @@ import (
 )
 
 func main() {
-	args := os.Args[1:]
+	args := core.Args()[1:]
 
 	// Subcommand dispatch — the first positional that matches a verb
 	// takes over. Falls through to the plain "boot" path otherwise so
@@ -68,21 +64,21 @@ func main() {
 	if len(args) > 0 {
 		switch args[0] {
 		case "compile":
-			os.Exit(runCompile(args[1:]))
+			core.Exit(runCompile(args[1:]))
 		case "sign":
-			os.Exit(runSign(args[1:]))
+			core.Exit(runSign(args[1:]))
 		case "keygen":
-			os.Exit(runKeygen(args[1:]))
+			core.Exit(runKeygen(args[1:]))
 		case "pkg":
-			os.Exit(runPkg(args[1:]))
+			core.Exit(runPkg(args[1:]))
 		case "marketplace":
-			os.Exit(runMarketplace(args[1:]))
+			core.Exit(runMarketplace(args[1:]))
 		case "sdk":
-			os.Exit(runSDK(args[1:]))
+			core.Exit(runSDK(args[1:]))
 		case "run":
-			os.Exit(runInstalled(args[1:]))
+			core.Exit(runInstalled(args[1:]))
 		case "validate":
-			os.Exit(runValidate(args[1:]))
+			core.Exit(runValidate(args[1:]))
 		}
 	}
 
@@ -145,7 +141,7 @@ func runBootFromMode(mode app.Mode, start string, watch bool) {
 	inst, err := app.Boot(ctx, start, app.WithMode(mode))
 	if err != nil {
 		core.Error("boot failed", "start", start, "mode", mode.String(), "err", err)
-		os.Exit(1)
+		core.Exit(1)
 	}
 	core.Info("CoreApp booted",
 		"code", inst.Manifest.Code,
@@ -156,7 +152,7 @@ func runBootFromMode(mode app.Mode, start string, watch bool) {
 	)
 	if r := inst.Start(ctx); !r.OK {
 		core.Error("start failed", "err", r.Value)
-		os.Exit(2)
+		core.Exit(2)
 	}
 	if watch {
 		waitForReload(ctx, inst)
@@ -166,7 +162,7 @@ func runBootFromMode(mode app.Mode, start string, watch bool) {
 // runBoot drives the "boot a CoreApp" path. Extracted from main so the
 // subcommand dispatch reads cleanly.
 //
-//	runBoot(os.Args[1:])
+//	runBoot(core.Args()[1:])
 func runBoot(args []string) {
 	mode, start, watch := parseArgs(args)
 
@@ -176,7 +172,7 @@ func runBoot(args []string) {
 	inst, err := app.Boot(ctx, start, app.WithMode(mode))
 	if err != nil {
 		core.Error("boot failed", "start", start, "mode", mode.String(), "err", err)
-		os.Exit(1)
+		core.Exit(1)
 	}
 
 	core.Info("CoreApp booted",
@@ -189,7 +185,7 @@ func runBoot(args []string) {
 
 	if r := inst.Start(ctx); !r.OK {
 		core.Error("start failed", "err", r.Value)
-		os.Exit(2)
+		core.Exit(2)
 	}
 
 	if watch {
@@ -222,13 +218,12 @@ func waitForReload(ctx context.Context, inst *app.Instance) {
 	stopWatch := inst.Watch(ctx, app.WatchOptions{})
 	defer stopWatch()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sigCh)
+	sigCtx, stopSignals := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignals()
 	core.Info("watching for changes — press Ctrl-C to stop")
 	select {
 	case <-ctx.Done():
-	case <-sigCh:
+	case <-sigCtx.Done():
 	}
 	if r := inst.Stop(ctx); !r.OK {
 		core.Error("stop failed", "err", r.Value)
@@ -272,11 +267,11 @@ func parseArgs(args []string) (mode app.Mode, start string, watch bool) {
 			core.Println("  run <app-code>  boot an installed package by code")
 			core.Println("  pkg ...      manage packages (list, info, wrap, install, remove, update)")
 			core.Println("  marketplace  search/install/fetch from the marketplace")
-			os.Exit(0)
+			core.Exit(0)
 		default:
 			if core.HasPrefix(a, "-") {
 				core.Error("unknown flag", "flag", a)
-				os.Exit(64)
+				core.Exit(64)
 			}
 			start = a
 		}

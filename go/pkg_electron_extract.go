@@ -8,7 +8,6 @@ import (
 
 	core "dappco.re/go"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // ExtractZip unpacks a downloaded zip archive into `dest`. Used by
@@ -37,29 +36,29 @@ func ExtractZip(medium coreio.Medium, archive, dest string) error {
 		medium = coreio.Local
 	}
 	if archive == "" {
-		return coreerr.E("app.ExtractZip", "empty archive path", nil)
+		return core.E("app.ExtractZip", "empty archive path", nil)
 	}
 	if dest == "" {
-		return coreerr.E("app.ExtractZip", "empty dest path", nil)
+		return core.E("app.ExtractZip", "empty dest path", nil)
 	}
 	if !medium.Exists(archive) {
-		return coreerr.E("app.ExtractZip", "archive not found: "+archive, nil)
+		return core.E("app.ExtractZip", "archive not found: "+archive, nil)
 	}
 	if err := medium.EnsureDir(dest); err != nil {
-		return coreerr.E("app.ExtractZip", "ensure dest dir failed", err)
+		return core.E("app.ExtractZip", "ensure dest dir failed", err)
 	}
 
 	body, err := medium.Read(archive)
 	if err != nil {
-		return coreerr.E("app.ExtractZip", "read archive failed", err)
+		return core.E("app.ExtractZip", "read archive failed", err)
 	}
 	if body == "" {
-		return coreerr.E("app.ExtractZip", "archive is empty: "+archive, nil)
+		return core.E("app.ExtractZip", "archive is empty: "+archive, nil)
 	}
 
 	r, err := zip.NewReader(stringReaderAt(body), int64(len(body)))
 	if err != nil {
-		return coreerr.E("app.ExtractZip", "parse zip failed", err)
+		return core.E("app.ExtractZip", "parse zip failed", err)
 	}
 
 	for _, f := range r.File {
@@ -87,7 +86,7 @@ func extractZipEntry(medium coreio.Medium, f *zip.File, dest string) error {
 	// Skip absolute paths and parent traversals — the joined path must
 	// stay within `dest`.
 	if core.PathIsAbs(name) || core.HasPrefix(name, "..") || core.Contains(name, "../") {
-		return coreerr.E(
+		return core.E(
 			"app.ExtractZip",
 			"refusing zip entry outside dest: "+name,
 			nil,
@@ -102,7 +101,7 @@ func extractZipEntry(medium coreio.Medium, f *zip.File, dest string) error {
 	if !core.HasPrefix(target, cleanDest+sep) && target != cleanDest {
 		// Belt-and-braces — the previous PathIsAbs / `..` checks should
 		// catch this, but verify the resolved path before any write.
-		return coreerr.E(
+		return core.E(
 			"app.ExtractZip",
 			"refusing zip entry outside dest after join: "+name,
 			nil,
@@ -112,7 +111,7 @@ func extractZipEntry(medium coreio.Medium, f *zip.File, dest string) error {
 	// Directory entries end with '/'. Create and continue.
 	if f.FileInfo().IsDir() {
 		if err := medium.EnsureDir(target); err != nil {
-			return coreerr.E("app.ExtractZip", "ensure dir failed: "+target, err)
+			return core.E("app.ExtractZip", "ensure dir failed: "+target, err)
 		}
 		return nil
 	}
@@ -125,21 +124,21 @@ func extractZipEntry(medium coreio.Medium, f *zip.File, dest string) error {
 	}
 
 	if err := medium.EnsureDir(core.PathDir(target)); err != nil {
-		return coreerr.E("app.ExtractZip", "ensure parent dir failed: "+target, err)
+		return core.E("app.ExtractZip", "ensure parent dir failed: "+target, err)
 	}
 
 	rc, err := f.Open()
 	if err != nil {
-		return coreerr.E("app.ExtractZip", "open entry failed: "+name, err)
+		return core.E("app.ExtractZip", "open entry failed: "+name, err)
 	}
 	defer func() { _ = rc.Close() }()
 
 	body, err := io.ReadAll(rc)
 	if err != nil {
-		return coreerr.E("app.ExtractZip", "read entry failed: "+name, err)
+		return core.E("app.ExtractZip", "read entry failed: "+name, err)
 	}
 	if err := medium.Write(target, string(body)); err != nil {
-		return coreerr.E("app.ExtractZip", "write entry failed: "+target, err)
+		return core.E("app.ExtractZip", "write entry failed: "+target, err)
 	}
 	return nil
 }

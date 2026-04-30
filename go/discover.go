@@ -6,7 +6,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // discover is Step 1 of the 7-step boot — locate `.core/view.yaml` by
@@ -20,7 +19,7 @@ import (
 // Returns:
 //   - manifest: the parsed view.yaml contents
 //   - root:     the project directory (parent of the .core/ that won)
-//   - err:      coreerr.E-wrapped if the walk produces nothing or parse fails
+//   - err:      core.E-wrapped if the walk produces nothing or parse fails
 func discover(medium coreio.Medium, start string) (config.ViewManifest, string, error) {
 	if medium == nil {
 		medium = coreio.Local
@@ -31,7 +30,7 @@ func discover(medium coreio.Medium, start string) (config.ViewManifest, string, 
 	// path — the caller is not inside a CoreApp.
 	path := config.FindManifest(medium, start, config.FileView)
 	if path == "" {
-		return config.ViewManifest{}, "", coreerr.E(
+		return config.ViewManifest{}, "", core.E(
 			"app.discover",
 			"no .core/view.yaml found walking up from "+start,
 			nil,
@@ -40,7 +39,7 @@ func discover(medium coreio.Medium, start string) (config.ViewManifest, string, 
 
 	var manifest config.ViewManifest
 	if err := LoadViewManifest(medium, path, &manifest); err != nil {
-		return config.ViewManifest{}, "", coreerr.E(
+		return config.ViewManifest{}, "", core.E(
 			"app.discover",
 			"failed to parse "+path,
 			err,
@@ -82,7 +81,7 @@ func discoverCompiled(medium coreio.Medium, start string, mode Mode) (config.Vie
 		if path := core.Path(root, CompiledFileName); medium.Exists(path) {
 			cm, err := LoadCompiled(medium, root)
 			if err != nil {
-				return config.ViewManifest{}, "", coreerr.E(
+				return config.ViewManifest{}, "", core.E(
 					"app.discoverCompiled",
 					"failed to parse "+path,
 					err,
@@ -159,18 +158,18 @@ func DiscoverInstalled(medium coreio.Medium, home, code string) (string, error) 
 		medium = coreio.Local
 	}
 	if code == "" {
-		return "", coreerr.E("app.DiscoverInstalled", "empty code", nil)
+		return "", core.E("app.DiscoverInstalled", "empty code", nil)
 	}
 	if home == "" {
 		home = core.Env("DIR_HOME")
 	}
 	if home == "" {
-		return "", coreerr.E("app.DiscoverInstalled", "cannot resolve home directory", nil)
+		return "", core.E("app.DiscoverInstalled", "cannot resolve home directory", nil)
 	}
 
 	dir := core.Path(home, ".core", AppsDirName, code)
 	if !medium.IsDir(dir) {
-		return "", coreerr.E(
+		return "", core.E(
 			"app.DiscoverInstalled",
 			"package not installed: "+code+" (expected "+dir+")",
 			nil,

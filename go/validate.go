@@ -5,7 +5,6 @@ package app
 import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
-	coreerr "dappco.re/go/log"
 )
 
 // ValidateOptions tunes ValidateManifest. Zero values produce the
@@ -360,5 +359,5 @@ func ValidateManifestErr(m *config.ViewManifest, opts ValidateOptions) error {
 	if field == "" {
 		field = "<manifest>"
 	}
-	return coreerr.E("app.ValidateManifest", field+": "+first.Message, nil)
+	return core.E("app.ValidateManifest", field+": "+first.Message, nil)
 }

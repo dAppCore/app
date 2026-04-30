@@ -7,7 +7,6 @@ import (
 
 	core "dappco.re/go"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // FetchRepoSource downloads and extracts a GitHub-style repository
@@ -18,10 +17,10 @@ import (
 func FetchRepoSource(ctx context.Context, medium coreio.Medium, ref, scratchDir string) (string, error) {
 	host, owner, repo, ok := ParseGitHubRepo(ref)
 	if !ok {
-		return "", coreerr.E("app.FetchRepoSource", "cannot parse repo reference: "+ref, nil)
+		return "", core.E("app.FetchRepoSource", "cannot parse repo reference: "+ref, nil)
 	}
 	if !isGitHubReleaseHost(host) {
-		return "", coreerr.E(
+		return "", core.E(
 			"app.FetchRepoSource",
 			"repo host does not expose GitHub archives: "+host,
 			nil,
@@ -41,10 +40,10 @@ func FetchRepoSourceURL(ctx context.Context, medium coreio.Medium, url, scratchD
 		medium = coreio.Local
 	}
 	if url == "" {
-		return "", coreerr.E("app.FetchRepoSourceURL", "empty archive URL", nil)
+		return "", core.E("app.FetchRepoSourceURL", "empty archive URL", nil)
 	}
 	if scratchDir == "" {
-		return "", coreerr.E("app.FetchRepoSourceURL", "empty scratch dir", nil)
+		return "", core.E("app.FetchRepoSourceURL", "empty scratch dir", nil)
 	}
 	if archiveName == "" {
 		archiveName = "source.zip"
@@ -52,11 +51,11 @@ func FetchRepoSourceURL(ctx context.Context, medium coreio.Medium, url, scratchD
 
 	if medium.IsDir(scratchDir) {
 		if err := medium.DeleteAll(scratchDir); err != nil {
-			return "", coreerr.E("app.FetchRepoSourceURL", "clear scratch dir failed", err)
+			return "", core.E("app.FetchRepoSourceURL", "clear scratch dir failed", err)
 		}
 	}
 	if err := medium.EnsureDir(scratchDir); err != nil {
-		return "", coreerr.E("app.FetchRepoSourceURL", "ensure scratch dir failed", err)
+		return "", core.E("app.FetchRepoSourceURL", "ensure scratch dir failed", err)
 	}
 
 	archivePath, err := DownloadAsset(ctx, medium, GitHubAsset{
@@ -64,17 +63,17 @@ func FetchRepoSourceURL(ctx context.Context, medium coreio.Medium, url, scratchD
 		DownloadURL: url,
 	}, scratchDir)
 	if err != nil {
-		return "", coreerr.E("app.FetchRepoSourceURL", "archive download failed", err)
+		return "", core.E("app.FetchRepoSourceURL", "archive download failed", err)
 	}
 
 	extractDir := ArchiveExtractedDir(scratchDir, archiveName)
 	if err := ExtractArchive(medium, archivePath, extractDir); err != nil {
-		return "", coreerr.E("app.FetchRepoSourceURL", "archive extract failed", err)
+		return "", core.E("app.FetchRepoSourceURL", "archive extract failed", err)
 	}
 
 	root, err := resolveRepoSourceRoot(medium, extractDir)
 	if err != nil {
-		return "", coreerr.E("app.FetchRepoSourceURL", "resolve project root failed", err)
+		return "", core.E("app.FetchRepoSourceURL", "resolve project root failed", err)
 	}
 	return root, nil
 }
@@ -95,17 +94,17 @@ func LoadRepoPWAManifest(ctx context.Context, medium coreio.Medium, ref, scratch
 	}
 	path, ok := FindLocalPWAManifest(medium, root)
 	if !ok {
-		return nil, "", coreerr.E("app.LoadRepoPWAManifest", "PWA manifest not found under "+root, nil)
+		return nil, "", core.E("app.LoadRepoPWAManifest", "PWA manifest not found under "+root, nil)
 	}
 	body, err := medium.Read(path)
 	if err != nil {
-		return nil, "", coreerr.E("app.LoadRepoPWAManifest", "read PWA manifest failed", err)
+		return nil, "", core.E("app.LoadRepoPWAManifest", "read PWA manifest failed", err)
 	}
 	var manifest PWAManifest
 	r := core.JSONUnmarshal([]byte(body), &manifest)
 	if !r.OK {
 		cause, _ := r.Value.(error)
-		return nil, "", coreerr.E("app.LoadRepoPWAManifest", "decode PWA manifest failed", cause)
+		return nil, "", core.E("app.LoadRepoPWAManifest", "decode PWA manifest failed", cause)
 	}
 	return &manifest, root, nil
 }
@@ -131,10 +130,10 @@ func resolveRepoSourceRoot(medium coreio.Medium, dir string) (string, error) {
 		medium = coreio.Local
 	}
 	if dir == "" {
-		return "", coreerr.E("app.resolveRepoSourceRoot", "empty directory", nil)
+		return "", core.E("app.resolveRepoSourceRoot", "empty directory", nil)
 	}
 	if !medium.IsDir(dir) {
-		return "", coreerr.E("app.resolveRepoSourceRoot", "not a directory: "+dir, nil)
+		return "", core.E("app.resolveRepoSourceRoot", "not a directory: "+dir, nil)
 	}
 
 	cur := dir

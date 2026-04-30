@@ -8,7 +8,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // AppsDirName is the component that follows `$DIR_HOME/.core/` for the
@@ -87,7 +86,7 @@ func PkgList(medium coreio.Medium, home string) ([]PkgEntry, error) {
 		medium = coreio.Local
 	}
 	if home == "" {
-		return nil, coreerr.E("app.PkgList", "empty home directory", nil)
+		return nil, core.E("app.PkgList", "empty home directory", nil)
 	}
 	appsDir := core.Path(home, ".core", AppsDirName)
 	if !medium.IsDir(appsDir) {
@@ -96,7 +95,7 @@ func PkgList(medium coreio.Medium, home string) ([]PkgEntry, error) {
 
 	entries, err := medium.List(appsDir)
 	if err != nil {
-		return nil, coreerr.E("app.PkgList", "list apps dir failed", err)
+		return nil, core.E("app.PkgList", "list apps dir failed", err)
 	}
 
 	var out []PkgEntry
@@ -174,7 +173,7 @@ func InstalledApps(medium coreio.Medium, home string) ([]InstalledApp, error) {
 		medium = coreio.Local
 	}
 	if home == "" {
-		return nil, coreerr.E("app.InstalledApps", "empty home directory", nil)
+		return nil, core.E("app.InstalledApps", "empty home directory", nil)
 	}
 	appsDir := core.Path(home, ".core", AppsDirName)
 	if !medium.IsDir(appsDir) {
@@ -182,7 +181,7 @@ func InstalledApps(medium coreio.Medium, home string) ([]InstalledApp, error) {
 	}
 	entries, err := medium.List(appsDir)
 	if err != nil {
-		return nil, coreerr.E("app.InstalledApps", "list apps dir failed", err)
+		return nil, core.E("app.InstalledApps", "list apps dir failed", err)
 	}
 	var out []InstalledApp
 	for _, entry := range entries {
@@ -316,16 +315,16 @@ func PkgInfo(medium coreio.Medium, home, name string) (*PkgDetails, error) {
 		medium = coreio.Local
 	}
 	if home == "" {
-		return nil, coreerr.E("app.PkgInfo", "empty home directory", nil)
+		return nil, core.E("app.PkgInfo", "empty home directory", nil)
 	}
 	if name == "" {
-		return nil, coreerr.E("app.PkgInfo", "empty package name", nil)
+		return nil, core.E("app.PkgInfo", "empty package name", nil)
 	}
 
 	appPath := core.Path(home, ".core", AppsDirName, name)
 	viewPath := core.Path(appPath, ".core", "view.yaml")
 	if !medium.Exists(viewPath) {
-		return nil, coreerr.E(
+		return nil, core.E(
 			"app.PkgInfo",
 			"package not installed: "+name+" (expected "+viewPath+")",
 			nil,
@@ -334,12 +333,12 @@ func PkgInfo(medium coreio.Medium, home, name string) (*PkgDetails, error) {
 
 	var manifest config.ViewManifest
 	if err := LoadViewManifest(medium, viewPath, &manifest); err != nil {
-		return nil, coreerr.E("app.PkgInfo", "parse manifest failed", err)
+		return nil, core.E("app.PkgInfo", "parse manifest failed", err)
 	}
 
 	entry, err := pkgEntryFromManifest(medium, viewPath, appPath)
 	if err != nil {
-		return nil, coreerr.E("app.PkgInfo", "project entry failed", err)
+		return nil, core.E("app.PkgInfo", "project entry failed", err)
 	}
 
 	info := &PkgDetails{
@@ -529,23 +528,23 @@ func PkgRemoveWith(medium coreio.Medium, home, name string, opts PkgRemoveOption
 		medium = coreio.Local
 	}
 	if home == "" {
-		return coreerr.E("app.PkgRemoveWith", "empty home directory", nil)
+		return core.E("app.PkgRemoveWith", "empty home directory", nil)
 	}
 	if name == "" || core.Contains(name, "/") || core.Contains(name, "\\") {
-		return coreerr.E("app.PkgRemoveWith", "invalid package name: "+name, nil)
+		return core.E("app.PkgRemoveWith", "invalid package name: "+name, nil)
 	}
 	appPath := core.Path(home, ".core", AppsDirName, name)
 	if !medium.IsDir(appPath) {
-		return coreerr.E("app.PkgRemoveWith", "package not installed: "+name, nil)
+		return core.E("app.PkgRemoveWith", "package not installed: "+name, nil)
 	}
 	if err := medium.DeleteAll(appPath); err != nil {
-		return coreerr.E("app.PkgRemoveWith", "delete failed: "+appPath, err)
+		return core.E("app.PkgRemoveWith", "delete failed: "+appPath, err)
 	}
 	if opts.Purge {
 		dataPath := core.Path(home, ".core", DataDirName, name)
 		if medium.IsDir(dataPath) {
 			if err := medium.DeleteAll(dataPath); err != nil {
-				return coreerr.E("app.PkgRemoveWith", "purge data tree failed: "+dataPath, err)
+				return core.E("app.PkgRemoveWith", "purge data tree failed: "+dataPath, err)
 			}
 		}
 	}
@@ -617,13 +616,13 @@ func InstallWrappedWeb(medium coreio.Medium, manifest *config.ViewManifest, opts
 //	dest, err := installWrap(medium, manifest, opts)
 func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgInstallOptions) (string, error) {
 	if manifest == nil {
-		return "", coreerr.E("app.installWrap", "nil manifest", nil)
+		return "", core.E("app.installWrap", "nil manifest", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
 	}
 	if manifest.Code == "" {
-		return "", coreerr.E("app.installWrap", "manifest.code is empty", nil)
+		return "", core.E("app.installWrap", "manifest.code is empty", nil)
 	}
 
 	home := opts.Home
@@ -631,20 +630,20 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 		home = core.Env("DIR_HOME")
 	}
 	if home == "" {
-		return "", coreerr.E("app.installWrap", "cannot resolve home directory", nil)
+		return "", core.E("app.installWrap", "cannot resolve home directory", nil)
 	}
 
 	dest := core.Path(home, ".core", AppsDirName, manifest.Code)
 	if medium.IsDir(dest) {
 		if !opts.Force {
-			return dest, coreerr.E(
+			return dest, core.E(
 				"app.installWrap",
 				"already installed at "+dest+" (use Force to replace)",
 				nil,
 			)
 		}
 		if err := medium.DeleteAll(dest); err != nil {
-			return dest, coreerr.E("app.installWrap", "remove existing failed", err)
+			return dest, core.E("app.installWrap", "remove existing failed", err)
 		}
 	}
 	// Record provenance in Config so `core pkg list` can show it.
@@ -655,22 +654,22 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 		manifest.Config["source"] = opts.Source
 	}
 	if err := stageWrappedAssets(medium, dest, opts.AssetSource); err != nil {
-		return dest, coreerr.E("app.installWrap", "materialise wrap failed", err)
+		return dest, core.E("app.installWrap", "materialise wrap failed", err)
 	}
 	if err := materializeWrappedRuntimeAssets(medium, dest, manifest); err != nil {
-		return dest, coreerr.E("app.installWrap", "materialise runtime assets failed", err)
+		return dest, core.E("app.installWrap", "materialise runtime assets failed", err)
 	}
 	if err := bindWrappedAssetHash(medium, dest, manifest); err != nil {
-		return dest, coreerr.E("app.installWrap", "bind asset hash failed", err)
+		return dest, core.E("app.installWrap", "bind asset hash failed", err)
 	}
 	// Wrapped installs are distribution artifacts, not dev drafts. Sign
 	// them AFTER the install-specific mutations (source stamp, asset
 	// hash) so prod-mode verification covers the final on-disk artifact.
 	if err := signWrappedManifest(medium, manifest, home, opts); err != nil {
-		return dest, coreerr.E("app.installWrap", "sign wrapped manifest failed", err)
+		return dest, core.E("app.installWrap", "sign wrapped manifest failed", err)
 	}
 	if err := writeWrappedManifest(medium, dest, manifest); err != nil {
-		return dest, coreerr.E("app.installWrap", "materialise wrap failed", err)
+		return dest, core.E("app.installWrap", "materialise wrap failed", err)
 	}
 	return dest, nil
 }
@@ -705,7 +704,7 @@ func WriteWrappedApp(medium coreio.Medium, dest string, manifest *config.ViewMan
 // signature to the final manifest bytes.
 func WriteWrappedAppWithOptions(medium coreio.Medium, dest string, manifest *config.ViewManifest, opts WriteWrappedOptions) error {
 	if manifest == nil {
-		return coreerr.E("app.WriteWrappedAppWithOptions", "nil manifest", nil)
+		return core.E("app.WriteWrappedAppWithOptions", "nil manifest", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
@@ -714,10 +713,10 @@ func WriteWrappedAppWithOptions(medium coreio.Medium, dest string, manifest *con
 		return err
 	}
 	if err := materializeWrappedRuntimeAssets(medium, dest, manifest); err != nil {
-		return coreerr.E("app.WriteWrappedAppWithOptions", "materialise runtime assets failed", err)
+		return core.E("app.WriteWrappedAppWithOptions", "materialise runtime assets failed", err)
 	}
 	if err := bindWrappedAssetHash(medium, dest, manifest); err != nil {
-		return coreerr.E("app.WriteWrappedAppWithOptions", "bind asset hash failed", err)
+		return core.E("app.WriteWrappedAppWithOptions", "bind asset hash failed", err)
 	}
 	if opts.SignKeyPath != "" || opts.SignDefault {
 		if err := signWrappedManifest(medium, manifest, opts.Home, PkgInstallOptions{
@@ -725,7 +724,7 @@ func WriteWrappedAppWithOptions(medium coreio.Medium, dest string, manifest *con
 			SignKeyPath: opts.SignKeyPath,
 			SignDefault: opts.SignDefault,
 		}); err != nil {
-			return coreerr.E("app.WriteWrappedAppWithOptions", "sign wrapped manifest failed", err)
+			return core.E("app.WriteWrappedAppWithOptions", "sign wrapped manifest failed", err)
 		}
 	}
 	return writeWrappedManifest(medium, dest, manifest)
@@ -736,52 +735,52 @@ func stageWrappedAssets(medium coreio.Medium, dest, assetSource string) error {
 		medium = coreio.Local
 	}
 	if dest == "" {
-		return coreerr.E("app.stageWrappedAssets", "empty dest", nil)
+		return core.E("app.stageWrappedAssets", "empty dest", nil)
 	}
 	if assetSource == "" {
 		return nil
 	}
 	if !medium.IsDir(assetSource) {
-		return coreerr.E(
+		return core.E(
 			"app.stageWrappedAssets",
 			"asset source is not a directory: "+assetSource,
 			nil,
 		)
 	}
 	if err := copyTree(medium, assetSource, dest); err != nil {
-		return coreerr.E("app.stageWrappedAssets", "copy asset tree failed", err)
+		return core.E("app.stageWrappedAssets", "copy asset tree failed", err)
 	}
 	return nil
 }
 
 func writeWrappedManifest(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
 	if manifest == nil {
-		return coreerr.E("app.writeWrappedManifest", "nil manifest", nil)
+		return core.E("app.writeWrappedManifest", "nil manifest", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
 	}
 	if dest == "" {
-		return coreerr.E("app.writeWrappedManifest", "empty dest", nil)
+		return core.E("app.writeWrappedManifest", "empty dest", nil)
 	}
 
 	path := core.Path(dest, ".core", "view.yaml")
 	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
-		return coreerr.E("app.writeWrappedManifest", "ensure dir failed", err)
+		return core.E("app.writeWrappedManifest", "ensure dir failed", err)
 	}
 	body, err := yamlMarshalBytes(manifest)
 	if err != nil {
-		return coreerr.E("app.writeWrappedManifest", "marshal failed", err)
+		return core.E("app.writeWrappedManifest", "marshal failed", err)
 	}
 	if err := medium.Write(path, string(body)); err != nil {
-		return coreerr.E("app.writeWrappedManifest", "write failed", err)
+		return core.E("app.writeWrappedManifest", "write failed", err)
 	}
 	return nil
 }
 
 func signWrappedManifest(medium coreio.Medium, manifest *config.ViewManifest, home string, opts PkgInstallOptions) error {
 	if manifest == nil {
-		return coreerr.E("app.signWrappedManifest", "nil manifest", nil)
+		return core.E("app.signWrappedManifest", "nil manifest", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
@@ -790,24 +789,24 @@ func signWrappedManifest(medium coreio.Medium, manifest *config.ViewManifest, ho
 	case opts.SignKeyPath != "":
 		priv, err := LoadPrivateKey(medium, opts.SignKeyPath)
 		if err != nil {
-			return coreerr.E("app.signWrappedManifest", "load explicit private key failed", err)
+			return core.E("app.signWrappedManifest", "load explicit private key failed", err)
 		}
 		if err := SignManifest(manifest, priv); err != nil {
-			return coreerr.E("app.signWrappedManifest", "sign with explicit key failed", err)
+			return core.E("app.signWrappedManifest", "sign with explicit key failed", err)
 		}
 		return nil
 	case opts.SignDefault:
 		priv, err := ensureDefaultPrivateKey(medium, home)
 		if err != nil {
-			return coreerr.E("app.signWrappedManifest", "resolve default key failed", err)
+			return core.E("app.signWrappedManifest", "resolve default key failed", err)
 		}
 		if err := SignManifest(manifest, priv); err != nil {
-			return coreerr.E("app.signWrappedManifest", "sign with default key failed", err)
+			return core.E("app.signWrappedManifest", "sign with default key failed", err)
 		}
 		return nil
 	case manifest.Sign == "":
 		if err := signManifestForHome(medium, home, manifest); err != nil {
-			return coreerr.E("app.signWrappedManifest", "auto-sign failed", err)
+			return core.E("app.signWrappedManifest", "auto-sign failed", err)
 		}
 	}
 	return nil
@@ -829,21 +828,21 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		medium = coreio.Local
 	}
 	if home == "" {
-		return "", coreerr.E("app.PkgUpdate", "empty home directory", nil)
+		return "", core.E("app.PkgUpdate", "empty home directory", nil)
 	}
 	if name == "" {
-		return "", coreerr.E("app.PkgUpdate", "empty package name", nil)
+		return "", core.E("app.PkgUpdate", "empty package name", nil)
 	}
 
 	appPath := core.Path(home, ".core", AppsDirName, name)
 	viewPath := core.Path(appPath, ".core", "view.yaml")
 	if !medium.Exists(viewPath) {
-		return "", coreerr.E("app.PkgUpdate", "package not installed: "+name, nil)
+		return "", core.E("app.PkgUpdate", "package not installed: "+name, nil)
 	}
 
 	var manifest config.ViewManifest
 	if err := LoadViewManifest(medium, viewPath, &manifest); err != nil {
-		return "", coreerr.E("app.PkgUpdate", "parse manifest failed", err)
+		return "", core.E("app.PkgUpdate", "parse manifest failed", err)
 	}
 
 	var source string
@@ -853,7 +852,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		}
 	}
 	if source == "" {
-		return "", coreerr.E("app.PkgUpdate", "no source recorded for "+name, nil)
+		return "", core.E("app.PkgUpdate", "no source recorded for "+name, nil)
 	}
 
 	if ctx == nil {
@@ -878,13 +877,13 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 					defer func() { _ = medium.DeleteAll(scratch) }()
 				}
 				if err != nil {
-					return appPath, coreerr.E("app.PkgUpdate", "PWA repo refresh failed", err)
+					return appPath, core.E("app.PkgUpdate", "PWA repo refresh failed", err)
 				}
 				targetURL = core.Path(assetSource, "manifest.json")
 			} else {
 				pwa, err = loadPWASource(ctx, medium, url)
 				if err != nil {
-					return appPath, coreerr.E("app.PkgUpdate", "PWA refetch failed", err)
+					return appPath, core.E("app.PkgUpdate", "PWA refetch failed", err)
 				}
 				if path, ok := localPWASourcePath(medium, url); ok {
 					assetSource = core.PathDir(path)
@@ -896,7 +895,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		} else {
 			pwa, err = loadPWASource(ctx, medium, url)
 			if err != nil {
-				return appPath, coreerr.E("app.PkgUpdate", "PWA refetch failed", err)
+				return appPath, core.E("app.PkgUpdate", "PWA refetch failed", err)
 			}
 			if path, ok := localPWASourcePath(medium, url); ok {
 				assetSource = core.PathDir(path)
@@ -911,7 +910,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 			Version:   string(manifest.Version),
 		})
 		if updated == nil {
-			return appPath, coreerr.E("app.PkgUpdate", "WrapPWA returned nil", nil)
+			return appPath, core.E("app.PkgUpdate", "WrapPWA returned nil", nil)
 		}
 		_, err = installWrap(medium, updated, PkgInstallOptions{
 			Home:        home,
@@ -930,7 +929,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 	// so we re-run WrapWeb against the recorded path.
 	if dir, ok := stripPrefix(source, "wrap:web:"); ok {
 		if !medium.IsDir(dir) {
-			return appPath, coreerr.E(
+			return appPath, core.E(
 				"app.PkgUpdate",
 				"web source directory missing: "+dir+" (recorded by `pkg wrap --web`)",
 				nil,
@@ -942,7 +941,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 			Version: string(manifest.Version),
 		})
 		if err != nil {
-			return appPath, coreerr.E("app.PkgUpdate", "web rewrap failed", err)
+			return appPath, core.E("app.PkgUpdate", "web rewrap failed", err)
 		}
 		if _, err := installWrap(medium, updated, PkgInstallOptions{
 			Home:        home,
@@ -968,7 +967,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 				}
 				return installed, nil
 			}
-			return appPath, coreerr.E(
+			return appPath, core.E(
 				"app.PkgUpdate",
 				"electron source not a directory: "+dir+" (re-extract the release first)",
 				nil,
@@ -976,7 +975,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		}
 		pkgPath := core.Path(dir, "package.json")
 		if !medium.Exists(pkgPath) {
-			return appPath, coreerr.E(
+			return appPath, core.E(
 				"app.PkgUpdate",
 				"package.json missing under electron source: "+pkgPath,
 				nil,
@@ -984,21 +983,21 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		}
 		body, err := medium.Read(pkgPath)
 		if err != nil {
-			return appPath, coreerr.E("app.PkgUpdate", "read package.json failed", err)
+			return appPath, core.E("app.PkgUpdate", "read package.json failed", err)
 		}
 		var pkg ElectronPackageJSON
 		r := core.JSONUnmarshal([]byte(body), &pkg)
 		if !r.OK {
 			cause, _ := r.Value.(error)
-			return appPath, coreerr.E("app.PkgUpdate", "decode package.json failed", cause)
+			return appPath, core.E("app.PkgUpdate", "decode package.json failed", cause)
 		}
 		scan, err := ScanElectronRenderer(medium, dir)
 		if err != nil {
-			return appPath, coreerr.E("app.PkgUpdate", "scan renderer failed", err)
+			return appPath, core.E("app.PkgUpdate", "scan renderer failed", err)
 		}
 		updated := WrapElectron(&pkg, scan, WrapElectronOptions{Code: manifest.Code})
 		if updated == nil {
-			return appPath, coreerr.E("app.PkgUpdate", "WrapElectron returned nil", nil)
+			return appPath, core.E("app.PkgUpdate", "WrapElectron returned nil", nil)
 		}
 		updated.Version = manifest.Version
 		if updated.Name == "" {
@@ -1020,7 +1019,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 	// re-running install manually.
 	if path, ok := stripPrefix(source, "local:"); ok {
 		if !medium.IsDir(path) {
-			return appPath, coreerr.E(
+			return appPath, core.E(
 				"app.PkgUpdate",
 				"local source missing: "+path,
 				nil,
@@ -1053,13 +1052,13 @@ func loadPWASource(ctx context.Context, medium coreio.Medium, source string) (*P
 	if path, ok := localPWASourcePath(medium, source); ok {
 		body, err := medium.Read(path)
 		if err != nil {
-			return nil, coreerr.E("app.loadPWASource", "read local manifest failed", err)
+			return nil, core.E("app.loadPWASource", "read local manifest failed", err)
 		}
 		var pwa PWAManifest
 		r := core.JSONUnmarshal([]byte(body), &pwa)
 		if !r.OK {
 			cause, _ := r.Value.(error)
-			return nil, coreerr.E("app.loadPWASource", "decode local manifest failed", cause)
+			return nil, core.E("app.loadPWASource", "decode local manifest failed", cause)
 		}
 		return &pwa, nil
 	}
@@ -1092,7 +1091,7 @@ func installElectronRepoSource(ctx context.Context, medium coreio.Medium, home, 
 		home = core.Env("DIR_HOME")
 	}
 	if home == "" {
-		return "", coreerr.E("app.installElectronRepoSource", "cannot resolve home directory", nil)
+		return "", core.E("app.installElectronRepoSource", "cannot resolve home directory", nil)
 	}
 
 	scratch := core.Path(home, ".core", ".wrap", "repo-"+slugify(coalesce(code, ref)))
@@ -1103,7 +1102,7 @@ func installElectronRepoSource(ctx context.Context, medium coreio.Medium, home, 
 		ScratchDir: scratch,
 	})
 	if err != nil {
-		return "", coreerr.E("app.installElectronRepoSource", "wrap repo failed", err)
+		return "", core.E("app.installElectronRepoSource", "wrap repo failed", err)
 	}
 	installed, err := InstallWrappedElectron(medium, manifest, PkgInstallOptions{
 		Home:        home,
@@ -1117,7 +1116,7 @@ func installElectronRepoSource(ctx context.Context, medium coreio.Medium, home, 
 		}
 	}
 	if err != nil {
-		return installed, coreerr.E("app.installElectronRepoSource", "install failed", err)
+		return installed, core.E("app.installElectronRepoSource", "install failed", err)
 	}
 	return installed, nil
 }
@@ -1250,15 +1249,15 @@ func PkgInstallLocal(medium coreio.Medium, src string, opts PkgInstallOptions) (
 		medium = coreio.Local
 	}
 	if src == "" {
-		return "", coreerr.E("app.PkgInstallLocal", "empty source", nil)
+		return "", core.E("app.PkgInstallLocal", "empty source", nil)
 	}
 	if !medium.IsDir(src) {
-		return "", coreerr.E("app.PkgInstallLocal", "source is not a directory: "+src, nil)
+		return "", core.E("app.PkgInstallLocal", "source is not a directory: "+src, nil)
 	}
 
 	manifestPath := core.Path(src, ".core", "view.yaml")
 	if !medium.Exists(manifestPath) {
-		return "", coreerr.E(
+		return "", core.E(
 			"app.PkgInstallLocal",
 			"source has no .core/view.yaml: "+src,
 			nil,
@@ -1267,10 +1266,10 @@ func PkgInstallLocal(medium coreio.Medium, src string, opts PkgInstallOptions) (
 
 	var manifest config.ViewManifest
 	if err := LoadViewManifest(medium, manifestPath, &manifest); err != nil {
-		return "", coreerr.E("app.PkgInstallLocal", "parse source manifest failed", err)
+		return "", core.E("app.PkgInstallLocal", "parse source manifest failed", err)
 	}
 	if manifest.Code == "" {
-		return "", coreerr.E("app.PkgInstallLocal", "source manifest.code is empty", nil)
+		return "", core.E("app.PkgInstallLocal", "source manifest.code is empty", nil)
 	}
 
 	home := opts.Home
@@ -1278,25 +1277,25 @@ func PkgInstallLocal(medium coreio.Medium, src string, opts PkgInstallOptions) (
 		home = core.Env("DIR_HOME")
 	}
 	if home == "" {
-		return "", coreerr.E("app.PkgInstallLocal", "cannot resolve home directory", nil)
+		return "", core.E("app.PkgInstallLocal", "cannot resolve home directory", nil)
 	}
 
 	dest := core.Path(home, ".core", AppsDirName, manifest.Code)
 	if medium.IsDir(dest) {
 		if !opts.Force {
-			return dest, coreerr.E(
+			return dest, core.E(
 				"app.PkgInstallLocal",
 				"already installed at "+dest+" (use Force to replace)",
 				nil,
 			)
 		}
 		if err := medium.DeleteAll(dest); err != nil {
-			return dest, coreerr.E("app.PkgInstallLocal", "remove existing failed", err)
+			return dest, core.E("app.PkgInstallLocal", "remove existing failed", err)
 		}
 	}
 
 	if err := copyTree(medium, src, dest); err != nil {
-		return dest, coreerr.E("app.PkgInstallLocal", "copy tree failed", err)
+		return dest, core.E("app.PkgInstallLocal", "copy tree failed", err)
 	}
 
 	// Stamp the source so `pkg list` shows where the install came from.

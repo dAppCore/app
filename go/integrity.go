@@ -11,7 +11,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 const manifestAssetHashKey = "asset_hash"
@@ -23,7 +22,7 @@ const manifestAssetHashKey = "asset_hash"
 // signature-bound hash.
 func bindWrappedAssetHash(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
 	if manifest == nil {
-		return coreerr.E("app.bindWrappedAssetHash", "nil manifest", nil)
+		return core.E("app.bindWrappedAssetHash", "nil manifest", nil)
 	}
 	switch packageTypeFromManifest(manifest) {
 	case PackageTypeElectron, PackageTypePWA:
@@ -41,7 +40,7 @@ func bindWrappedAssetHash(medium coreio.Medium, dest string, manifest *config.Vi
 
 	sum, files, err := assetTreeHash(medium, dest)
 	if err != nil {
-		return coreerr.E("app.bindWrappedAssetHash", "asset tree hash failed", err)
+		return core.E("app.bindWrappedAssetHash", "asset tree hash failed", err)
 	}
 	if files == 0 {
 		setManifestAssetHash(manifest, "")
@@ -56,7 +55,7 @@ func bindWrappedAssetHash(medium coreio.Medium, dest string, manifest *config.Vi
 // the check is skipped for backwards compatibility with older wraps.
 func verifyAssetIntegrity(medium coreio.Medium, root string, manifest *config.ViewManifest, mode Mode) error {
 	if manifest == nil {
-		return coreerr.E("app.verifyAssetIntegrity", "nil manifest", nil)
+		return core.E("app.verifyAssetIntegrity", "nil manifest", nil)
 	}
 	if mode == ModeDev {
 		return nil
@@ -67,10 +66,10 @@ func verifyAssetIntegrity(medium coreio.Medium, root string, manifest *config.Vi
 	}
 	sum, _, err := assetTreeHash(medium, root)
 	if err != nil {
-		return coreerr.E("app.verifyAssetIntegrity", "asset tree hash failed", err)
+		return core.E("app.verifyAssetIntegrity", "asset tree hash failed", err)
 	}
 	if sum != want {
-		return coreerr.E(
+		return core.E(
 			"app.verifyAssetIntegrity",
 			"asset tree hash mismatch for "+manifest.Code,
 			nil,
@@ -117,16 +116,16 @@ func assetTreeHash(medium coreio.Medium, root string) (string, int, error) {
 		medium = coreio.Local
 	}
 	if root == "" {
-		return "", 0, coreerr.E("app.assetTreeHash", "empty root", nil)
+		return "", 0, core.E("app.assetTreeHash", "empty root", nil)
 	}
 	if !medium.IsDir(root) {
-		return "", 0, coreerr.E("app.assetTreeHash", "root is not a directory: "+root, nil)
+		return "", 0, core.E("app.assetTreeHash", "root is not a directory: "+root, nil)
 	}
 
 	hasher := sha256.New()
 	files, err := hashAssetDir(medium, hasher, root, root)
 	if err != nil {
-		return "", files, coreerr.E("app.assetTreeHash", "hash walk failed", err)
+		return "", files, core.E("app.assetTreeHash", "hash walk failed", err)
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), files, nil
 }

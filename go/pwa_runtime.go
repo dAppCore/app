@@ -3,14 +3,11 @@
 package app
 
 import (
-	"encoding/json"
-	"path/filepath"
 	"strings"
 
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 const (
@@ -111,18 +108,18 @@ func materializeWrappedRuntimeAssets(medium coreio.Medium, dest string, manifest
 
 func materializePWARuntimeAssets(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
 	if manifest == nil {
-		return coreerr.E("app.materializePWARuntimeAssets", "nil manifest", nil)
+		return core.E("app.materializePWARuntimeAssets", "nil manifest", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
 	}
 	if dest == "" {
-		return coreerr.E("app.materializePWARuntimeAssets", "empty dest", nil)
+		return core.E("app.materializePWARuntimeAssets", "empty dest", nil)
 	}
 
 	pwaCfg := ensurePWARuntimeConfig(manifest)
 	if pwaCfg == nil {
-		return coreerr.E("app.materializePWARuntimeAssets", "pwa config unavailable", nil)
+		return core.E("app.materializePWARuntimeAssets", "pwa config unavailable", nil)
 	}
 
 	for path, body := range map[string]string{
@@ -130,10 +127,10 @@ func materializePWARuntimeAssets(medium coreio.Medium, dest string, manifest *co
 		core.Path(dest, pwaBootstrapFile):     renderPWABootstrap(manifest, pwaCfg),
 	} {
 		if err := medium.EnsureDir(core.PathDir(path)); err != nil {
-			return coreerr.E("app.materializePWARuntimeAssets", "ensure dir failed", err)
+			return core.E("app.materializePWARuntimeAssets", "ensure dir failed", err)
 		}
 		if err := medium.Write(path, body); err != nil {
-			return coreerr.E("app.materializePWARuntimeAssets", "write runtime asset failed", err)
+			return core.E("app.materializePWARuntimeAssets", "write runtime asset failed", err)
 		}
 	}
 	if err := injectPWABootstrap(medium, dest, manifest); err != nil {
@@ -148,8 +145,8 @@ func renderPWAServiceWorker(manifest *config.ViewManifest, pwaCfg map[string]any
 		"version": coalesce(string(manifest.Version), "0.1.0"),
 		"pwa":     pwaCfg,
 	}
-	body, _ := json.Marshal(payload)
-	return `const CORE_PWA = ` + string(body) + `;
+	body := core.JSONMarshalString(payload)
+	return `const CORE_PWA = ` + body + `;
 const SW = CORE_PWA.pwa && CORE_PWA.pwa.service_worker ? CORE_PWA.pwa.service_worker : {};
 const CACHE_NAME = "core-pwa-" + CORE_PWA.code + "-" + CORE_PWA.version;
 const PRECACHE = Array.isArray(SW.cache) ? SW.cache.filter(Boolean) : ["./core.json", "./core-pwa.js"];
@@ -228,9 +225,9 @@ func renderPWABootstrap(manifest *config.ViewManifest, pwaCfg map[string]any) st
 		"version": coalesce(string(manifest.Version), "0.1.0"),
 		"pwa":     pwaCfg,
 	}
-	body, _ := json.Marshal(payload)
+	body := core.JSONMarshalString(payload)
 	return `(() => {
-  const CORE_PWA = ` + string(body) + `;
+  const CORE_PWA = ` + body + `;
   const PWA = CORE_PWA.pwa || {};
   const STORE = PWA.store_mirror || {};
   const SYNC = PWA.sync || {};
@@ -489,14 +486,14 @@ func injectPWABootstrap(medium coreio.Medium, dest string, manifest *config.View
 	}
 	body, err := medium.Read(path)
 	if err != nil {
-		return coreerr.E("app.injectPWABootstrap", "read html entry failed", err)
+		return core.E("app.injectPWABootstrap", "read html entry failed", err)
 	}
-	if strings.Contains(body, "data-core-pwa") {
+	if core.Contains(body, "data-core-pwa") {
 		return nil
 	}
 
 	tag := `<script src="./` + pwaBootstrapFile + `" data-core-pwa defer></script>`
-	lower := strings.ToLower(body)
+	lower := core.Lower(body)
 	if idx := strings.LastIndex(lower, "</head>"); idx >= 0 {
 		body = body[:idx] + tag + "\n" + body[idx:]
 	} else if idx := strings.LastIndex(lower, "</body>"); idx >= 0 {
@@ -505,7 +502,7 @@ func injectPWABootstrap(medium coreio.Medium, dest string, manifest *config.View
 		body += "\n" + tag + "\n"
 	}
 	if err := medium.Write(path, body); err != nil {
-		return coreerr.E("app.injectPWABootstrap", "write html entry failed", err)
+		return core.E("app.injectPWABootstrap", "write html entry failed", err)
 	}
 	return nil
 }
@@ -526,7 +523,7 @@ func pwaBootstrapTarget(medium coreio.Medium, dest string, manifest *config.View
 			continue
 		}
 		seen[candidate] = true
-		ext := strings.ToLower(filepath.Ext(candidate))
+		ext := core.Lower(core.PathExt(candidate))
 		if ext != ".html" && ext != ".htm" {
 			continue
 		}
@@ -543,8 +540,8 @@ func pwaBootstrapTarget(medium coreio.Medium, dest string, manifest *config.View
 		if entry.IsDir() {
 			continue
 		}
-		name := strings.ToLower(entry.Name())
-		if strings.HasSuffix(name, ".html") || strings.HasSuffix(name, ".htm") {
+		name := core.Lower(entry.Name())
+		if core.HasSuffix(name, ".html") || core.HasSuffix(name, ".htm") {
 			return core.Path(dest, entry.Name())
 		}
 	}
@@ -559,22 +556,22 @@ func pwaBootstrapCandidatesFromURL(raw string) []string {
 	path := raw
 	if isLocalSource(raw) {
 		path = trimLocalPrefix(raw)
-	} else if idx := strings.Index(raw, "://"); idx >= 0 {
+	} else if core.Contains(raw, "://") {
 		if parsed, ok := splitURLPath(raw); ok {
 			path = parsed
 		}
 	}
-	path = strings.TrimPrefix(path, "/")
-	path = strings.TrimPrefix(path, "./")
-	path = strings.TrimPrefix(path, "../")
+	path = core.TrimPrefix(path, "/")
+	path = core.TrimPrefix(path, "./")
+	path = core.TrimPrefix(path, "../")
 	if path == "" {
 		return nil
 	}
 	out := []string{path}
-	if filepath.Ext(path) == "" {
+	if core.PathExt(path) == "" {
 		out = append(out, core.Path(path, "index.html"))
 	}
-	out = append(out, filepath.Base(path))
+	out = append(out, core.PathBase(path))
 	return out
 }
 

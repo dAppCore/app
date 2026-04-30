@@ -9,7 +9,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // DefaultKeyName is the filename convention for the user's default app
@@ -37,31 +36,31 @@ func Sign(medium coreio.Medium, path string, priv ed25519.PrivateKey) error {
 		medium = coreio.Local
 	}
 	if path == "" {
-		return coreerr.E("app.Sign", "empty manifest path", nil)
+		return core.E("app.Sign", "empty manifest path", nil)
 	}
 	if len(priv) != ed25519.PrivateKeySize {
-		return coreerr.E("app.Sign", "invalid private key length", nil)
+		return core.E("app.Sign", "invalid private key length", nil)
 	}
 
 	if !medium.Exists(path) {
-		return coreerr.E("app.Sign", "manifest not found at "+path, nil)
+		return core.E("app.Sign", "manifest not found at "+path, nil)
 	}
 
 	var manifest config.ViewManifest
 	if err := LoadViewManifest(medium, path, &manifest); err != nil {
-		return coreerr.E("app.Sign", "parse "+path+" failed", err)
+		return core.E("app.Sign", "parse "+path+" failed", err)
 	}
 
 	if err := signManifest(&manifest, priv); err != nil {
-		return coreerr.E("app.Sign", "signManifest failed", err)
+		return core.E("app.Sign", "signManifest failed", err)
 	}
 
 	out, err := yamlMarshalBytes(&manifest)
 	if err != nil {
-		return coreerr.E("app.Sign", "marshal signed manifest failed", err)
+		return core.E("app.Sign", "marshal signed manifest failed", err)
 	}
 	if err := medium.Write(path, string(out)); err != nil {
-		return coreerr.E("app.Sign", "write "+path+" failed", err)
+		return core.E("app.Sign", "write "+path+" failed", err)
 	}
 	return nil
 }
@@ -89,7 +88,7 @@ func DefaultPrivateKeyPath() string {
 func LoadDefaultPrivateKey(medium coreio.Medium) (ed25519.PrivateKey, error) {
 	path := DefaultPrivateKeyPath()
 	if path == "" {
-		return nil, coreerr.E("app.LoadDefaultPrivateKey", "DIR_HOME is empty — cannot resolve default key", nil)
+		return nil, core.E("app.LoadDefaultPrivateKey", "DIR_HOME is empty — cannot resolve default key", nil)
 	}
 	return loadDefaultPrivateKeyAtPath(medium, path)
 }
@@ -103,7 +102,7 @@ func loadDefaultPrivateKeyAtPath(medium coreio.Medium, path string) (ed25519.Pri
 		medium = coreio.Local
 	}
 	if !medium.Exists(path) {
-		return nil, coreerr.E(
+		return nil, core.E(
 			"app.loadDefaultPrivateKeyAtPath",
 			"default key not found — run `core-app keygen --dir "+
 				core.PathDir(path)+" --name "+core.TrimSuffix(DefaultKeyName, ".key")+"`",
@@ -126,21 +125,21 @@ func LoadPrivateKey(medium coreio.Medium, path string) (ed25519.PrivateKey, erro
 		medium = coreio.Local
 	}
 	if path == "" {
-		return nil, coreerr.E("app.LoadPrivateKey", "empty path", nil)
+		return nil, core.E("app.LoadPrivateKey", "empty path", nil)
 	}
 	if !medium.Exists(path) {
-		return nil, coreerr.E("app.LoadPrivateKey", "private key not found at "+path, nil)
+		return nil, core.E("app.LoadPrivateKey", "private key not found at "+path, nil)
 	}
 	body, err := medium.Read(path)
 	if err != nil {
-		return nil, coreerr.E("app.LoadPrivateKey", "read "+path+" failed", err)
+		return nil, core.E("app.LoadPrivateKey", "read "+path+" failed", err)
 	}
 	raw, err := hex.DecodeString(core.Trim(body))
 	if err != nil {
-		return nil, coreerr.E("app.LoadPrivateKey", "decode hex failed", err)
+		return nil, core.E("app.LoadPrivateKey", "decode hex failed", err)
 	}
 	if len(raw) != ed25519.PrivateKeySize {
-		return nil, coreerr.E("app.LoadPrivateKey", "wrong ed25519 private key size", nil)
+		return nil, core.E("app.LoadPrivateKey", "wrong ed25519 private key size", nil)
 	}
 	return ed25519.PrivateKey(raw), nil
 }
@@ -155,16 +154,16 @@ func WritePrivateKey(medium coreio.Medium, path string, priv ed25519.PrivateKey)
 		medium = coreio.Local
 	}
 	if path == "" {
-		return coreerr.E("app.WritePrivateKey", "empty path", nil)
+		return core.E("app.WritePrivateKey", "empty path", nil)
 	}
 	if len(priv) != ed25519.PrivateKeySize {
-		return coreerr.E("app.WritePrivateKey", "invalid private key length", nil)
+		return core.E("app.WritePrivateKey", "invalid private key length", nil)
 	}
 	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
-		return coreerr.E("app.WritePrivateKey", "ensure dir failed", err)
+		return core.E("app.WritePrivateKey", "ensure dir failed", err)
 	}
 	if err := medium.Write(path, hex.EncodeToString(priv)); err != nil {
-		return coreerr.E("app.WritePrivateKey", "write failed", err)
+		return core.E("app.WritePrivateKey", "write failed", err)
 	}
 	return nil
 }
@@ -178,16 +177,16 @@ func WritePublicKey(medium coreio.Medium, path string, pub ed25519.PublicKey) er
 		medium = coreio.Local
 	}
 	if path == "" {
-		return coreerr.E("app.WritePublicKey", "empty path", nil)
+		return core.E("app.WritePublicKey", "empty path", nil)
 	}
 	if len(pub) != ed25519.PublicKeySize {
-		return coreerr.E("app.WritePublicKey", "invalid public key length", nil)
+		return core.E("app.WritePublicKey", "invalid public key length", nil)
 	}
 	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
-		return coreerr.E("app.WritePublicKey", "ensure dir failed", err)
+		return core.E("app.WritePublicKey", "ensure dir failed", err)
 	}
 	if err := medium.Write(path, hex.EncodeToString(pub)); err != nil {
-		return coreerr.E("app.WritePublicKey", "write failed", err)
+		return core.E("app.WritePublicKey", "write failed", err)
 	}
 	return nil
 }
@@ -217,14 +216,14 @@ func Keygen(medium coreio.Medium, dir, name string) (privPath, pubPath string, e
 		medium = coreio.Local
 	}
 	if dir == "" {
-		return "", "", coreerr.E("app.Keygen", "empty directory", nil)
+		return "", "", core.E("app.Keygen", "empty directory", nil)
 	}
 	if name == "" {
 		name = "default"
 	}
 	pub, priv, keyErr := ed25519.GenerateKey(nil)
 	if keyErr != nil {
-		return "", "", coreerr.E("app.Keygen", "ed25519.GenerateKey failed", keyErr)
+		return "", "", core.E("app.Keygen", "ed25519.GenerateKey failed", keyErr)
 	}
 	privPath = core.Path(dir, name+".key")
 	pubPath = core.Path(dir, name+".pub")
@@ -243,14 +242,14 @@ func Keygen(medium coreio.Medium, dir, name string) (privPath, pubPath string, e
 // bootable in prod mode without a separate `keygen` pre-step.
 func signManifestForHome(medium coreio.Medium, home string, manifest *config.ViewManifest) error {
 	if manifest == nil {
-		return coreerr.E("app.signManifestForHome", "nil manifest", nil)
+		return core.E("app.signManifestForHome", "nil manifest", nil)
 	}
 	priv, err := ensureDefaultPrivateKey(medium, home)
 	if err != nil {
-		return coreerr.E("app.signManifestForHome", "resolve default key failed", err)
+		return core.E("app.signManifestForHome", "resolve default key failed", err)
 	}
 	if err := SignManifest(manifest, priv); err != nil {
-		return coreerr.E("app.signManifestForHome", "sign failed", err)
+		return core.E("app.signManifestForHome", "sign failed", err)
 	}
 	return nil
 }
@@ -265,7 +264,7 @@ func ensureDefaultPrivateKey(medium coreio.Medium, home string) (ed25519.Private
 	}
 	privPath := defaultPrivateKeyPathForHome(home)
 	if privPath == "" {
-		return nil, coreerr.E("app.ensureDefaultPrivateKey", "empty home directory", nil)
+		return nil, core.E("app.ensureDefaultPrivateKey", "empty home directory", nil)
 	}
 	pubPath := defaultPublicKeyPathForHome(home)
 
@@ -280,12 +279,12 @@ func ensureDefaultPrivateKey(medium coreio.Medium, home string) (ed25519.Private
 		if !hasPub && pubPath != "" {
 			pub, _ := priv.Public().(ed25519.PublicKey)
 			if err := WritePublicKey(medium, pubPath, pub); err != nil {
-				return nil, coreerr.E("app.ensureDefaultPrivateKey", "write derived public key failed", err)
+				return nil, core.E("app.ensureDefaultPrivateKey", "write derived public key failed", err)
 			}
 		}
 		return priv, nil
 	case hasPub:
-		return nil, coreerr.E(
+		return nil, core.E(
 			"app.ensureDefaultPrivateKey",
 			"default public key exists without matching private key at "+privPath,
 			nil,
@@ -293,7 +292,7 @@ func ensureDefaultPrivateKey(medium coreio.Medium, home string) (ed25519.Private
 	default:
 		keysDir := core.PathDir(privPath)
 		if _, _, err := Keygen(medium, keysDir, core.TrimSuffix(DefaultKeyName, ".key")); err != nil {
-			return nil, coreerr.E("app.ensureDefaultPrivateKey", "keygen failed", err)
+			return nil, core.E("app.ensureDefaultPrivateKey", "keygen failed", err)
 		}
 		return loadDefaultPrivateKeyAtPath(medium, privPath)
 	}

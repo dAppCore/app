@@ -10,7 +10,6 @@ import (
 
 	core "dappco.re/go"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // electronReleaseTimeout caps the GitHub release HTTP call so a slow
@@ -61,7 +60,7 @@ type GitHubRelease struct {
 //     for each renderer asset you actually need.
 func FetchElectronRelease(ctx context.Context, host, owner, repo string) (*GitHubRelease, error) {
 	if owner == "" || repo == "" {
-		return nil, coreerr.E("app.FetchElectronRelease", "owner and repo are required", nil)
+		return nil, core.E("app.FetchElectronRelease", "owner and repo are required", nil)
 	}
 	if host == "" {
 		host = "github.com"
@@ -77,12 +76,12 @@ func FetchElectronRelease(ctx context.Context, host, owner, repo string) (*GitHu
 //	rel, err := app.FetchElectronReleaseURL(ctx, srv.URL+"/rel.json")
 func FetchElectronReleaseURL(ctx context.Context, url string) (*GitHubRelease, error) {
 	if url == "" {
-		return nil, coreerr.E("app.FetchElectronReleaseURL", "empty URL", nil)
+		return nil, core.E("app.FetchElectronReleaseURL", "empty URL", nil)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, coreerr.E("app.FetchElectronReleaseURL", "request build failed", err)
+		return nil, core.E("app.FetchElectronReleaseURL", "request build failed", err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
@@ -90,12 +89,12 @@ func FetchElectronReleaseURL(ctx context.Context, url string) (*GitHubRelease, e
 	client := &http.Client{Timeout: electronReleaseTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, coreerr.E("app.FetchElectronReleaseURL", "HTTP GET failed", err)
+		return nil, core.E("app.FetchElectronReleaseURL", "HTTP GET failed", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, coreerr.E(
+		return nil, core.E(
 			"app.FetchElectronReleaseURL",
 			"non-2xx status: "+core.Sprint(resp.StatusCode)+" for "+url,
 			nil,
@@ -104,14 +103,14 @@ func FetchElectronReleaseURL(ctx context.Context, url string) (*GitHubRelease, e
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, coreerr.E("app.FetchElectronReleaseURL", "read body failed", err)
+		return nil, core.E("app.FetchElectronReleaseURL", "read body failed", err)
 	}
 
 	var rel GitHubRelease
 	r := core.JSONUnmarshal(body, &rel)
 	if !r.OK {
 		cause, _ := r.Value.(error)
-		return nil, coreerr.E("app.FetchElectronReleaseURL", "decode release JSON failed", cause)
+		return nil, core.E("app.FetchElectronReleaseURL", "decode release JSON failed", cause)
 	}
 	return &rel, nil
 }
@@ -202,10 +201,10 @@ func hasPlatformMarker(low string) bool {
 //     bundles do not balloon memory.
 func DownloadAsset(ctx context.Context, medium coreio.Medium, asset GitHubAsset, dir string) (string, error) {
 	if asset.DownloadURL == "" {
-		return "", coreerr.E("app.DownloadAsset", "empty asset URL", nil)
+		return "", core.E("app.DownloadAsset", "empty asset URL", nil)
 	}
 	if dir == "" {
-		return "", coreerr.E("app.DownloadAsset", "empty directory", nil)
+		return "", core.E("app.DownloadAsset", "empty directory", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
@@ -213,18 +212,18 @@ func DownloadAsset(ctx context.Context, medium coreio.Medium, asset GitHubAsset,
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.DownloadURL, nil)
 	if err != nil {
-		return "", coreerr.E("app.DownloadAsset", "request build failed", err)
+		return "", core.E("app.DownloadAsset", "request build failed", err)
 	}
 
 	client := &http.Client{Timeout: electronReleaseTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", coreerr.E("app.DownloadAsset", "HTTP GET failed", err)
+		return "", core.E("app.DownloadAsset", "HTTP GET failed", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", coreerr.E(
+		return "", core.E(
 			"app.DownloadAsset",
 			"non-2xx status: "+core.Sprint(resp.StatusCode),
 			nil,
@@ -232,16 +231,16 @@ func DownloadAsset(ctx context.Context, medium coreio.Medium, asset GitHubAsset,
 	}
 
 	if err := medium.EnsureDir(dir); err != nil {
-		return "", coreerr.E("app.DownloadAsset", "ensure dir failed", err)
+		return "", core.E("app.DownloadAsset", "ensure dir failed", err)
 	}
 	dest := core.Path(dir, asset.Name)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", coreerr.E("app.DownloadAsset", "read body failed", err)
+		return "", core.E("app.DownloadAsset", "read body failed", err)
 	}
 	if err := medium.Write(dest, string(body)); err != nil {
-		return "", coreerr.E("app.DownloadAsset", "write failed", err)
+		return "", core.E("app.DownloadAsset", "write failed", err)
 	}
 	return dest, nil
 }

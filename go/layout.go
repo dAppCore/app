@@ -5,7 +5,6 @@ package app
 import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
-	coreerr "dappco.re/go/log"
 )
 
 // LayoutSpec is the resolved form of a manifest's HLCRF layout. It
@@ -75,10 +74,10 @@ func layout(c *core.Core, m *config.ViewManifest) error {
 //	spec, err := resolveLayout(c, m)
 func resolveLayout(c *core.Core, m *config.ViewManifest) (*LayoutSpec, error) {
 	if c == nil {
-		return nil, coreerr.E("app.layout", "nil core", nil)
+		return nil, core.E("app.layout", "nil core", nil)
 	}
 	if m == nil {
-		return nil, coreerr.E("app.layout", "nil manifest", nil)
+		return nil, core.E("app.layout", "nil manifest", nil)
 	}
 	if m.Layout == "" {
 		// Headless CLI app — no layout to compose.
@@ -86,7 +85,7 @@ func resolveLayout(c *core.Core, m *config.ViewManifest) (*LayoutSpec, error) {
 	}
 
 	if err := validateLayoutVariant(m.Layout); err != nil {
-		return nil, coreerr.E("app.layout", "invalid layout variant", err)
+		return nil, core.E("app.layout", "invalid layout variant", err)
 	}
 
 	spec := &LayoutSpec{
@@ -113,7 +112,7 @@ func resolveLayout(c *core.Core, m *config.ViewManifest) (*LayoutSpec, error) {
 
 		comp, ok := component.(string)
 		if !ok {
-			return nil, coreerr.E(
+			return nil, core.E(
 				"app.layout",
 				"slot '"+slot+"' must name a string component",
 				nil,
@@ -163,7 +162,7 @@ func validateLayoutVariant(v string) error {
 		case 'H', 'L', 'C', 'R', 'F':
 			continue
 		default:
-			return coreerr.E(
+			return core.E(
 				"app.validateLayoutVariant",
 				"unknown slot character '"+string(v[i])+"' in layout '"+v+"'",
 				nil,

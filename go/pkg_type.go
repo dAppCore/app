@@ -5,7 +5,6 @@ package app
 import (
 	core "dappco.re/go"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // PackageType enumerates the wrapping modes `core pkg` understands. Each
@@ -206,7 +205,7 @@ func detectsLocalPWA(body string) bool {
 //
 //	return errDetect("./path")
 func errDetect(where string) error {
-	return coreerr.E(
+	return core.E(
 		"app.DetectPackageType",
 		"cannot determine package type at "+where+" (no .core/view.yaml, manifest.json, manifest.webmanifest, package.json, or index.html)",
 		nil,

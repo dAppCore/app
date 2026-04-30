@@ -10,7 +10,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // verify is Step 2 of the 7-step boot — confirm the manifest's ed25519
@@ -38,7 +37,7 @@ import (
 //     validates the signature.
 func verify(m *config.ViewManifest, mode Mode, trusted []ed25519.PublicKey) error {
 	if m == nil {
-		return coreerr.E("app.verify", "nil manifest", nil)
+		return core.E("app.verify", "nil manifest", nil)
 	}
 
 	if mode == ModeDev {
@@ -48,25 +47,25 @@ func verify(m *config.ViewManifest, mode Mode, trusted []ed25519.PublicKey) erro
 	}
 
 	if m.Sign == "" {
-		return coreerr.E("app.verify", "unsigned manifest rejected in prod mode", nil)
+		return core.E("app.verify", "unsigned manifest rejected in prod mode", nil)
 	}
 
 	// Decode the signature so a malformed base64 fails fast.
 	sig, err := base64.StdEncoding.DecodeString(m.Sign)
 	if err != nil {
-		return coreerr.E("app.verify", "decode signature failed", err)
+		return core.E("app.verify", "decode signature failed", err)
 	}
 	if len(sig) != ed25519.SignatureSize {
-		return coreerr.E("app.verify", "signature is not an ed25519 signature", nil)
+		return core.E("app.verify", "signature is not an ed25519 signature", nil)
 	}
 
 	msg, err := signableBytes(m)
 	if err != nil {
-		return coreerr.E("app.verify", "canonical marshal failed", err)
+		return core.E("app.verify", "canonical marshal failed", err)
 	}
 
 	if len(trusted) == 0 {
-		return coreerr.E(
+		return core.E(
 			"app.verify",
 			"no trusted keys available — set WithPublicKey or populate $DIR_HOME/.core/keys/",
 			nil,
@@ -82,7 +81,7 @@ func verify(m *config.ViewManifest, mode Mode, trusted []ed25519.PublicKey) erro
 		}
 	}
 
-	return coreerr.E(
+	return core.E(
 		"app.verify",
 		"signature does not match any trusted key ("+core.Sprint(len(trusted))+" checked)",
 		nil,
@@ -102,7 +101,7 @@ func verify(m *config.ViewManifest, mode Mode, trusted []ed25519.PublicKey) erro
 //	msg, _ := signableBytes(&manifest)
 func signableBytes(m *config.ViewManifest) ([]byte, error) {
 	if m == nil {
-		return nil, coreerr.E("app.signableBytes", "nil manifest", nil)
+		return nil, core.E("app.signableBytes", "nil manifest", nil)
 	}
 	tmp := *m
 	tmp.Sign = ""
@@ -118,25 +117,25 @@ func signableBytes(m *config.ViewManifest) ([]byte, error) {
 //	err := verifyWithKey(&manifest, pub)
 func verifyWithKey(m *config.ViewManifest, pub ed25519.PublicKey) error {
 	if m == nil {
-		return coreerr.E("app.verifyWithKey", "nil manifest", nil)
+		return core.E("app.verifyWithKey", "nil manifest", nil)
 	}
 	if m.Sign == "" {
-		return coreerr.E("app.verifyWithKey", "no signature present", nil)
+		return core.E("app.verifyWithKey", "no signature present", nil)
 	}
 	if len(pub) != ed25519.PublicKeySize {
-		return coreerr.E("app.verifyWithKey", "invalid public key length", nil)
+		return core.E("app.verifyWithKey", "invalid public key length", nil)
 	}
 
 	sig, err := base64.StdEncoding.DecodeString(m.Sign)
 	if err != nil {
-		return coreerr.E("app.verifyWithKey", "decode signature failed", err)
+		return core.E("app.verifyWithKey", "decode signature failed", err)
 	}
 	msg, err := signableBytes(m)
 	if err != nil {
-		return coreerr.E("app.verifyWithKey", "canonical marshal failed", err)
+		return core.E("app.verifyWithKey", "canonical marshal failed", err)
 	}
 	if !ed25519.Verify(pub, msg, sig) {
-		return coreerr.E("app.verifyWithKey", "signature does not match manifest content", nil)
+		return core.E("app.verifyWithKey", "signature does not match manifest content", nil)
 	}
 	return nil
 }
@@ -148,14 +147,14 @@ func verifyWithKey(m *config.ViewManifest, pub ed25519.PublicKey) error {
 //	pub, err := parsePublicKey("3b6a…")
 func parsePublicKey(hexKey string) (ed25519.PublicKey, error) {
 	if hexKey == "" {
-		return nil, coreerr.E("app.parsePublicKey", "empty key", nil)
+		return nil, core.E("app.parsePublicKey", "empty key", nil)
 	}
 	raw, err := hex.DecodeString(hexKey)
 	if err != nil {
-		return nil, coreerr.E("app.parsePublicKey", "decode hex failed", err)
+		return nil, core.E("app.parsePublicKey", "decode hex failed", err)
 	}
 	if len(raw) != ed25519.PublicKeySize {
-		return nil, coreerr.E("app.parsePublicKey", "wrong ed25519 public key size", nil)
+		return nil, core.E("app.parsePublicKey", "wrong ed25519 public key size", nil)
 	}
 	return ed25519.PublicKey(raw), nil
 }
@@ -169,14 +168,14 @@ func parsePublicKey(hexKey string) (ed25519.PublicKey, error) {
 //	_ = signManifest(&manifest, priv)
 func signManifest(m *config.ViewManifest, priv ed25519.PrivateKey) error {
 	if m == nil {
-		return coreerr.E("app.signManifest", "nil manifest", nil)
+		return core.E("app.signManifest", "nil manifest", nil)
 	}
 	if len(priv) != ed25519.PrivateKeySize {
-		return coreerr.E("app.signManifest", "invalid private key length", nil)
+		return core.E("app.signManifest", "invalid private key length", nil)
 	}
 	msg, err := signableBytes(m)
 	if err != nil {
-		return coreerr.E("app.signManifest", "canonical marshal failed", err)
+		return core.E("app.signManifest", "canonical marshal failed", err)
 	}
 	m.Sign = base64.StdEncoding.EncodeToString(ed25519.Sign(priv, msg))
 	return nil
@@ -221,7 +220,7 @@ func resolveTrustedKeys(o Options) ([]ed25519.PublicKey, error) {
 	if o.PublicKeyHex != "" {
 		pub, err := parsePublicKey(o.PublicKeyHex)
 		if err != nil {
-			return nil, coreerr.E("app.resolveTrustedKeys", "explicit key decode failed", err)
+			return nil, core.E("app.resolveTrustedKeys", "explicit key decode failed", err)
 		}
 		keys = append(keys, pub)
 	}
@@ -240,7 +239,7 @@ func resolveTrustedKeys(o Options) ([]ed25519.PublicKey, error) {
 
 	entries, err := medium.List(o.TrustedKeysDir)
 	if err != nil {
-		return nil, coreerr.E("app.resolveTrustedKeys", "list trusted keys dir failed", err)
+		return nil, core.E("app.resolveTrustedKeys", "list trusted keys dir failed", err)
 	}
 	for _, entry := range entries {
 		name := entry.Name()
@@ -250,11 +249,11 @@ func resolveTrustedKeys(o Options) ([]ed25519.PublicKey, error) {
 		path := core.Path(o.TrustedKeysDir, name)
 		body, err := medium.Read(path)
 		if err != nil {
-			return nil, coreerr.E("app.resolveTrustedKeys", "read key "+path+" failed", err)
+			return nil, core.E("app.resolveTrustedKeys", "read key "+path+" failed", err)
 		}
 		pub, err := parsePublicKey(core.Trim(body))
 		if err != nil {
-			return nil, coreerr.E("app.resolveTrustedKeys", "decode key "+path+" failed", err)
+			return nil, core.E("app.resolveTrustedKeys", "decode key "+path+" failed", err)
 		}
 		keys = append(keys, pub)
 	}

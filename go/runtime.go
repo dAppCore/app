@@ -4,21 +4,17 @@ package app
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	neturl "net/url"
 	"os/exec"
 	"path"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
 	core "dappco.re/go"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 type runtimeBindings struct {
@@ -32,10 +28,10 @@ type runtimeBindings struct {
 
 func registerRuntimeActions(inst *Instance) error {
 	if inst == nil {
-		return coreerr.E("app.registerRuntimeActions", "nil instance", nil)
+		return core.E("app.registerRuntimeActions", "nil instance", nil)
 	}
 	if inst.Core == nil {
-		return coreerr.E("app.registerRuntimeActions", "nil core", nil)
+		return core.E("app.registerRuntimeActions", "nil core", nil)
 	}
 	if inst.runtime != nil {
 		return nil
@@ -118,7 +114,7 @@ func (rt *runtimeBindings) shutdown() {
 
 func (rt *runtimeBindings) workspaceStore() (*workspaceObjectStore, error) {
 	if rt == nil {
-		return nil, coreerr.E("app.runtimeBindings.workspaceStore", "nil runtime", nil)
+		return nil, core.E("app.runtimeBindings.workspaceStore", "nil runtime", nil)
 	}
 	rt.storeMu.Lock()
 	defer rt.storeMu.Unlock()
@@ -127,7 +123,7 @@ func (rt *runtimeBindings) workspaceStore() (*workspaceObjectStore, error) {
 	}
 	if rt.store != nil {
 		if err := rt.store.Close(); err != nil {
-			return nil, coreerr.E("app.runtimeBindings.workspaceStore", "close previous store failed", err)
+			return nil, core.E("app.runtimeBindings.workspaceStore", "close previous store failed", err)
 		}
 		rt.store = nil
 	}
@@ -263,7 +259,7 @@ func (rt *runtimeBindings) handleStoreDelete(_ context.Context, opts core.Option
 }
 
 func (rt *runtimeBindings) handleNetFetch(ctx context.Context, opts core.Options) core.Result {
-	rawURL := strings.TrimSpace(opts.String("url"))
+	rawURL := core.Trim(opts.String("url"))
 	if rawURL == "" {
 		return resultError("app.runtime.handleNetFetch", "url is required", nil)
 	}
@@ -275,7 +271,7 @@ func (rt *runtimeBindings) handleNetFetch(ctx context.Context, opts core.Options
 		return resultError("app.runtime.handleNetFetch", "access denied", err)
 	}
 
-	method := strings.ToUpper(strings.TrimSpace(opts.String("method")))
+	method := core.Upper(core.Trim(opts.String("method")))
 	body := opts.String("body")
 	if method == "" {
 		if body != "" {
@@ -285,7 +281,7 @@ func (rt *runtimeBindings) handleNetFetch(ctx context.Context, opts core.Options
 		}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, rawURL, strings.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, core.NewReader(body))
 	if err != nil {
 		return resultError("app.runtime.handleNetFetch", "build request failed", err)
 	}
@@ -311,7 +307,7 @@ func (rt *runtimeBindings) handleNetFetch(ctx context.Context, opts core.Options
 }
 
 func (rt *runtimeBindings) handleNetWS(_ context.Context, opts core.Options) core.Result {
-	rawURL := strings.TrimSpace(opts.String("url"))
+	rawURL := core.Trim(opts.String("url"))
 	if rawURL == "" {
 		return resultError("app.runtime.handleNetWS", "url is required", nil)
 	}
@@ -324,12 +320,12 @@ func (rt *runtimeBindings) handleNetWS(_ context.Context, opts core.Options) cor
 }
 
 func (rt *runtimeBindings) handleBrainRecall(ctx context.Context, opts core.Options) core.Result {
-	query := strings.TrimSpace(opts.String("query"))
+	query := core.Trim(opts.String("query"))
 	if query == "" {
 		return resultError("app.runtime.handleBrainRecall", "query is required", nil)
 	}
 
-	endpoint := strings.TrimSpace(core.Env("OPENBRAIN_URL"))
+	endpoint := core.Trim(core.Env("OPENBRAIN_URL"))
 	if endpoint == "" {
 		endpoint = "https://api.openbrain/recall"
 	}
@@ -360,7 +356,7 @@ func (rt *runtimeBindings) handleBrainRecall(ctx context.Context, opts core.Opti
 	body, _ := payload["body"].(string)
 
 	var decoded any
-	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
+	if r := core.JSONUnmarshal([]byte(body), &decoded); !r.OK {
 		return resultValue(map[string]any{"memories": []any{body}})
 	}
 	switch value := decoded.(type) {
@@ -377,7 +373,7 @@ func (rt *runtimeBindings) handleBrainRecall(ctx context.Context, opts core.Opti
 }
 
 func (rt *runtimeBindings) handleProcessRun(ctx context.Context, opts core.Options) core.Result {
-	command := strings.TrimSpace(opts.String("command"))
+	command := core.Trim(opts.String("command"))
 	if command == "" {
 		return resultError("app.runtime.handleProcessRun", "command is required", nil)
 	}
@@ -396,8 +392,8 @@ func (rt *runtimeBindings) handleProcessRun(ctx context.Context, opts core.Optio
 }
 
 func (rt *runtimeBindings) handleProcessAdd(_ context.Context, opts core.Options) core.Result {
-	command := strings.TrimSpace(opts.String("command"))
-	key := strings.TrimSpace(opts.String("key"))
+	command := core.Trim(opts.String("command"))
+	key := core.Trim(opts.String("key"))
 	if key == "" || command == "" {
 		return resultError("app.runtime.handleProcessAdd", "key and command are required", nil)
 	}
@@ -415,7 +411,7 @@ func (rt *runtimeBindings) handleProcessAdd(_ context.Context, opts core.Options
 }
 
 func (rt *runtimeBindings) handleProcessStart(ctx context.Context, opts core.Options) core.Result {
-	started, err := rt.processes.start(ctx, strings.TrimSpace(opts.String("key")))
+	started, err := rt.processes.start(ctx, core.Trim(opts.String("key")))
 	if err != nil {
 		return resultError("app.runtime.handleProcessStart", "start failed", err)
 	}
@@ -423,7 +419,7 @@ func (rt *runtimeBindings) handleProcessStart(ctx context.Context, opts core.Opt
 }
 
 func (rt *runtimeBindings) handleProcessStop(_ context.Context, opts core.Options) core.Result {
-	stopped, err := rt.processes.stop(strings.TrimSpace(opts.String("key")))
+	stopped, err := rt.processes.stop(core.Trim(opts.String("key")))
 	if err != nil {
 		return resultError("app.runtime.handleProcessStop", "stop failed", err)
 	}
@@ -431,7 +427,7 @@ func (rt *runtimeBindings) handleProcessStop(_ context.Context, opts core.Option
 }
 
 func (rt *runtimeBindings) handleProcessKill(_ context.Context, opts core.Options) core.Result {
-	killed, err := rt.processes.kill(strings.TrimSpace(opts.String("key")))
+	killed, err := rt.processes.kill(core.Trim(opts.String("key")))
 	if err != nil {
 		return resultError("app.runtime.handleProcessKill", "kill failed", err)
 	}
@@ -443,7 +439,7 @@ func (rt *runtimeBindings) handleProcessList(_ context.Context, _ core.Options) 
 }
 
 func (rt *runtimeBindings) handleProcessGet(_ context.Context, opts core.Options) core.Result {
-	info, err := rt.processes.info(strings.TrimSpace(opts.String("key")))
+	info, err := rt.processes.info(core.Trim(opts.String("key")))
 	if err != nil {
 		return resultError("app.runtime.handleProcessGet", "lookup failed", err)
 	}
@@ -451,7 +447,7 @@ func (rt *runtimeBindings) handleProcessGet(_ context.Context, opts core.Options
 }
 
 func (rt *runtimeBindings) handleProcessStdout(_ context.Context, opts core.Options) core.Result {
-	stdout, err := rt.processes.stdoutValue(strings.TrimSpace(opts.String("key")))
+	stdout, err := rt.processes.stdoutValue(core.Trim(opts.String("key")))
 	if err != nil {
 		return resultError("app.runtime.handleProcessStdout", "read stdout failed", err)
 	}
@@ -459,7 +455,7 @@ func (rt *runtimeBindings) handleProcessStdout(_ context.Context, opts core.Opti
 }
 
 func (rt *runtimeBindings) handleProcessStdinWrite(_ context.Context, opts core.Options) core.Result {
-	if err := rt.processes.writeStdin(strings.TrimSpace(opts.String("key")), opts.String("data")); err != nil {
+	if err := rt.processes.writeStdin(core.Trim(opts.String("key")), opts.String("data")); err != nil {
 		return resultError("app.runtime.handleProcessStdinWrite", "write stdin failed", err)
 	}
 	return core.Result{OK: true}
@@ -498,7 +494,7 @@ func (rt *runtimeBindings) handleGUIDialogSave(_ context.Context, opts core.Opti
 }
 
 func (rt *runtimeBindings) handleGUIBrowserOpen(_ context.Context, opts core.Options) core.Result {
-	if err := openBrowser(strings.TrimSpace(opts.String("url"))); err != nil {
+	if err := openBrowser(core.Trim(opts.String("url"))); err != nil {
 		return resultError("app.runtime.handleGUIBrowserOpen", "open browser failed", err)
 	}
 	return core.Result{OK: true}
@@ -527,15 +523,15 @@ func (rt *runtimeBindings) handleGUIClipboardWrite(_ context.Context, opts core.
 }
 
 func (rt *runtimeBindings) handleDeviceLocation(_ context.Context, _ core.Options) core.Result {
-	lat := strings.TrimSpace(core.Env("CORE_DEVICE_LATITUDE"))
-	lng := strings.TrimSpace(core.Env("CORE_DEVICE_LONGITUDE"))
+	lat := core.Trim(core.Env("CORE_DEVICE_LATITUDE"))
+	lng := core.Trim(core.Env("CORE_DEVICE_LONGITUDE"))
 	if lat == "" || lng == "" {
 		return resultError("app.runtime.handleDeviceLocation", "device location not configured for this host", nil)
 	}
 	return resultValue(map[string]any{
 		"latitude":  lat,
 		"longitude": lng,
-		"accuracy":  strings.TrimSpace(core.Env("CORE_DEVICE_ACCURACY")),
+		"accuracy":  core.Trim(core.Env("CORE_DEVICE_ACCURACY")),
 	})
 }
 
@@ -548,11 +544,11 @@ func (rt *runtimeBindings) handleDeviceMicrophone(_ context.Context, _ core.Opti
 }
 
 func (rt *runtimeBindings) handleI18NTranslate(_ context.Context, opts core.Options) core.Result {
-	key := strings.TrimSpace(opts.String("key"))
+	key := core.Trim(opts.String("key"))
 	if key == "" {
 		return resultError("app.runtime.handleI18NTranslate", "key is required", nil)
 	}
-	if locale := strings.TrimSpace(opts.String("locale")); locale != "" {
+	if locale := core.Trim(opts.String("locale")); locale != "" {
 		if r := rt.inst.Core.I18n().SetLanguage(locale); !r.OK {
 			return resultError("app.runtime.handleI18NTranslate", "set language failed", extractErr(r))
 		}
@@ -565,24 +561,24 @@ func (rt *runtimeBindings) handleI18NTranslate(_ context.Context, opts core.Opti
 }
 
 func (rt *runtimeBindings) normalisedProjectPath(raw string) (string, string, error) {
-	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	raw = core.Trim(core.Replace(raw, "\\", "/"))
 	if raw == "" {
-		return "", "", coreerr.E("app.runtime.normalisedProjectPath", "path is required", nil)
+		return "", "", core.E("app.runtime.normalisedProjectPath", "path is required", nil)
 	}
 	access := raw
-	if strings.HasPrefix(access, "/") {
+	if core.HasPrefix(access, "/") {
 		access = "." + access
 	}
-	if !strings.HasPrefix(access, "./") && !strings.HasPrefix(access, "../") && access != "." && access != ".." {
+	if !core.HasPrefix(access, "./") && !core.HasPrefix(access, "../") && access != "." && access != ".." {
 		access = "./" + access
 	}
 	access = path.Clean(access)
 	if access == "." {
 		access = "./"
-	} else if access != ".." && !strings.HasPrefix(access, "./") && !strings.HasPrefix(access, "../") {
+	} else if access != ".." && !core.HasPrefix(access, "./") && !core.HasPrefix(access, "../") {
 		access = "./" + access
 	}
-	mediumPath := strings.TrimPrefix(access, "./")
+	mediumPath := core.TrimPrefix(access, "./")
 	if mediumPath == "." {
 		mediumPath = ""
 	}
@@ -591,7 +587,7 @@ func (rt *runtimeBindings) normalisedProjectPath(raw string) (string, string, er
 
 func (rt *runtimeBindings) projectMediumPath(rel string) (coreio.Medium, string, error) {
 	if rt == nil || rt.inst == nil {
-		return nil, "", coreerr.E("app.runtime.projectMediumPath", "nil runtime", nil)
+		return nil, "", core.E("app.runtime.projectMediumPath", "nil runtime", nil)
 	}
 	if rt.inst.medium == coreio.Local {
 		medium, err := coreio.NewSandboxed(rt.inst.Root)
@@ -604,7 +600,7 @@ func (rt *runtimeBindings) projectMediumPath(rel string) (coreio.Medium, string,
 }
 
 func (rt *runtimeBindings) processDir(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
+	raw = core.Trim(raw)
 	if raw == "" {
 		return rt.inst.Root, nil
 	}
@@ -624,7 +620,7 @@ func resultValue(value any) core.Result {
 
 func resultError(op, message string, err error) core.Result {
 	return core.Result{
-		Value: coreerr.E(op, message, err),
+		Value: core.E(op, message, err),
 		OK:    false,
 	}
 }
@@ -673,7 +669,7 @@ func stringMap(result core.Result) map[string]string {
 
 func openBrowser(rawURL string) error {
 	if rawURL == "" {
-		return coreerr.E("app.runtime.openBrowser", "url is required", nil)
+		return core.E("app.runtime.openBrowser", "url is required", nil)
 	}
 	cmd, err := platformCommand(rawURL, "open", "xdg-open", "rundll32", "url.dll,FileProtocolHandler")
 	if err != nil {
@@ -690,7 +686,7 @@ func sendNotification(title, body string) error {
 	case "linux":
 		return exec.Command("notify-send", title, body).Run()
 	default:
-		return coreerr.E("app.runtime.sendNotification", "notifications not supported on this host", nil)
+		return core.E("app.runtime.sendNotification", "notifications not supported on this host", nil)
 	}
 }
 
@@ -701,9 +697,9 @@ func readClipboard() (string, error) {
 	}
 	out, err := cmd.Output()
 	if err != nil {
-		return "", coreerr.E("app.runtime.readClipboard", "clipboard command failed", err)
+		return "", core.E("app.runtime.readClipboard", "clipboard command failed", err)
 	}
-	return strings.TrimSuffix(string(out), "\n"), nil
+	return core.TrimSuffix(string(out), "\n"), nil
 }
 
 func writeClipboard(text string) error {
@@ -716,13 +712,13 @@ func writeClipboard(text string) error {
 		}
 		return pipeCommand("xclip", text, "-selection", "clipboard")
 	default:
-		return coreerr.E("app.runtime.writeClipboard", "clipboard write not supported on this host", nil)
+		return core.E("app.runtime.writeClipboard", "clipboard write not supported on this host", nil)
 	}
 }
 
 func runDialogConfirm(message string) (bool, error) {
 	if runtime.GOOS != "darwin" {
-		return false, coreerr.E("app.runtime.runDialogConfirm", "confirm dialog not supported on this host", nil)
+		return false, core.E("app.runtime.runDialogConfirm", "confirm dialog not supported on this host", nil)
 	}
 	if message == "" {
 		message = "Continue?"
@@ -735,17 +731,17 @@ func runDialogConfirm(message string) (bool, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if core.As(err, &exitErr) {
 			return false, nil
 		}
-		return false, coreerr.E("app.runtime.runDialogConfirm", "osascript failed", err)
+		return false, core.E("app.runtime.runDialogConfirm", "osascript failed", err)
 	}
-	return strings.TrimSpace(string(out)) == "OK", nil
+	return core.Trim(string(out)) == "OK", nil
 }
 
 func runDialogOpen(title string) (string, error) {
 	if runtime.GOOS != "darwin" {
-		return "", coreerr.E("app.runtime.runDialogOpen", "open dialog not supported on this host", nil)
+		return "", core.E("app.runtime.runDialogOpen", "open dialog not supported on this host", nil)
 	}
 	if title == "" {
 		title = "Choose a file"
@@ -756,14 +752,14 @@ func runDialogOpen(title string) (string, error) {
 		"-e", "POSIX path of selectedFile",
 	).Output()
 	if err != nil {
-		return "", coreerr.E("app.runtime.runDialogOpen", "osascript failed", err)
+		return "", core.E("app.runtime.runDialogOpen", "osascript failed", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return core.Trim(string(out)), nil
 }
 
 func runDialogSave(title, defaultName string) (string, error) {
 	if runtime.GOOS != "darwin" {
-		return "", coreerr.E("app.runtime.runDialogSave", "save dialog not supported on this host", nil)
+		return "", core.E("app.runtime.runDialogSave", "save dialog not supported on this host", nil)
 	}
 	if title == "" {
 		title = "Save file"
@@ -777,16 +773,16 @@ func runDialogSave(title, defaultName string) (string, error) {
 		"-e", "POSIX path of selectedFile",
 	).Output()
 	if err != nil {
-		return "", coreerr.E("app.runtime.runDialogSave", "osascript failed", err)
+		return "", core.E("app.runtime.runDialogSave", "osascript failed", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return core.Trim(string(out)), nil
 }
 
 func pipeCommand(name, input string, args ...string) error {
 	cmd := exec.Command(name, args...)
-	cmd.Stdin = strings.NewReader(input)
+	cmd.Stdin = core.NewReader(input)
 	if err := cmd.Run(); err != nil {
-		return coreerr.E("app.runtime.pipeCommand", "command failed: "+name, err)
+		return core.E("app.runtime.pipeCommand", "command failed: "+name, err)
 	}
 	return nil
 }
@@ -810,10 +806,10 @@ func platformCommand(argument, darwin, linux, windows string, windowsArgs ...str
 		}
 		return exec.Command(windows, args...), nil
 	default:
-		return nil, coreerr.E("app.runtime.platformCommand", "unsupported host OS", nil)
+		return nil, core.E("app.runtime.platformCommand", "unsupported host OS", nil)
 	}
 }
 
 func appleScriptString(value string) string {
-	return "\"" + strings.ReplaceAll(value, "\"", "\\\"") + "\""
+	return "\"" + core.Replace(value, "\"", "\\\"") + "\""
 }
