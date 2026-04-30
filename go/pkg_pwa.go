@@ -13,7 +13,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // PWAIcon is one entry in a PWA manifest's icons array. The wrapper
@@ -70,7 +69,7 @@ const pwaFetchTimeout = 15 * time.Second
 //
 // Rules:
 //
-//   - Returns a coreerr.E-wrapped error for non-2xx responses, network
+//   - Returns a core.E-wrapped error for non-2xx responses, network
 //     failures, and decode errors.
 //
 //   - Trims whitespace from the URL so CLI shells pasting trailing
@@ -84,7 +83,7 @@ const pwaFetchTimeout = 15 * time.Second
 func FetchPWAManifest(ctx context.Context, url string) (*PWAManifest, error) {
 	url = core.Trim(url)
 	if url == "" {
-		return nil, coreerr.E("app.FetchPWAManifest", "empty URL", nil)
+		return nil, core.E("app.FetchPWAManifest", "empty URL", nil)
 	}
 
 	candidates := pwaManifestCandidates(url)
@@ -117,9 +116,9 @@ func FetchPWAManifest(ctx context.Context, url string) (*PWAManifest, error) {
 	}
 
 	if lastErr == nil {
-		lastErr = coreerr.E("app.FetchPWAManifest", "no manifest candidates resolved", nil)
+		lastErr = core.E("app.FetchPWAManifest", "no manifest candidates resolved", nil)
 	}
-	return nil, coreerr.E("app.FetchPWAManifest", "manifest fetch failed for "+url, lastErr)
+	return nil, core.E("app.FetchPWAManifest", "manifest fetch failed for "+url, lastErr)
 }
 
 // WrapPWAOptions tunes WrapPWA. A zero value is fine — the canonical
@@ -333,16 +332,16 @@ func pwaWindowMode(display string) string {
 //	err := app.WritePWAWrap(coreio.Local, "/Users/me/.core/apps/play", manifest)
 func WritePWAWrap(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
 	if manifest == nil {
-		return coreerr.E("app.WritePWAWrap", "nil manifest", nil)
+		return core.E("app.WritePWAWrap", "nil manifest", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
 	}
 	if err := materializeWrappedRuntimeAssets(medium, dest, manifest); err != nil {
-		return coreerr.E("app.WritePWAWrap", "materialise runtime assets failed", err)
+		return core.E("app.WritePWAWrap", "materialise runtime assets failed", err)
 	}
 	if err := writeWrappedManifest(medium, dest, manifest); err != nil {
-		return coreerr.E("app.WritePWAWrap", "write failed", err)
+		return core.E("app.WritePWAWrap", "write failed", err)
 	}
 	return nil
 }
@@ -402,20 +401,20 @@ func applyPWAPermissionMapping(m *config.ViewManifest, perms []string) {
 func fetchPWAURL(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, coreerr.E("app.fetchPWAURL", "request build failed", err)
+		return nil, core.E("app.fetchPWAURL", "request build failed", err)
 	}
 	req.Header.Set("Accept", "application/manifest+json, application/json")
 
 	client := &http.Client{Timeout: pwaFetchTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, coreerr.E("app.fetchPWAURL", "HTTP GET failed", err)
+		return nil, core.E("app.fetchPWAURL", "HTTP GET failed", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			core.Warn("app.fetchPWAURL: response body close failed", "url", url, "err", closeErr)
 		}
-		return nil, coreerr.E(
+		return nil, core.E(
 			"app.fetchPWAURL",
 			"non-2xx status: "+core.Sprint(resp.StatusCode),
 			nil,
@@ -425,7 +424,7 @@ func fetchPWAURL(ctx context.Context, url string) ([]byte, error) {
 	body := core.ReadAll(resp.Body)
 	if !body.OK {
 		cause, _ := body.Value.(error)
-		return nil, coreerr.E("app.fetchPWAURL", "read body failed", cause)
+		return nil, core.E("app.fetchPWAURL", "read body failed", cause)
 	}
 	payload, _ := body.Value.(string)
 	return []byte(payload), nil
@@ -440,10 +439,10 @@ func decodePWAManifest(body []byte) (*PWAManifest, error) {
 	r := core.JSONUnmarshal(body, &m)
 	if !r.OK {
 		cause, _ := r.Value.(error)
-		return nil, coreerr.E("app.decodePWAManifest", "decode manifest body failed", cause)
+		return nil, core.E("app.decodePWAManifest", "decode manifest body failed", cause)
 	}
 	if m.StartURL == "" && m.Name == "" && m.ShortName == "" {
-		return nil, coreerr.E("app.decodePWAManifest", "body is not a web app manifest", nil)
+		return nil, core.E("app.decodePWAManifest", "body is not a web app manifest", nil)
 	}
 	return &m, nil
 }

@@ -8,7 +8,6 @@ import (
 
 	core "dappco.re/go"
 	"dappco.re/go/config"
-	coreerr "dappco.re/go/log"
 )
 
 // ModuleFactory returns a CoreOption that wires a named module onto a
@@ -141,7 +140,7 @@ func resolveModulesFromRegistry(names []string) ([]ModuleFactory, []string) {
 //	if err := applyModuleFactories(c, factories); err != nil { return err }
 func applyModuleFactories(c *core.Core, factories []ModuleFactory) error {
 	if c == nil {
-		return coreerr.E("app.applyModuleFactories", "nil core", nil)
+		return core.E("app.applyModuleFactories", "nil core", nil)
 	}
 	for _, f := range factories {
 		if f == nil {
@@ -158,7 +157,7 @@ func applyModuleFactories(c *core.Core, factories []ModuleFactory) error {
 		// caller can fail-fast on a misbehaving factory.
 		if r := opt(c); !r.OK {
 			cause, _ := r.Value.(error)
-			return coreerr.E("app.applyModuleFactories", "module option failed", cause)
+			return core.E("app.applyModuleFactories", "module option failed", cause)
 		}
 	}
 	return nil
@@ -173,10 +172,10 @@ func applyModuleFactories(c *core.Core, factories []ModuleFactory) error {
 //	err := loadModules(ctx, c, &manifest, ModeProd)
 func loadModules(_ context.Context, c *core.Core, m *config.ViewManifest, mode Mode) error {
 	if c == nil {
-		return coreerr.E("app.loadModules", "nil core", nil)
+		return core.E("app.loadModules", "nil core", nil)
 	}
 	if m == nil {
-		return coreerr.E("app.loadModules", "nil manifest", nil)
+		return core.E("app.loadModules", "nil manifest", nil)
 	}
 	if len(m.Modules) == 0 {
 		return nil
@@ -196,7 +195,7 @@ func loadModules(_ context.Context, c *core.Core, m *config.ViewManifest, mode M
 	// capability the host does not advertise, so silently dropping it
 	// would leave the app crashing later when it dispatches an action.
 	if mode == ModeProd {
-		return coreerr.E(
+		return core.E(
 			"app.loadModules",
 			"unresolved module(s): "+core.Join(", ", missing...),
 			nil,

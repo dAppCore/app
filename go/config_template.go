@@ -274,8 +274,8 @@ func configTemplateScopeForRefs(c *core.Core, store *workspaceObjectStore, parts
 
 func resolveConfigTemplateReference(c *core.Core, store *workspaceObjectStore, path string) (any, error) {
 	switch {
-	case strings.HasPrefix(path, "env."):
-		key := strings.TrimSpace(path[len("env."):])
+	case core.HasPrefix(path, "env."):
+		key := core.Trim(path[len("env."):])
 		if key == "" {
 			return nil, missingConfigTemplatePath(path)
 		}
@@ -284,8 +284,8 @@ func resolveConfigTemplateReference(c *core.Core, store *workspaceObjectStore, p
 			return nil, missingConfigTemplatePath(path)
 		}
 		return value, nil
-	case strings.HasPrefix(path, "config."):
-		key := strings.TrimSpace(path[len("config."):])
+	case core.HasPrefix(path, "config."):
+		key := core.Trim(path[len("config."):])
 		if key == "" {
 			return nil, missingConfigTemplatePath(path)
 		}
@@ -383,7 +383,7 @@ func parseConfigTemplate(text string) ([]configTemplatePart, error) {
 		}
 
 		rawPath := core.Trim(tail[:end])
-		if strings.Contains(rawPath, "{{") || strings.Contains(rawPath, "}}") {
+		if core.Contains(rawPath, "{{") || core.Contains(rawPath, "}}") {
 			return nil, core.E("app.parseConfigTemplate", "malformed template: nested delimiters", nil)
 		}
 
@@ -399,8 +399,8 @@ func parseConfigTemplate(text string) ([]configTemplatePart, error) {
 }
 
 func normaliseConfigTemplatePath(path string) (string, error) {
-	path = strings.TrimSpace(path)
-	path = strings.TrimPrefix(path, ".")
+	path = core.Trim(path)
+	path = core.TrimPrefix(path, ".")
 	if path == "" || strings.IndexAny(path, " \t\r\n") >= 0 {
 		return "", core.E("app.normaliseConfigTemplatePath", "malformed template action", nil)
 	}
@@ -409,20 +409,20 @@ func normaliseConfigTemplatePath(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.Join(segments, "."), nil
+	return core.Join(".", segments...), nil
 }
 
 func configTemplatePathSegments(path string) ([]string, error) {
-	path = strings.TrimSpace(path)
-	path = strings.TrimPrefix(path, ".")
+	path = core.Trim(path)
+	path = core.TrimPrefix(path, ".")
 	if path == "" {
 		return nil, core.E("app.configTemplatePathSegments", "empty template path", nil)
 	}
 
-	raw := strings.Split(path, ".")
+	raw := core.Split(path, ".")
 	segments := make([]string, 0, len(raw))
 	for _, segment := range raw {
-		segment = strings.TrimSpace(segment)
+		segment = core.Trim(segment)
 		if segment == "" {
 			return nil, core.E(
 				"app.configTemplatePathSegments",
@@ -509,7 +509,7 @@ func missingConfigTemplatePath(path string) error {
 }
 
 func decodeConfigTemplateValue(raw string) any {
-	if strings.TrimSpace(raw) == "" {
+	if core.Trim(raw) == "" {
 		return ""
 	}
 

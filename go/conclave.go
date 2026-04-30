@@ -8,7 +8,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // ConclaveOptions tunes NewConclave. A conclave is the most-isolated
@@ -119,10 +118,10 @@ type Conclave struct {
 //     more services even if the caller forgets to pass the option.
 func NewConclave(ctx context.Context, opts ConclaveOptions) (*Conclave, error) {
 	if opts.Code == "" {
-		return nil, coreerr.E("app.NewConclave", "empty code", nil)
+		return nil, core.E("app.NewConclave", "empty code", nil)
 	}
 	if opts.ProjectRoot == "" {
-		return nil, coreerr.E("app.NewConclave", "empty ProjectRoot", nil)
+		return nil, core.E("app.NewConclave", "empty ProjectRoot", nil)
 	}
 
 	medium := opts.Medium
@@ -140,7 +139,7 @@ func NewConclave(ctx context.Context, opts ConclaveOptions) (*Conclave, error) {
 		w, err := OpenWorkspace(medium, opts.WorkspaceHome, opts.Code)
 		if err != nil {
 			if opts.Mode == ModeProd {
-				return nil, coreerr.E("app.NewConclave", "workspace bootstrap failed", err)
+				return nil, core.E("app.NewConclave", "workspace bootstrap failed", err)
 			}
 			// Dev mode keeps booting; the conclave handlers must check
 			// Workspace before using it.
@@ -157,13 +156,13 @@ func NewConclave(ctx context.Context, opts ConclaveOptions) (*Conclave, error) {
 		Medium:      medium,
 	})
 	if err != nil {
-		return nil, coreerr.E("app.NewConclave", "PluginBoot failed", err)
+		return nil, core.E("app.NewConclave", "PluginBoot failed", err)
 	}
 	inst.Workspace = ws
 
 	sandbox, err := buildConclaveSandbox(medium, opts.ProjectRoot)
 	if err != nil {
-		return nil, coreerr.E("app.NewConclave", "sandbox build failed", err)
+		return nil, core.E("app.NewConclave", "sandbox build failed", err)
 	}
 
 	return &Conclave{Instance: inst, Sandbox: sandbox}, nil

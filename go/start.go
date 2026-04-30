@@ -6,7 +6,6 @@ import (
 	"context"
 
 	core "dappco.re/go"
-	coreerr "dappco.re/go/log"
 )
 
 // start is Step 7 of the 7-step boot — unblock the app's entry point.
@@ -45,7 +44,7 @@ import (
 func start(ctx context.Context, inst *Instance) core.Result {
 	if inst == nil || inst.Core == nil {
 		return core.Result{
-			Value: coreerr.E("app.start", "nil instance or core", nil),
+			Value: core.E("app.start", "nil instance or core", nil),
 			OK:    false,
 		}
 	}
@@ -58,7 +57,7 @@ func start(ctx context.Context, inst *Instance) core.Result {
 	if !inst.started {
 		if r := c.ServiceStartup(ctx, nil); !r.OK {
 			return core.Result{
-				Value: coreerr.E("app.start", "service startup failed", extractErr(r)),
+				Value: core.E("app.start", "service startup failed", extractErr(r)),
 				OK:    false,
 			}
 		}
@@ -101,7 +100,7 @@ func start(ctx context.Context, inst *Instance) core.Result {
 func stop(ctx context.Context, inst *Instance) core.Result {
 	if inst == nil || inst.Core == nil {
 		return core.Result{
-			Value: coreerr.E("app.stop", "nil instance or core", nil),
+			Value: core.E("app.stop", "nil instance or core", nil),
 			OK:    false,
 		}
 	}
@@ -133,7 +132,7 @@ func stop(ctx context.Context, inst *Instance) core.Result {
 
 	if r := c.ServiceShutdown(ctx); !r.OK {
 		return core.Result{
-			Value: coreerr.E("app.stop", "service shutdown failed", extractErr(r)),
+			Value: core.E("app.stop", "service shutdown failed", extractErr(r)),
 			OK:    false,
 		}
 	}

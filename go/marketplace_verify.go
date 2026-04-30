@@ -8,7 +8,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // VerifyListing checks that the manifest installed at `dest` from the
@@ -34,10 +33,10 @@ import (
 //     entry.
 func VerifyListing(medium coreio.Medium, dest string, listing *MarketplaceListing) error {
 	if listing == nil {
-		return coreerr.E("app.VerifyListing", "nil listing", nil)
+		return core.E("app.VerifyListing", "nil listing", nil)
 	}
 	if dest == "" {
-		return coreerr.E("app.VerifyListing", "empty dest", nil)
+		return core.E("app.VerifyListing", "empty dest", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
@@ -45,7 +44,7 @@ func VerifyListing(medium coreio.Medium, dest string, listing *MarketplaceListin
 
 	manifestPath := core.Path(dest, ".core", "view.yaml")
 	if !medium.Exists(manifestPath) {
-		return coreerr.E(
+		return core.E(
 			"app.VerifyListing",
 			"installed manifest missing for listing "+listing.Code+": "+manifestPath,
 			nil,
@@ -54,7 +53,7 @@ func VerifyListing(medium coreio.Medium, dest string, listing *MarketplaceListin
 
 	var manifest config.ViewManifest
 	if err := LoadViewManifest(medium, manifestPath, &manifest); err != nil {
-		return coreerr.E(
+		return core.E(
 			"app.VerifyListing",
 			"parse installed manifest for "+listing.Code+" failed",
 			err,
@@ -70,7 +69,7 @@ func VerifyListing(medium coreio.Medium, dest string, listing *MarketplaceListin
 
 	pub, err := parsePublicKey(listing.SignKey)
 	if err != nil {
-		return coreerr.E(
+		return core.E(
 			"app.VerifyListing",
 			"listing "+listing.Code+" sign_key decode failed",
 			err,
@@ -78,7 +77,7 @@ func VerifyListing(medium coreio.Medium, dest string, listing *MarketplaceListin
 	}
 
 	if err := verifyWithKey(&manifest, pub); err != nil {
-		return coreerr.E(
+		return core.E(
 			"app.VerifyListing",
 			"listing "+listing.Code+" signature did not match pinned sign_key",
 			err,
@@ -98,18 +97,18 @@ func VerifyListingBytes(body []byte, hexKey string) error {
 		return nil
 	}
 	if len(body) == 0 {
-		return coreerr.E("app.VerifyListingBytes", "empty manifest body", nil)
+		return core.E("app.VerifyListingBytes", "empty manifest body", nil)
 	}
 	pub, err := parsePublicKey(hexKey)
 	if err != nil {
-		return coreerr.E("app.VerifyListingBytes", "sign_key decode failed", err)
+		return core.E("app.VerifyListingBytes", "sign_key decode failed", err)
 	}
 	var manifest config.ViewManifest
 	if err := yamlUnmarshal(body, &manifest); err != nil {
-		return coreerr.E("app.VerifyListingBytes", "parse manifest body failed", err)
+		return core.E("app.VerifyListingBytes", "parse manifest body failed", err)
 	}
 	if err := verifyWithKey(&manifest, pub); err != nil {
-		return coreerr.E("app.VerifyListingBytes", "signature did not match pinned sign_key", err)
+		return core.E("app.VerifyListingBytes", "signature did not match pinned sign_key", err)
 	}
 	return nil
 }

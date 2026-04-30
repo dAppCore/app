@@ -9,7 +9,6 @@ import (
 
 	core "dappco.re/go"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // ExtractTar unpacks a downloaded `.tar` (uncompressed) or `.tar.gz` /
@@ -38,29 +37,29 @@ func ExtractTar(medium coreio.Medium, archive, dest string) error {
 		medium = coreio.Local
 	}
 	if archive == "" {
-		return coreerr.E("app.ExtractTar", "empty archive path", nil)
+		return core.E("app.ExtractTar", "empty archive path", nil)
 	}
 	if dest == "" {
-		return coreerr.E("app.ExtractTar", "empty dest path", nil)
+		return core.E("app.ExtractTar", "empty dest path", nil)
 	}
 	if !medium.Exists(archive) {
-		return coreerr.E("app.ExtractTar", "archive not found: "+archive, nil)
+		return core.E("app.ExtractTar", "archive not found: "+archive, nil)
 	}
 	if err := medium.EnsureDir(dest); err != nil {
-		return coreerr.E("app.ExtractTar", "ensure dest dir failed", err)
+		return core.E("app.ExtractTar", "ensure dest dir failed", err)
 	}
 
 	body, err := medium.Read(archive)
 	if err != nil {
-		return coreerr.E("app.ExtractTar", "read archive failed", err)
+		return core.E("app.ExtractTar", "read archive failed", err)
 	}
 	if body == "" {
-		return coreerr.E("app.ExtractTar", "archive is empty: "+archive, nil)
+		return core.E("app.ExtractTar", "archive is empty: "+archive, nil)
 	}
 
 	reader, err := openTarReader(archive, body)
 	if err != nil {
-		return coreerr.E("app.ExtractTar", "open tar reader failed", err)
+		return core.E("app.ExtractTar", "open tar reader failed", err)
 	}
 
 	for {
@@ -69,7 +68,7 @@ func ExtractTar(medium coreio.Medium, archive, dest string) error {
 			break
 		}
 		if err != nil {
-			return coreerr.E("app.ExtractTar", "read tar header failed", err)
+			return core.E("app.ExtractTar", "read tar header failed", err)
 		}
 		if err := extractTarEntry(medium, reader, hdr, dest); err != nil {
 			return err
@@ -148,7 +147,7 @@ func extractTarEntry(medium coreio.Medium, reader *tar.Reader, hdr *tar.Header, 
 	// Reject absolute paths and parent traversals — the joined target
 	// must stay inside `dest`.
 	if core.PathIsAbs(name) || core.HasPrefix(name, "..") || core.Contains(name, "../") {
-		return coreerr.E(
+		return core.E(
 			"app.ExtractTar",
 			"refusing tar entry outside dest: "+name,
 			nil,
@@ -161,7 +160,7 @@ func extractTarEntry(medium coreio.Medium, reader *tar.Reader, hdr *tar.Header, 
 		sep = "/"
 	}
 	if !core.HasPrefix(target, cleanDest+sep) && target != cleanDest {
-		return coreerr.E(
+		return core.E(
 			"app.ExtractTar",
 			"refusing tar entry outside dest after join: "+name,
 			nil,
@@ -171,19 +170,19 @@ func extractTarEntry(medium coreio.Medium, reader *tar.Reader, hdr *tar.Header, 
 	switch hdr.Typeflag {
 	case tar.TypeDir:
 		if err := medium.EnsureDir(target); err != nil {
-			return coreerr.E("app.ExtractTar", "ensure dir failed: "+target, err)
+			return core.E("app.ExtractTar", "ensure dir failed: "+target, err)
 		}
 		return nil
 	case tar.TypeReg, tar.TypeRegA:
 		if err := medium.EnsureDir(core.PathDir(target)); err != nil {
-			return coreerr.E("app.ExtractTar", "ensure parent dir failed: "+target, err)
+			return core.E("app.ExtractTar", "ensure parent dir failed: "+target, err)
 		}
 		body, err := io.ReadAll(reader)
 		if err != nil {
-			return coreerr.E("app.ExtractTar", "read entry failed: "+name, err)
+			return core.E("app.ExtractTar", "read entry failed: "+name, err)
 		}
 		if err := medium.Write(target, string(body)); err != nil {
-			return coreerr.E("app.ExtractTar", "write entry failed: "+target, err)
+			return core.E("app.ExtractTar", "write entry failed: "+target, err)
 		}
 		return nil
 	default:
@@ -205,7 +204,7 @@ func extractTarEntry(medium coreio.Medium, reader *tar.Reader, hdr *tar.Header, 
 // caller rather than silently no-oping.
 func ExtractArchive(medium coreio.Medium, archive, dest string) error {
 	if archive == "" {
-		return coreerr.E("app.ExtractArchive", "empty archive path", nil)
+		return core.E("app.ExtractArchive", "empty archive path", nil)
 	}
 	low := core.Lower(archive)
 	switch {
@@ -216,7 +215,7 @@ func ExtractArchive(medium coreio.Medium, archive, dest string) error {
 		core.HasSuffix(low, ".tar"):
 		return ExtractTar(medium, archive, dest)
 	}
-	return coreerr.E(
+	return core.E(
 		"app.ExtractArchive",
 		"unsupported archive format: "+archive+" (supported: .zip, .tar, .tar.gz, .tgz)",
 		nil,

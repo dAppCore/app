@@ -8,7 +8,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // CompiledVersion is the compiler identity stapled into every core.json
@@ -107,19 +106,19 @@ type CompileOptions struct {
 //     the compiled form is strict).
 func Compile(m *config.ViewManifest, opts CompileOptions) (*CompiledManifest, error) {
 	if m == nil {
-		return nil, coreerr.E("app.Compile", "nil manifest", nil)
+		return nil, core.E("app.Compile", "nil manifest", nil)
 	}
 	if m.Code == "" {
-		return nil, coreerr.E("app.Compile", "manifest.code is empty", nil)
+		return nil, core.E("app.Compile", "manifest.code is empty", nil)
 	}
 	if m.Name == "" {
-		return nil, coreerr.E("app.Compile", "manifest.name is empty", nil)
+		return nil, core.E("app.Compile", "manifest.name is empty", nil)
 	}
 	if m.Version == "" {
-		return nil, coreerr.E("app.Compile", "manifest.version is empty", nil)
+		return nil, core.E("app.Compile", "manifest.version is empty", nil)
 	}
 	if err := validateLayoutVariant(m.Layout); err != nil {
-		return nil, coreerr.E("app.Compile", "invalid layout", err)
+		return nil, core.E("app.Compile", "invalid layout", err)
 	}
 
 	now := opts.Now
@@ -133,7 +132,7 @@ func Compile(m *config.ViewManifest, opts CompileOptions) (*CompiledManifest, er
 
 	slots, components, err := resolveSlots(m.Slots)
 	if err != nil {
-		return nil, coreerr.E("app.Compile", "slot resolution failed", err)
+		return nil, core.E("app.Compile", "slot resolution failed", err)
 	}
 
 	out := &CompiledManifest{
@@ -191,13 +190,13 @@ func resolveSlots(raw map[string]any) (map[string]string, map[string]ComponentSp
 			slots[slot] = value
 			components[value] = ComponentSpec{Tag: value, Shadow: true}
 		case nil:
-			return nil, nil, coreerr.E(
+			return nil, nil, core.E(
 				"app.resolveSlots",
 				"slot '"+slot+"' has nil component",
 				nil,
 			)
 		default:
-			return nil, nil, coreerr.E(
+			return nil, nil, core.E(
 				"app.resolveSlots",
 				"slot '"+slot+"' must be a string component name",
 				nil,
@@ -214,21 +213,21 @@ func resolveSlots(raw map[string]any) (map[string]string, map[string]ComponentSp
 //	err := app.WriteCompiled(coreio.Local, root, cm)
 func WriteCompiled(medium coreio.Medium, root string, cm *CompiledManifest) error {
 	if cm == nil {
-		return coreerr.E("app.WriteCompiled", "nil compiled manifest", nil)
+		return core.E("app.WriteCompiled", "nil compiled manifest", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
 	}
 	body, err := marshalPretty(cm)
 	if err != nil {
-		return coreerr.E("app.WriteCompiled", "marshal failed", err)
+		return core.E("app.WriteCompiled", "marshal failed", err)
 	}
 	path := core.Path(root, CompiledFileName)
 	if err := medium.EnsureDir(core.PathDir(path)); err != nil {
-		return coreerr.E("app.WriteCompiled", "ensure dir failed", err)
+		return core.E("app.WriteCompiled", "ensure dir failed", err)
 	}
 	if err := medium.Write(path, body); err != nil {
-		return coreerr.E("app.WriteCompiled", "write failed", err)
+		return core.E("app.WriteCompiled", "write failed", err)
 	}
 	return nil
 }
@@ -245,16 +244,16 @@ func LoadCompiled(medium coreio.Medium, root string) (*CompiledManifest, error) 
 	}
 	path := core.Path(root, CompiledFileName)
 	if !medium.Exists(path) {
-		return nil, coreerr.E("app.LoadCompiled", CompiledFileName+" not found at "+path, nil)
+		return nil, core.E("app.LoadCompiled", CompiledFileName+" not found at "+path, nil)
 	}
 	body, err := medium.Read(path)
 	if err != nil {
-		return nil, coreerr.E("app.LoadCompiled", "read "+path+" failed", err)
+		return nil, core.E("app.LoadCompiled", "read "+path+" failed", err)
 	}
 	var cm CompiledManifest
 	if r := core.JSONUnmarshal([]byte(body), &cm); !r.OK {
 		cause, _ := r.Value.(error)
-		return nil, coreerr.E("app.LoadCompiled", "decode "+path+" failed", cause)
+		return nil, core.E("app.LoadCompiled", "decode "+path+" failed", cause)
 	}
 	return &cm, nil
 }

@@ -8,7 +8,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // PluginOptions tunes PluginBoot. Plugins are isolated `core.New()`
@@ -69,10 +68,10 @@ type PluginOptions struct {
 //     stays inside its directory.
 func PluginBoot(ctx context.Context, opts PluginOptions) (*Instance, error) {
 	if opts.ProjectRoot == "" {
-		return nil, coreerr.E("app.PluginBoot", "empty ProjectRoot", nil)
+		return nil, core.E("app.PluginBoot", "empty ProjectRoot", nil)
 	}
 	if opts.Manifest.Code == "" {
-		return nil, coreerr.E("app.PluginBoot", "manifest.code is empty", nil)
+		return nil, core.E("app.PluginBoot", "manifest.code is empty", nil)
 	}
 
 	medium := opts.Medium
@@ -100,24 +99,24 @@ func PluginBoot(ctx context.Context, opts PluginOptions) (*Instance, error) {
 	// trustworthy before calling PluginBoot. Step 7 (Start) is the
 	// caller's explicit trigger.
 	if err := permissions(c, &inst.Manifest, opts.Mode); err != nil {
-		return nil, coreerr.E("app.PluginBoot", "permission binding failed", err)
+		return nil, core.E("app.PluginBoot", "permission binding failed", err)
 	}
 	if err := modulesWithMode(ctx, c, &inst.Manifest, opts.Mode); err != nil {
 		// modulesWithMode already short-circuits the dev path internally
 		// (logs + returns nil); a non-nil error here is therefore a
 		// genuine prod failure and should bubble up.
-		return nil, coreerr.E("app.PluginBoot", "module load failed", err)
+		return nil, core.E("app.PluginBoot", "module load failed", err)
 	}
 	spec, err := resolveLayout(c, &inst.Manifest)
 	if err != nil {
-		return nil, coreerr.E("app.PluginBoot", "layout composition failed", err)
+		return nil, core.E("app.PluginBoot", "layout composition failed", err)
 	}
 	inst.Layout = spec
 	if err := applyConfigWithMode(c, &inst.Manifest, medium, opts.ProjectRoot, opts.Mode); err != nil {
-		return nil, coreerr.E("app.PluginBoot", "config template failed", err)
+		return nil, core.E("app.PluginBoot", "config template failed", err)
 	}
 	if err := registerRuntimeActions(inst); err != nil {
-		return nil, coreerr.E("app.PluginBoot", "runtime action registration failed", err)
+		return nil, core.E("app.PluginBoot", "runtime action registration failed", err)
 	}
 
 	return inst, nil

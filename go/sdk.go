@@ -6,7 +6,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // SDKLanguage selects which client SDK the generator emits. Each language
@@ -654,10 +653,10 @@ type SDKCatalogueEntry struct {
 //     permissions (or unfiltered if IncludeAllPrimitives=true).
 func SDKGenerate(medium coreio.Medium, root string, m *config.ViewManifest, opts SDKGenerateOptions) error {
 	if m == nil {
-		return coreerr.E("app.SDKGenerate", "nil manifest", nil)
+		return core.E("app.SDKGenerate", "nil manifest", nil)
 	}
 	if root == "" {
-		return coreerr.E("app.SDKGenerate", "empty root", nil)
+		return core.E("app.SDKGenerate", "empty root", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
@@ -687,14 +686,14 @@ func SDKGenerate(medium coreio.Medium, root string, m *config.ViewManifest, opts
 	for _, lang := range languages {
 		body, file, err := renderSDK(lang, m, actions)
 		if err != nil {
-			return coreerr.E("app.SDKGenerate", "render "+lang.String()+" failed", err)
+			return core.E("app.SDKGenerate", "render "+lang.String()+" failed", err)
 		}
 		dest := core.Path(outDir, lang.String(), file)
 		if err := medium.EnsureDir(core.PathDir(dest)); err != nil {
-			return coreerr.E("app.SDKGenerate", "ensure dir "+core.PathDir(dest)+" failed", err)
+			return core.E("app.SDKGenerate", "ensure dir "+core.PathDir(dest)+" failed", err)
 		}
 		if err := medium.Write(dest, body); err != nil {
-			return coreerr.E("app.SDKGenerate", "write "+dest+" failed", err)
+			return core.E("app.SDKGenerate", "write "+dest+" failed", err)
 		}
 	}
 	return nil
@@ -719,7 +718,7 @@ func renderSDK(lang SDKLanguage, m *config.ViewManifest, actions []SDKAction) (s
 	case SDKLanguagePython:
 		return RenderPython(m, actions), "sdk.py", nil
 	}
-	return "", "", coreerr.E("app.renderSDK", "unsupported language: "+lang.String(), nil)
+	return "", "", core.E("app.renderSDK", "unsupported language: "+lang.String(), nil)
 }
 
 // RenderOpenAPI produces an OpenAPI 3.1 document describing the manifest's
@@ -733,13 +732,13 @@ func renderSDK(lang SDKLanguage, m *config.ViewManifest, actions []SDKAction) (s
 // WriteCompiled uses so a diff review of generated specs stays readable.
 func RenderOpenAPI(m *config.ViewManifest, actions []SDKAction) (string, error) {
 	if m == nil {
-		return "", coreerr.E("app.RenderOpenAPI", "nil manifest", nil)
+		return "", core.E("app.RenderOpenAPI", "nil manifest", nil)
 	}
 	doc := openAPIDoc(m, actions)
 	r := core.JSONMarshal(doc)
 	if !r.OK {
 		cause, _ := r.Value.(error)
-		return "", coreerr.E("app.RenderOpenAPI", "marshal failed", cause)
+		return "", core.E("app.RenderOpenAPI", "marshal failed", cause)
 	}
 	raw, _ := r.Value.([]byte)
 	return indentJSON(raw), nil

@@ -4,7 +4,6 @@ package app
 
 import (
 	core "dappco.re/go"
-	coreerr "dappco.re/go/log"
 )
 
 // compiledTypedTopLevelKeys are the fields CompiledManifest models
@@ -84,7 +83,7 @@ func (cm CompiledManifest) MarshalJSON() ([]byte, error) {
 // alongside the typed manifest fields.
 func (cm *CompiledManifest) UnmarshalJSON(body []byte) error {
 	if cm == nil {
-		return coreerr.E("app.CompiledManifest.UnmarshalJSON", "nil receiver", nil)
+		return core.E("app.CompiledManifest.UnmarshalJSON", "nil receiver", nil)
 	}
 
 	var alias compiledManifestAlias

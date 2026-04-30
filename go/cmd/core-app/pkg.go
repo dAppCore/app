@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"os"
 
 	core "dappco.re/go"
 	"dappco.re/go/app"
@@ -1859,11 +1858,11 @@ func runMarketplaceFetch(args []string) int {
 
 // ensureExit is an optional exit helper used only when the CLI wants
 // to abort the process with a fixed code after writing context to
-// stdout. Kept here (rather than calling os.Exit inline) so the test
+// stdout. Kept here (rather than calling core.Exit inline) so the test
 // harness can exercise the exit path without process-level side
 // effects.
 //
 //	ensureExit(64)
 func ensureExit(code int) {
-	os.Exit(code)
+	core.Exit(code)
 }

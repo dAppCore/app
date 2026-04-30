@@ -6,7 +6,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 	"gopkg.in/yaml.v3" // Note: AX-6 — centralized YAML codec wrapper; manifest serialisation requires gopkg.in/yaml.v3 (no core.YAML primitive available yet)
 )
 
@@ -126,14 +125,14 @@ func LoadViewManifest(medium coreio.Medium, path string, dst *config.ViewManifes
 		medium = coreio.Local
 	}
 	if path == "" {
-		return coreerr.E("app.LoadViewManifest", "empty path", nil)
+		return core.E("app.LoadViewManifest", "empty path", nil)
 	}
 	body, err := medium.Read(path)
 	if err != nil {
-		return coreerr.E("app.LoadViewManifest", "read "+path+" failed", err)
+		return core.E("app.LoadViewManifest", "read "+path+" failed", err)
 	}
 	if err := UnmarshalViewManifest([]byte(body), dst); err != nil {
-		return coreerr.E("app.LoadViewManifest", "parse "+path+" failed", err)
+		return core.E("app.LoadViewManifest", "parse "+path+" failed", err)
 	}
 	return nil
 }
@@ -144,7 +143,7 @@ func LoadViewManifest(medium coreio.Medium, path string, dst *config.ViewManifes
 // the rest of core/app can consume one consistent shape.
 func UnmarshalViewManifest(body []byte, dst *config.ViewManifest) error {
 	if dst == nil {
-		return coreerr.E("app.UnmarshalViewManifest", "nil destination", nil)
+		return core.E("app.UnmarshalViewManifest", "nil destination", nil)
 	}
 	if err := yamlUnmarshalImpl(body, dst); err != nil {
 		return err

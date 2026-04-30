@@ -9,7 +9,6 @@ import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
-	coreerr "dappco.re/go/log"
 )
 
 // HostOptions tunes NewHost. A host is the RFC §11 orchestrator that
@@ -149,16 +148,16 @@ type LaunchOptions struct {
 //     cleanly stops any plugin whose Start was driven via the host.
 func (h *Host) Launch(ctx context.Context, code string, opts LaunchOptions) (*Instance, error) {
 	if h == nil {
-		return nil, coreerr.E("app.Host.Launch", "nil host", nil)
+		return nil, core.E("app.Host.Launch", "nil host", nil)
 	}
 	if code == "" {
-		return nil, coreerr.E("app.Host.Launch", "empty code", nil)
+		return nil, core.E("app.Host.Launch", "empty code", nil)
 	}
 
 	h.mu.Lock()
 	if _, exists := h.plugins[code]; exists {
 		h.mu.Unlock()
-		return nil, coreerr.E("app.Host.Launch", "plugin already running: "+code, nil)
+		return nil, core.E("app.Host.Launch", "plugin already running: "+code, nil)
 	}
 	h.mu.Unlock()
 
@@ -175,18 +174,18 @@ func (h *Host) Launch(ctx context.Context, code string, opts LaunchOptions) (*In
 		if projectRoot == "" {
 			dir, err := DiscoverInstalled(h.opts.Medium, h.opts.Home, code)
 			if err != nil {
-				return nil, coreerr.E("app.Host.Launch", "discover failed for "+code, err)
+				return nil, core.E("app.Host.Launch", "discover failed for "+code, err)
 			}
 			projectRoot = dir
 		}
 		m, _, err := discoverCompiled(h.opts.Medium, projectRoot, mode)
 		if err != nil {
-			return nil, coreerr.E("app.Host.Launch", "discover failed for "+code, err)
+			return nil, core.E("app.Host.Launch", "discover failed for "+code, err)
 		}
 		manifest = m
 	}
 	if projectRoot == "" {
-		return nil, coreerr.E("app.Host.Launch", "cannot resolve project root for "+code, nil)
+		return nil, core.E("app.Host.Launch", "cannot resolve project root for "+code, nil)
 	}
 	trusted, err := resolveTrustedKeys(Options{
 		Mode:           mode,
@@ -196,13 +195,13 @@ func (h *Host) Launch(ctx context.Context, code string, opts LaunchOptions) (*In
 		DisableKeyLoad: h.opts.DisableKeyLoad,
 	})
 	if err != nil {
-		return nil, coreerr.E("app.Host.Launch", "resolve trusted keys failed for "+code, err)
+		return nil, core.E("app.Host.Launch", "resolve trusted keys failed for "+code, err)
 	}
 	if err := verify(&manifest, mode, trusted); err != nil {
-		return nil, coreerr.E("app.Host.Launch", "verify failed for "+code, err)
+		return nil, core.E("app.Host.Launch", "verify failed for "+code, err)
 	}
 	if err := verifyAssetIntegrity(h.opts.Medium, projectRoot, &manifest, mode); err != nil {
-		return nil, coreerr.E("app.Host.Launch", "asset integrity failed for "+code, err)
+		return nil, core.E("app.Host.Launch", "asset integrity failed for "+code, err)
 	}
 
 	// Resolve the plugin's service surface — the manifest's declared
@@ -223,7 +222,7 @@ func (h *Host) Launch(ctx context.Context, code string, opts LaunchOptions) (*In
 		Medium:      h.opts.Medium,
 	})
 	if err != nil {
-		return nil, coreerr.E("app.Host.Launch", "plugin boot failed for "+code, err)
+		return nil, core.E("app.Host.Launch", "plugin boot failed for "+code, err)
 	}
 
 	// Bootstrap the workspace so the plugin has a data tree on first
@@ -233,7 +232,7 @@ func (h *Host) Launch(ctx context.Context, code string, opts LaunchOptions) (*In
 		ws, wsErr := OpenWorkspace(h.opts.Medium, h.opts.Home, manifest.Code)
 		if wsErr != nil {
 			if mode == ModeProd {
-				return nil, coreerr.E("app.Host.Launch", "workspace bootstrap failed for "+code, wsErr)
+				return nil, core.E("app.Host.Launch", "workspace bootstrap failed for "+code, wsErr)
 			}
 			core.Warn("host: workspace bootstrap skipped (dev mode)",
 				"code", code, "err", wsErr)
@@ -355,10 +354,10 @@ func (h *Host) Running() []string {
 //     Stop always removes the entry.
 func (h *Host) Stop(ctx context.Context, code string) core.Result {
 	if h == nil {
-		return core.Result{Value: coreerr.E("app.Host.Stop", "nil host", nil), OK: false}
+		return core.Result{Value: core.E("app.Host.Stop", "nil host", nil), OK: false}
 	}
 	if code == "" {
-		return core.Result{Value: coreerr.E("app.Host.Stop", "empty code", nil), OK: false}
+		return core.Result{Value: core.E("app.Host.Stop", "empty code", nil), OK: false}
 	}
 
 	h.mu.Lock()
@@ -366,7 +365,7 @@ func (h *Host) Stop(ctx context.Context, code string) core.Result {
 	h.mu.Unlock()
 	if !ok {
 		return core.Result{
-			Value: coreerr.E("app.Host.Stop", "plugin not running: "+code, nil),
+			Value: core.E("app.Host.Stop", "plugin not running: "+code, nil),
 			OK:    false,
 		}
 	}
@@ -401,7 +400,7 @@ func (h *Host) Stop(ctx context.Context, code string) core.Result {
 //     no-op OK — idempotent teardown is valuable during tests.
 func (h *Host) Shutdown(ctx context.Context) core.Result {
 	if h == nil {
-		return core.Result{Value: coreerr.E("app.Host.Shutdown", "nil host", nil), OK: false}
+		return core.Result{Value: core.E("app.Host.Shutdown", "nil host", nil), OK: false}
 	}
 	// Snapshot the current plugins so we release the lock during
 	// inst.Stop — a plugin's OnStop may take time and we do not want
@@ -430,7 +429,7 @@ func (h *Host) Shutdown(ctx context.Context) core.Result {
 	for _, code := range snapshot {
 		if r := h.Stop(ctx, code); !r.OK {
 			return core.Result{
-				Value: coreerr.E("app.Host.Shutdown", "stop failed for "+code, extractErr(r)),
+				Value: core.E("app.Host.Shutdown", "stop failed for "+code, extractErr(r)),
 				OK:    false,
 			}
 		}
@@ -469,23 +468,23 @@ func (h *Host) Shutdown(ctx context.Context) core.Result {
 // honour the call. Dispatch is routing, not authorisation.
 func (h *Host) Dispatch(ctx context.Context, sourceCode, targetCode, action string, opts core.Options) core.Result {
 	if h == nil {
-		return core.Result{Value: coreerr.E("app.Host.Dispatch", "nil host", nil), OK: false}
+		return core.Result{Value: core.E("app.Host.Dispatch", "nil host", nil), OK: false}
 	}
 	if sourceCode == "" {
 		return core.Result{
-			Value: coreerr.E("app.Host.Dispatch", "empty sourceCode — plugin must identify itself", nil),
+			Value: core.E("app.Host.Dispatch", "empty sourceCode — plugin must identify itself", nil),
 			OK:    false,
 		}
 	}
 	if targetCode == "" {
 		return core.Result{
-			Value: coreerr.E("app.Host.Dispatch", "empty targetCode", nil),
+			Value: core.E("app.Host.Dispatch", "empty targetCode", nil),
 			OK:    false,
 		}
 	}
 	if action == "" {
 		return core.Result{
-			Value: coreerr.E("app.Host.Dispatch", "empty action", nil),
+			Value: core.E("app.Host.Dispatch", "empty action", nil),
 			OK:    false,
 		}
 	}
@@ -493,20 +492,20 @@ func (h *Host) Dispatch(ctx context.Context, sourceCode, targetCode, action stri
 	inst, ok := h.Get(targetCode)
 	if !ok {
 		return core.Result{
-			Value: coreerr.E("app.Host.Dispatch", "target plugin not running: "+targetCode, nil),
+			Value: core.E("app.Host.Dispatch", "target plugin not running: "+targetCode, nil),
 			OK:    false,
 		}
 	}
 	if inst.Core == nil {
 		return core.Result{
-			Value: coreerr.E("app.Host.Dispatch", "target plugin has no Core: "+targetCode, nil),
+			Value: core.E("app.Host.Dispatch", "target plugin has no Core: "+targetCode, nil),
 			OK:    false,
 		}
 	}
 
 	if !inst.Core.Action(action).Exists() {
 		return core.Result{
-			Value: coreerr.E(
+			Value: core.E(
 				"app.Host.Dispatch",
 				"target "+targetCode+" did not register handler for "+action,
 				nil,

@@ -5,7 +5,6 @@ package app
 import (
 	core "dappco.re/go"
 	"dappco.re/go/config"
-	coreerr "dappco.re/go/log"
 )
 
 // AccessMode names the capability an action requires. The capital-letter
@@ -123,7 +122,7 @@ func (a AccessMode) String() string {
 //	}
 func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 	if m == nil {
-		return coreerr.E("app.CheckAccess", "nil manifest", nil)
+		return core.E("app.CheckAccess", "nil manifest", nil)
 	}
 
 	switch mode {
@@ -137,7 +136,7 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if matchPrefix(m.Permissions.Read, arg) {
 			return nil
 		}
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			"read access to '"+arg+"' not declared in manifest.permissions.read",
 			nil,
@@ -156,7 +155,7 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if matchPrefix(manifestWriteList(m), arg) {
 			return nil
 		}
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			"write access to '"+arg+"' not declared in manifest.permissions.write",
 			nil,
@@ -168,7 +167,7 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if matchNet(m.Permissions.Net, arg) {
 			return nil
 		}
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			"net access to '"+arg+"' not declared in manifest.permissions.net",
 			nil,
@@ -177,7 +176,7 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if matchExact(m.Permissions.Run, arg) {
 			return nil
 		}
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			"run access to '"+arg+"' not declared in manifest.permissions.run",
 			nil,
@@ -186,7 +185,7 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if hasManifestStorePermission(m) {
 			return nil
 		}
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			"store access to '"+arg+"' not declared (set permissions.store: true in view.yaml)",
 			nil,
@@ -195,7 +194,7 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if m.Permissions.Notifications {
 			return nil
 		}
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			"notification access not declared (set permissions.notifications: true in view.yaml)",
 			nil,
@@ -204,7 +203,7 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if m.Permissions.Clipboard {
 			return nil
 		}
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			"clipboard read not declared (set permissions.clipboard: true in view.yaml)",
 			nil,
@@ -213,7 +212,7 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if m.Permissions.Clipboard {
 			return nil
 		}
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			"clipboard write not declared (set permissions.clipboard: true in view.yaml)",
 			nil,
@@ -222,7 +221,7 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if m.Permissions.Camera {
 			return nil
 		}
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			"camera access not declared (set permissions.camera: true in view.yaml)",
 			nil,
@@ -231,7 +230,7 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if m.Permissions.Microphone {
 			return nil
 		}
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			"microphone access not declared (set permissions.microphone: true in view.yaml)",
 			nil,
@@ -240,13 +239,13 @@ func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
 		if hasManifestLocationPermission(m) {
 			return nil
 		}
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			"location access not declared (set permissions.device.location: true in view.yaml)",
 			nil,
 		)
 	default:
-		return coreerr.E("app.CheckAccess", "unknown access mode", nil)
+		return core.E("app.CheckAccess", "unknown access mode", nil)
 	}
 }
 
@@ -317,7 +316,7 @@ func rejectPathTraversal(scope, arg string) error {
 		core.Contains(arg, "\\..\\") ||
 		core.HasSuffix(arg, "/..") ||
 		core.HasSuffix(arg, "\\..") {
-		return coreerr.E(
+		return core.E(
 			"app.CheckAccess",
 			scope+" access refused: path traversal in '"+arg+"'",
 			nil,
@@ -458,7 +457,7 @@ func ActionAccessMode(action string) (AccessMode, bool) {
 //     silently bypass the gate.
 func CheckActionAccess(m *config.ViewManifest, action, arg string) error {
 	if m == nil {
-		return coreerr.E("app.CheckActionAccess", "nil manifest", nil)
+		return core.E("app.CheckActionAccess", "nil manifest", nil)
 	}
 	mode, ok := ActionAccessMode(action)
 	if !ok {

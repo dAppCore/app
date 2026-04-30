@@ -8,7 +8,6 @@ import (
 
 	core "dappco.re/go"
 	"dappco.re/go/config"
-	coreerr "dappco.re/go/log"
 )
 
 // Named Action prefixes gated by manifest permissions. Keeping the
@@ -160,10 +159,10 @@ type actionGate struct {
 // `./photos/` must not admit `./photos/../etc/passwd`).
 func permissions(c *core.Core, m *config.ViewManifest, mode Mode) error {
 	if c == nil {
-		return coreerr.E("app.permissions", "nil core", nil)
+		return core.E("app.permissions", "nil core", nil)
 	}
 	if m == nil {
-		return coreerr.E("app.permissions", "nil manifest", nil)
+		return core.E("app.permissions", "nil manifest", nil)
 	}
 
 	checker := newCheckerForManifest(m, mode)
