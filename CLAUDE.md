@@ -16,6 +16,40 @@ Reference: `docs/RFC.md` — **keystone spec**. Every other Core RFC exists to m
 6. **Config** — apply template + vars via core/config
 7. **Start** — hand the composed window to core/gui + unblock entry action
 
+## Repo Layout
+
+Go module now lives under `go/` and the repo root is cross-language / metadata only:
+
+```
+core/app/
+├── go/                                  ← Go module root (dappco.re/go/app)
+│   ├── *.go
+│   ├── go.mod, go.sum
+│   ├── cmd/
+│   ├── tests/
+│   ├── README.md                        → ../README.md
+│   ├── CLAUDE.md                        → ../CLAUDE.md
+│   ├── AGENTS.md                        → ../AGENTS.md
+│   └── docs                             → ../docs
+├── docs/                                ← cross-language docs source
+├── README.md                            ← repo index / overview
+├── CLAUDE.md                            ← this repo guidance
+├── AGENTS.md                            ← repo-level instructions
+├── LICENSE/LICENCE
+├── .woodpecker.yml
+├── sonar-project.properties
+└── .gitignore
+```
+
+## Go Resolution Modes
+
+This repo is intentionally single-module from `go/` with no `go.work` in use:
+
+| Mode | When | What runs |
+|------|------|-----------|
+| **Module mode (default)** | Local work from `go/` | `go test`, `go vet`, `go test ./...`, and CLI builds use `go.mod` directly. |
+| **Repro/CI mode** | Verification scripts | Use explicit override: `GOWORK=off GOPROXY=direct GOSUMDB=off GOFLAGS=-mod=mod` for stable behavior and strict cache isolation. |
+
 ## Dependency boundary
 
 CoreApp is the orchestrator. It does NOT own:
