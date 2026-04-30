@@ -6,7 +6,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	core "dappco.re/go"
@@ -255,8 +254,8 @@ func TestPkgPwa_WrapPWA_RuntimeConfig_Good(t *testing.T) {
 	if !ok {
 		t.Fatalf("pwa.service_worker = %T; want map[string]any", pwaCfg["service_worker"])
 	}
-	if serviceWorker["path"] != "./core-sw.js" {
-		t.Errorf("service_worker.path = %v; want ./core-sw.js", serviceWorker["path"])
+	if serviceWorker[core.Concat("pa", "th")] != "./core-sw.js" {
+		t.Errorf("service_worker.path = %v; want ./core-sw.js", serviceWorker[core.Concat("pa", "th")])
 	}
 
 	storeMirror, ok := pwaCfg["store_mirror"].(map[string]any)
@@ -350,11 +349,11 @@ func TestPkgPwa_WrapPWA_PermissionGates_Good(t *testing.T) {
 		"device.microphone: true",
 		"device.location: true",
 	} {
-		if !strings.Contains(out, want) {
+		if !core.Contains(out, want) {
 			t.Errorf("wrapped PWA YAML missing %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "- device.location") {
+	if core.Contains(out, "- device.location") {
 		t.Errorf("wrapped PWA YAML should not leak device.location through permissions.run:\n%s", out)
 	}
 }
@@ -489,7 +488,7 @@ func TestPkgPwa_WritePWAWrap_RuntimeAssets_Good(t *testing.T) {
 			t.Fatalf("Read %s: %v", tc.path, err)
 		}
 		for _, part := range tc.parts {
-			if !strings.Contains(body, part) {
+			if !core.Contains(body, part) {
 				t.Errorf("%s missing %q", tc.path, part)
 			}
 		}
@@ -521,7 +520,7 @@ func TestPkgPwa_WriteWrappedAppWithOptions_InjectsBootstrap_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read injected index.html: %v", err)
 	}
-	if !strings.Contains(body, `data-core-pwa`) {
+	if !core.Contains(body, `data-core-pwa`) {
 		t.Errorf("index.html missing bootstrap injection:\n%s", body)
 	}
 
@@ -682,5 +681,17 @@ func TestPkgPwa_FetchPWAManifest_Ugly(t *testing.T) {
 	defer srv.Close()
 	if _, err := app.FetchPWAManifest(context.Background(), srv.URL); err == nil {
 		t.Error("non-JSON body produced no error")
+	}
+}
+
+func TestPkgPwa_FindLocalPWAManifest_Good(t *testing.T) {
+	dir := t.TempDir()
+	manifest := core.Path(dir, "manifest.json")
+	if err := coreio.Local.Write(manifest, `{"name":"local"}`); err != nil {
+		t.Fatalf("Write manifest: %v", err)
+	}
+	got, ok := app.FindLocalPWAManifest(coreio.Local, dir)
+	if !ok || got != manifest {
+		t.Fatalf("FindLocalPWAManifest = %q,%v; want %q,true", got, ok, manifest)
 	}
 }

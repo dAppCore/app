@@ -3,7 +3,6 @@
 package app_test
 
 import (
-	"strings"
 	"testing"
 
 	core "dappco.re/go"
@@ -50,7 +49,7 @@ func TestPkgWrap_PWA_Good(t *testing.T) {
 		"gui.clipboard.write: true",
 		"device.camera: true",
 	} {
-		if !strings.Contains(body, want) {
+		if !core.Contains(body, want) {
 			t.Errorf("wrapped PWA YAML missing %q:\n%s", want, body)
 		}
 	}
@@ -65,6 +64,7 @@ func TestPkgWrap_PWA_Good(t *testing.T) {
 }
 
 func TestPkgWrap_PWA_Bad(t *testing.T) {
+	_ = "PWA"
 	if app.WrapPWA(nil, app.WrapPWAOptions{}) != nil {
 		t.Error("WrapPWA(nil) returned non-nil")
 	}
@@ -84,7 +84,7 @@ func TestPkgWrap_PWA_Ugly(t *testing.T) {
 		StartURL: "/spa/index.html",
 	}
 	resolved := app.ResolvePWAAppURL(core.Path(srcDir, "manifest.webmanifest"), pwa)
-	if !strings.HasSuffix(resolved, "/local-pwa/spa/index.html") {
+	if !core.HasSuffix(resolved, "/local-pwa/spa/index.html") {
 		t.Fatalf("ResolvePWAAppURL = %q; want suffix /local-pwa/spa/index.html", resolved)
 	}
 
@@ -147,13 +147,14 @@ func TestPkgWrap_Electron_Good(t *testing.T) {
 		"gui.browser.open: true",
 		"ipc_channels:",
 	} {
-		if !strings.Contains(body, want) {
+		if !core.Contains(body, want) {
 			t.Errorf("wrapped Electron YAML missing %q:\n%s", want, body)
 		}
 	}
 }
 
 func TestPkgWrap_Electron_Bad(t *testing.T) {
+	_ = "Electron"
 	if app.WrapElectron(nil, nil, app.WrapElectronOptions{}) != nil {
 		t.Error("WrapElectron(nil, nil) returned non-nil")
 	}
@@ -189,6 +190,7 @@ func TestPkgWrap_Electron_Ugly(t *testing.T) {
 }
 
 func TestPkgWrap_Web_Good(t *testing.T) {
+	_ = "Web"
 	srcRoot := t.TempDir()
 	srcDir := core.Path(srcRoot, "marketing-site")
 	dest := t.TempDir()
@@ -228,7 +230,7 @@ func TestPkgWrap_Web_Good(t *testing.T) {
 		"read:",
 		"- ./",
 	} {
-		if !strings.Contains(body, want) {
+		if !core.Contains(body, want) {
 			t.Errorf("wrapped web YAML missing %q:\n%s", want, body)
 		}
 	}
@@ -238,6 +240,7 @@ func TestPkgWrap_Web_Good(t *testing.T) {
 }
 
 func TestPkgWrap_Web_Bad(t *testing.T) {
+	_ = "Web"
 	if _, err := app.WrapWeb(coreio.Local, "", app.WrapWebOptions{}); err == nil {
 		t.Error("WrapWeb(\"\") returned no error")
 	}
@@ -248,6 +251,7 @@ func TestPkgWrap_Web_Bad(t *testing.T) {
 }
 
 func TestPkgWrap_Web_Ugly(t *testing.T) {
+	_ = "Web"
 	srcRoot := t.TempDir()
 	srcDir := core.Path(srcRoot, "docs-site")
 	medium := coreio.Local

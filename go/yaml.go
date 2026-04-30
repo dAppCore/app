@@ -20,7 +20,9 @@ const (
 // follows.
 //
 //	body, err := yamlMarshalBytes(manifest)
-func yamlMarshalBytes(v any) ([]byte, error) {
+func yamlMarshalBytes(v any) (
+	[]byte, error,
+) {
 	switch m := v.(type) {
 	case *config.ViewManifest:
 		return marshalViewManifest(m)
@@ -43,7 +45,9 @@ func yamlMarshalBytes(v any) ([]byte, error) {
 // Internal bookkeeping keys (`source`, `category`, `window_mode`,
 // `gui_gates`, ...) remain under `config:` because they are framework
 // metadata, not part of the public manifest contract.
-func marshalViewManifest(m *config.ViewManifest) ([]byte, error) {
+func marshalViewManifest(m *config.ViewManifest) (
+	[]byte, error,
+) {
 	if m == nil {
 		return yaml.Marshal(nil)
 	}
@@ -105,7 +109,9 @@ func marshalViewManifest(m *config.ViewManifest) ([]byte, error) {
 // other path that needs to round-trip a manifest body in memory.
 //
 //	_ = yamlUnmarshalImpl(body, &manifest)
-func yamlUnmarshalImpl(body []byte, dst any) error {
+func yamlUnmarshalImpl(
+	body []byte, dst any,
+) error {
 	return yaml.Unmarshal(body, dst)
 }
 
@@ -120,7 +126,9 @@ func yamlUnmarshalImpl(body []byte, dst any) error {
 //
 // The loader is intentionally app-local so core/app can honor the RFC
 // immediately without waiting for the upstream schema to grow.
-func LoadViewManifest(medium coreio.Medium, path string, dst *config.ViewManifest) error {
+func LoadViewManifest(
+	medium coreio.Medium, path string, dst *config.ViewManifest,
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -141,7 +149,9 @@ func LoadViewManifest(medium coreio.Medium, path string, dst *config.ViewManifes
 // LoadViewManifest. It first hydrates the typed config.ViewManifest, then
 // folds RFC-native compatibility fields into Config / ViewPermissions so
 // the rest of core/app can consume one consistent shape.
-func UnmarshalViewManifest(body []byte, dst *config.ViewManifest) error {
+func UnmarshalViewManifest(
+	body []byte, dst *config.ViewManifest,
+) error {
 	if dst == nil {
 		return core.E("app.UnmarshalViewManifest", "nil destination", nil)
 	}

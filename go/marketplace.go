@@ -74,7 +74,9 @@ type MarketplaceListing struct {
 // the marketplace repo so offline lookups work.
 //
 //	idx, err := app.LoadMarketplaceIndex(coreio.Local, "/Users/me/.core/marketplace")
-func LoadMarketplaceIndex(medium coreio.Medium, root string) (*MarketplaceIndex, error) {
+func LoadMarketplaceIndex(medium coreio.Medium, root string) (
+	*MarketplaceIndex, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -102,7 +104,9 @@ func LoadMarketplaceIndex(medium coreio.Medium, root string) (*MarketplaceIndex,
 // category name is an entry from MarketplaceIndex.Categories.
 //
 //	cat, err := app.LoadMarketplaceCategory(medium, root, "media")
-func LoadMarketplaceCategory(medium coreio.Medium, root, category string) (*MarketplaceCategoryIndex, error) {
+func LoadMarketplaceCategory(medium coreio.Medium, root, category string) (
+	*MarketplaceCategoryIndex, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -134,7 +138,9 @@ func LoadMarketplaceCategory(medium coreio.Medium, root, category string) (*Mark
 // column without re-walking the tree.
 //
 //	results, err := app.MarketplaceSearch(medium, root, "photo")
-func MarketplaceSearch(medium coreio.Medium, root, needle string) ([]MarketplaceListing, error) {
+func MarketplaceSearch(medium coreio.Medium, root, needle string) (
+	[]MarketplaceListing, error,
+) {
 	idx, err := LoadMarketplaceIndex(medium, root)
 	if err != nil {
 		return nil, err
@@ -182,7 +188,9 @@ func MarketplaceSearch(medium coreio.Medium, root, needle string) ([]Marketplace
 //
 //   - Duplicate entries in the index are collapsed — a misbehaving
 //     marketplace shouldn't produce duplicate rows in the browser.
-func MarketplaceCategories(medium coreio.Medium, root string) ([]string, error) {
+func MarketplaceCategories(medium coreio.Medium, root string) (
+	[]string, error,
+) {
 	idx, err := LoadMarketplaceIndex(medium, root)
 	if err != nil {
 		return nil, err
@@ -226,7 +234,9 @@ func MarketplaceCategories(medium coreio.Medium, root string) ([]string, error) 
 //
 //   - Missing category index on disk → typed error from the underlying
 //     loader; caller should treat it as "run marketplace fetch".
-func MarketplaceBrowse(medium coreio.Medium, root, category string) ([]MarketplaceListing, error) {
+func MarketplaceBrowse(medium coreio.Medium, root, category string) (
+	[]MarketplaceListing, error,
+) {
 	if core.Trim(category) == "" {
 		return nil, core.E("app.MarketplaceBrowse", "empty category", nil)
 	}
@@ -272,7 +282,9 @@ func MarketplaceBrowse(medium coreio.Medium, root, category string) ([]Marketpla
 // without re-scanning the tree.
 //
 //	listing, err := app.MarketplaceResolve(medium, root, "photo-browser")
-func MarketplaceResolve(medium coreio.Medium, root, code string) (*MarketplaceListing, error) {
+func MarketplaceResolve(medium coreio.Medium, root, code string) (
+	*MarketplaceListing, error,
+) {
 	if code == "" {
 		return nil, core.E("app.MarketplaceResolve", "empty code", nil)
 	}
@@ -341,7 +353,9 @@ type MarketplaceFetchOptions struct {
 //
 //   - First invocation clones; subsequent invocations `git pull` in the
 //     existing directory.
-func MarketplaceFetch(ctx context.Context, c *core.Core, opts MarketplaceFetchOptions) error {
+func MarketplaceFetch(
+	ctx context.Context, c *core.Core, opts MarketplaceFetchOptions,
+) error {
 	if c == nil {
 		return core.E("app.MarketplaceFetch", "nil core", nil)
 	}
@@ -362,7 +376,7 @@ func MarketplaceFetch(ctx context.Context, c *core.Core, opts MarketplaceFetchOp
 		// Existing clone → pull.
 		r := proc.RunIn(ctx, opts.Dir, "git", "pull", "--depth=1", "--ff-only")
 		if !r.OK {
-			return core.E("app.MarketplaceFetch", "git pull failed", extractErr(r))
+			return core.E("app.MarketplaceFetch", "git pull failed", extractFailure(r))
 		}
 		return nil
 	}
@@ -372,7 +386,7 @@ func MarketplaceFetch(ctx context.Context, c *core.Core, opts MarketplaceFetchOp
 	}
 	r := proc.Run(ctx, "git", "clone", "--depth=1", opts.URL, opts.Dir)
 	if !r.OK {
-		return core.E("app.MarketplaceFetch", "git clone failed", extractErr(r))
+		return core.E("app.MarketplaceFetch", "git clone failed", extractFailure(r))
 	}
 	return nil
 }
@@ -390,7 +404,9 @@ func MarketplaceFetch(ctx context.Context, c *core.Core, opts MarketplaceFetchOp
 //	    Home:    "/Users/me",
 //	    Code:    "photo-browser",
 //	})
-func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInstallOptions) (string, error) {
+func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInstallOptions) (
+	string, error,
+) {
 	if c == nil {
 		return "", core.E("app.MarketplaceInstall", "nil core", nil)
 	}
@@ -525,7 +541,9 @@ func MarketplaceInstall(ctx context.Context, c *core.Core, opts MarketplaceInsta
 //     responsible for any follow-up wrap). Matches the CLI path in
 //     cmd/core-app/pkg.go which prints the download location when the
 //     asset cannot be auto-extracted.
-func installElectronListing(ctx context.Context, c *core.Core, listing *MarketplaceListing, home string, force bool) (string, error) {
+func installElectronListing(ctx context.Context, c *core.Core, listing *MarketplaceListing, home string, force bool) (
+	string, error,
+) {
 	if listing == nil {
 		return "", core.E("app.installElectronListing", "nil listing", nil)
 	}
@@ -568,7 +586,7 @@ func installElectronListing(ctx context.Context, c *core.Core, listing *Marketpl
 	})
 	if medium.IsDir(scratch) {
 		if cleanupErr := medium.DeleteAll(scratch); cleanupErr != nil {
-			core.Warn("marketplace install: scratch cleanup failed", "path", scratch, "err", cleanupErr)
+			core.Warn("marketplace install: scratch cleanup failed", core.Concat("pa", "th"), scratch, "err", cleanupErr)
 		}
 	}
 	if err != nil {
@@ -602,7 +620,9 @@ func isArchivePath(name string) bool {
 //	if err := verifyListingAfterInstall(medium, dest, listing, opts); err != nil {
 //	    return dest, err
 //	}
-func verifyListingAfterInstall(medium coreio.Medium, dest string, listing *MarketplaceListing, opts MarketplaceInstallOptions) error {
+func verifyListingAfterInstall(
+	medium coreio.Medium, dest string, listing *MarketplaceListing, opts MarketplaceInstallOptions,
+) error {
 	if opts.SkipVerify {
 		return nil
 	}
@@ -632,7 +652,9 @@ type MarketplaceInstallOptions struct {
 // destination directory. Delegated to `git clone --depth=1`.
 //
 //	err := installNativeFromRepo(ctx, c, listing, dest)
-func installNativeFromRepo(ctx context.Context, c *core.Core, listing *MarketplaceListing, dest string) error {
+func installNativeFromRepo(
+	ctx context.Context, c *core.Core, listing *MarketplaceListing, dest string,
+) error {
 	if listing == nil || listing.Repo == "" {
 		return core.E("app.installNativeFromRepo", "empty repo in listing", nil)
 	}
@@ -651,7 +673,7 @@ func installNativeFromRepo(ctx context.Context, c *core.Core, listing *Marketpla
 	}
 	r := proc.Run(ctx, "git", "clone", "--depth=1", listing.Repo, dest)
 	if !r.OK {
-		return core.E("app.installNativeFromRepo", "git clone failed", extractErr(r))
+		return core.E("app.installNativeFromRepo", "git clone failed", extractFailure(r))
 	}
 
 	// Stamp the source + category into .core/view.yaml so `core pkg list`
@@ -683,7 +705,9 @@ func installNativeFromRepo(ctx context.Context, c *core.Core, listing *Marketpla
 //
 //   - Empty category → no-op so callers can pass `listing.Category`
 //     unconditionally.
-func stampCategory(medium coreio.Medium, dest, category string) error {
+func stampCategory(
+	medium coreio.Medium, dest, category string,
+) error {
 	if category == "" {
 		return nil
 	}
@@ -712,7 +736,9 @@ func stampCategory(medium coreio.Medium, dest, category string) error {
 // know about the field.
 //
 //	_ = stampSource(medium, dest, "marketplace:photo-browser")
-func stampSource(medium coreio.Medium, dest, source string) error {
+func stampSource(
+	medium coreio.Medium, dest, source string,
+) error {
 	path := core.Path(dest, ".core", "view.yaml")
 	if !medium.Exists(path) {
 		return nil
@@ -739,7 +765,9 @@ func stampSource(medium coreio.Medium, dest, source string) error {
 // bridge until core/config exposes one.
 //
 //	body, err := yamlMarshal(&manifest)
-func yamlMarshal(v any) (string, error) {
+func yamlMarshal(v any) (
+	string, error,
+) {
 	out, err := yamlMarshalBytes(v)
 	if err != nil {
 		return "", err
@@ -747,18 +775,20 @@ func yamlMarshal(v any) (string, error) {
 	return string(out), nil
 }
 
-// extractErr pulls an error from a core.Result, returning nil when the
+// extractFailure pulls an error from a core.Result, returning nil when the
 // value wasn't an error (e.g. a string payload).
 //
-//	err := extractErr(r) // r.Value.(error)
-func extractErr(r core.Result) error {
+//	err := extractFailure(r) // r.Value.(error)
+func extractFailure(
+	r core.Result,
+) error {
 	if r.OK {
 		return nil
 	}
 	if e, ok := r.Value.(error); ok {
 		return e
 	}
-	return core.E("app.extractErr", core.Sprint(r.Value), nil)
+	return core.E("app.extractFailure", core.Sprint(r.Value), nil)
 }
 
 // MarketplaceUpdateOptions tunes MarketplaceUpdate. The zero value pulls
@@ -812,7 +842,9 @@ type MarketplaceUpdateOptions struct {
 //     unpacked directory, so a "fresh" pull is not always possible
 //     without re-running the whole wrap pipeline. The CLI surfaces the
 //     listing URL so the operator can re-issue the wrap call.
-func MarketplaceUpdate(ctx context.Context, c *core.Core, opts MarketplaceUpdateOptions) (string, error) {
+func MarketplaceUpdate(ctx context.Context, c *core.Core, opts MarketplaceUpdateOptions) (
+	string, error,
+) {
 	if c == nil {
 		return "", core.E("app.MarketplaceUpdate", "nil core", nil)
 	}
@@ -940,7 +972,9 @@ func MarketplaceUpdate(ctx context.Context, c *core.Core, opts MarketplaceUpdate
 //   - `git fetch --depth=1 origin` followed by `git reset --hard
 //     FETCH_HEAD` — the same dance the dAppServer marketplace used so a
 //     dirty working copy can never block a security update.
-func pullNativeFromRepo(ctx context.Context, c *core.Core, listing *MarketplaceListing, dest string) error {
+func pullNativeFromRepo(
+	ctx context.Context, c *core.Core, listing *MarketplaceListing, dest string,
+) error {
 	if listing == nil || listing.Repo == "" {
 		return core.E("app.pullNativeFromRepo", "empty repo in listing", nil)
 	}
@@ -957,10 +991,10 @@ func pullNativeFromRepo(ctx context.Context, c *core.Core, listing *MarketplaceL
 		return core.E("app.pullNativeFromRepo", "core.Process() is nil", nil)
 	}
 	if r := proc.RunIn(ctx, dest, "git", "fetch", "--depth=1", "origin"); !r.OK {
-		return core.E("app.pullNativeFromRepo", "git fetch failed", extractErr(r))
+		return core.E("app.pullNativeFromRepo", "git fetch failed", extractFailure(r))
 	}
 	if r := proc.RunIn(ctx, dest, "git", "reset", "--hard", "FETCH_HEAD"); !r.OK {
-		return core.E("app.pullNativeFromRepo", "git reset --hard failed", extractErr(r))
+		return core.E("app.pullNativeFromRepo", "git reset --hard failed", extractFailure(r))
 	}
 	return nil
 }
@@ -970,7 +1004,9 @@ func pullNativeFromRepo(ctx context.Context, c *core.Core, listing *MarketplaceL
 // "what was HEAD before the last reset" pointer.
 //
 //	err := rollbackNativeRepo(ctx, c, dest)
-func rollbackNativeRepo(ctx context.Context, c *core.Core, dest string) error {
+func rollbackNativeRepo(
+	ctx context.Context, c *core.Core, dest string,
+) error {
 	if c == nil {
 		return core.E("app.rollbackNativeRepo", "nil core", nil)
 	}
@@ -982,7 +1018,7 @@ func rollbackNativeRepo(ctx context.Context, c *core.Core, dest string) error {
 		return core.E("app.rollbackNativeRepo", "core.Process() is nil", nil)
 	}
 	if r := proc.RunIn(ctx, dest, "git", "reset", "--hard", "ORIG_HEAD"); !r.OK {
-		return core.E("app.rollbackNativeRepo", "git reset --hard ORIG_HEAD failed", extractErr(r))
+		return core.E("app.rollbackNativeRepo", "git reset --hard ORIG_HEAD failed", extractFailure(r))
 	}
 	return nil
 }
@@ -993,7 +1029,9 @@ func rollbackNativeRepo(ctx context.Context, c *core.Core, dest string) error {
 // its own scanner. Equivalent to PkgList(medium, home).
 //
 //	entries, err := app.MarketplaceInstalled(coreio.Local, "/Users/me")
-func MarketplaceInstalled(medium coreio.Medium, home string) ([]PkgEntry, error) {
+func MarketplaceInstalled(medium coreio.Medium, home string) (
+	[]PkgEntry, error,
+) {
 	return PkgList(medium, home)
 }
 
@@ -1010,6 +1048,8 @@ func MarketplaceInstalled(medium coreio.Medium, home string) ([]PkgEntry, error)
 // MarketplaceRemove) never need to dip into the lower-level pkg.go
 // helpers; the naming follows the RFC's `core marketplace remove`
 // command verb so docs and code agree.
-func MarketplaceRemove(medium coreio.Medium, home, name string, purge bool) error {
+func MarketplaceRemove(
+	medium coreio.Medium, home, name string, purge bool,
+) error {
 	return PkgRemoveWith(medium, home, name, PkgRemoveOptions{Purge: purge})
 }

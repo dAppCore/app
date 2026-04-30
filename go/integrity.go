@@ -20,7 +20,9 @@ const manifestAssetHashKey = "asset_hash"
 // installs both materialise runtime assets alongside the generated
 // manifest, so the final on-disk tree must be covered by the
 // signature-bound hash.
-func bindWrappedAssetHash(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
+func bindWrappedAssetHash(
+	medium coreio.Medium, dest string, manifest *config.ViewManifest,
+) error {
 	if manifest == nil {
 		return core.E("app.bindWrappedAssetHash", "nil manifest", nil)
 	}
@@ -53,7 +55,9 @@ func bindWrappedAssetHash(medium coreio.Medium, dest string, manifest *config.Vi
 // verifyAssetIntegrity checks the installed asset tree against the
 // signed hash recorded in the manifest. When no asset hash is present
 // the check is skipped for backwards compatibility with older wraps.
-func verifyAssetIntegrity(medium coreio.Medium, root string, manifest *config.ViewManifest, mode Mode) error {
+func verifyAssetIntegrity(
+	medium coreio.Medium, root string, manifest *config.ViewManifest, mode Mode,
+) error {
 	if manifest == nil {
 		return core.E("app.verifyAssetIntegrity", "nil manifest", nil)
 	}
@@ -111,7 +115,9 @@ func packageTypeFromManifest(m *config.ViewManifest) PackageType {
 	return ParsePackageType(raw)
 }
 
-func assetTreeHash(medium coreio.Medium, root string) (string, int, error) {
+func assetTreeHash(medium coreio.Medium, root string) (
+	string, int, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -130,7 +136,9 @@ func assetTreeHash(medium coreio.Medium, root string) (string, int, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), files, nil
 }
 
-func hashAssetDir(medium coreio.Medium, hasher hash.Hash, root, dir string) (int, error) {
+func hashAssetDir(medium coreio.Medium, hasher hash.Hash, root, dir string) (
+	int, error,
+) {
 	entries, err := medium.List(dir)
 	if err != nil {
 		return 0, err

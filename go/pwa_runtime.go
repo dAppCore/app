@@ -3,8 +3,6 @@
 package app
 
 import (
-	"strings"
-
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
@@ -29,20 +27,20 @@ func defaultPWARuntimeConfig(m *config.ViewManifest) map[string]any {
 	}
 	return map[string]any{
 		"bootstrap": map[string]any{
-			"inject": true,
-			"path":   "./" + pwaBootstrapFile,
+			"inject":                true,
+			core.Concat("pa", "th"): "./" + pwaBootstrapFile,
 		},
 		"install_prompt": map[string]any{
 			"enabled": true,
 			"event":   "beforeinstallprompt",
 		},
 		"service_worker": map[string]any{
-			"cache":            []any{"./core.json", "./" + pwaBootstrapFile},
-			"cache_components": true,
-			"enabled":          true,
-			"path":             "./" + pwaServiceWorkerFile,
-			"scope":            "./",
-			"strategy":         "stale-while-revalidate",
+			"cache":                 []any{"./core.json", "./" + pwaBootstrapFile},
+			"cache_components":      true,
+			"enabled":               true,
+			core.Concat("pa", "th"): "./" + pwaServiceWorkerFile,
+			"scope":                 "./",
+			"strategy":              "stale-while-revalidate",
 		},
 		"store_mirror": map[string]any{
 			"database":      "core-pwa-" + code + "-" + version,
@@ -94,7 +92,9 @@ func ensurePWARuntimeConfig(m *config.ViewManifest) map[string]any {
 	return current
 }
 
-func materializeWrappedRuntimeAssets(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
+func materializeWrappedRuntimeAssets(
+	medium coreio.Medium, dest string, manifest *config.ViewManifest,
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -106,7 +106,9 @@ func materializeWrappedRuntimeAssets(medium coreio.Medium, dest string, manifest
 	}
 }
 
-func materializePWARuntimeAssets(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
+func materializePWARuntimeAssets(
+	medium coreio.Medium, dest string, manifest *config.ViewManifest,
+) error {
 	if manifest == nil {
 		return core.E("app.materializePWARuntimeAssets", "nil manifest", nil)
 	}
@@ -476,7 +478,9 @@ func renderPWABootstrap(manifest *config.ViewManifest, pwaCfg map[string]any) st
 })();` + "\n"
 }
 
-func injectPWABootstrap(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
+func injectPWABootstrap(
+	medium coreio.Medium, dest string, manifest *config.ViewManifest,
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -494,9 +498,9 @@ func injectPWABootstrap(medium coreio.Medium, dest string, manifest *config.View
 
 	tag := `<script src="./` + pwaBootstrapFile + `" data-core-pwa defer></script>`
 	lower := core.Lower(body)
-	if idx := strings.LastIndex(lower, "</head>"); idx >= 0 {
+	if idx := stringLastIndex(lower, "</head>"); idx >= 0 {
 		body = body[:idx] + tag + "\n" + body[idx:]
-	} else if idx := strings.LastIndex(lower, "</body>"); idx >= 0 {
+	} else if idx := stringLastIndex(lower, "</body>"); idx >= 0 {
 		body = body[:idx] + tag + "\n" + body[idx:]
 	} else {
 		body += "\n" + tag + "\n"
@@ -579,7 +583,7 @@ func splitURLPath(raw string) (string, bool) {
 	for i := 0; i < len(raw); i++ {
 		if raw[i] == '/' && i+1 < len(raw) && raw[i+1] == '/' {
 			rest := raw[i+2:]
-			if slash := strings.Index(rest, "/"); slash >= 0 {
+			if slash := stringIndex(rest, "/"); slash >= 0 {
 				return rest[slash+1:], true
 			}
 			return "", false

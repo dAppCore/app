@@ -22,13 +22,13 @@ func SignManifestForTest(m *config.ViewManifest, priv ed25519.PrivateKey) error 
 	return signManifest(m, priv)
 }
 
-// ExtractErrForTest exposes the internal extractErr helper to
+// ExtractErrForTest exposes the internal extractFailure helper to
 // black-box tests so the marketplace.go branches that wrap process
 // failures can be covered without spinning up a real `git` process.
 //
 //	err := app.ExtractErrForTest(core.Result{Value: io.EOF})
 func ExtractErrForTest(r core.Result) error {
-	return extractErr(r)
+	return extractFailure(r)
 }
 
 // VerifyListingAfterInstallForTest exposes the post-install verify

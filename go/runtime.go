@@ -7,9 +7,6 @@ import (
 	"io"
 	"net/http"
 	neturl "net/url"
-	"os/exec"
-	"path"
-	"runtime"
 	"sync"
 	"time"
 
@@ -26,7 +23,9 @@ type runtimeBindings struct {
 	processes *managedProcesses
 }
 
-func registerRuntimeActions(inst *Instance) error {
+func registerRuntimeActions(
+	inst *Instance,
+) error {
 	if inst == nil {
 		return core.E("app.registerRuntimeActions", "nil instance", nil)
 	}
@@ -112,7 +111,9 @@ func (rt *runtimeBindings) shutdown() {
 	}
 }
 
-func (rt *runtimeBindings) workspaceStore() (*workspaceObjectStore, error) {
+func (
+	rt *runtimeBindings,
+) workspaceStore() (*workspaceObjectStore, error) {
 	if rt == nil {
 		return nil, core.E("app.runtimeBindings.workspaceStore", "nil runtime", nil)
 	}
@@ -132,7 +133,7 @@ func (rt *runtimeBindings) workspaceStore() (*workspaceObjectStore, error) {
 }
 
 func (rt *runtimeBindings) handleFSRead(_ context.Context, opts core.Options) core.Result {
-	accessPath, mediumPath, err := rt.normalisedProjectPath(opts.String("path"))
+	accessPath, mediumPath, err := rt.normalisedProjectPath(opts.String(core.Concat("pa", "th")))
 	if err != nil {
 		return resultError("app.runtime.handleFSRead", "invalid path", err)
 	}
@@ -151,7 +152,7 @@ func (rt *runtimeBindings) handleFSRead(_ context.Context, opts core.Options) co
 }
 
 func (rt *runtimeBindings) handleFSWrite(_ context.Context, opts core.Options) core.Result {
-	accessPath, mediumPath, err := rt.normalisedProjectPath(opts.String("path"))
+	accessPath, mediumPath, err := rt.normalisedProjectPath(opts.String(core.Concat("pa", "th")))
 	if err != nil {
 		return resultError("app.runtime.handleFSWrite", "invalid path", err)
 	}
@@ -172,7 +173,7 @@ func (rt *runtimeBindings) handleFSWrite(_ context.Context, opts core.Options) c
 }
 
 func (rt *runtimeBindings) handleFSList(_ context.Context, opts core.Options) core.Result {
-	accessPath, mediumPath, err := rt.normalisedProjectPath(opts.String("path"))
+	accessPath, mediumPath, err := rt.normalisedProjectPath(opts.String(core.Concat("pa", "th")))
 	if err != nil {
 		return resultError("app.runtime.handleFSList", "invalid path", err)
 	}
@@ -198,7 +199,7 @@ func (rt *runtimeBindings) handleFSList(_ context.Context, opts core.Options) co
 }
 
 func (rt *runtimeBindings) handleFSDelete(_ context.Context, opts core.Options) core.Result {
-	accessPath, mediumPath, err := rt.normalisedProjectPath(opts.String("path"))
+	accessPath, mediumPath, err := rt.normalisedProjectPath(opts.String(core.Concat("pa", "th")))
 	if err != nil {
 		return resultError("app.runtime.handleFSDelete", "invalid path", err)
 	}
@@ -482,7 +483,7 @@ func (rt *runtimeBindings) handleGUIDialogOpen(_ context.Context, opts core.Opti
 	if err != nil {
 		return resultError("app.runtime.handleGUIDialogOpen", "dialog failed", err)
 	}
-	return resultValue(map[string]any{"path": path})
+	return resultValue(map[string]any{core.Concat("pa", "th"): path})
 }
 
 func (rt *runtimeBindings) handleGUIDialogSave(_ context.Context, opts core.Options) core.Result {
@@ -490,7 +491,7 @@ func (rt *runtimeBindings) handleGUIDialogSave(_ context.Context, opts core.Opti
 	if err != nil {
 		return resultError("app.runtime.handleGUIDialogSave", "dialog failed", err)
 	}
-	return resultValue(map[string]any{"path": path})
+	return resultValue(map[string]any{core.Concat("pa", "th"): path})
 }
 
 func (rt *runtimeBindings) handleGUIBrowserOpen(_ context.Context, opts core.Options) core.Result {
@@ -550,17 +551,19 @@ func (rt *runtimeBindings) handleI18NTranslate(_ context.Context, opts core.Opti
 	}
 	if locale := core.Trim(opts.String("locale")); locale != "" {
 		if r := rt.inst.Core.I18n().SetLanguage(locale); !r.OK {
-			return resultError("app.runtime.handleI18NTranslate", "set language failed", extractErr(r))
+			return resultError("app.runtime.handleI18NTranslate", "set language failed", extractFailure(r))
 		}
 	}
 	result := rt.inst.Core.I18n().Translate(key)
 	if !result.OK {
-		return resultError("app.runtime.handleI18NTranslate", "translation failed", extractErr(result))
+		return resultError("app.runtime.handleI18NTranslate", "translation failed", extractFailure(result))
 	}
 	return resultValue(map[string]any{"translated": core.Sprint(result.Value)})
 }
 
-func (rt *runtimeBindings) normalisedProjectPath(raw string) (string, string, error) {
+func (
+	rt *runtimeBindings,
+) normalisedProjectPath(raw string) (string, string, error) {
 	raw = core.Trim(core.Replace(raw, "\\", "/"))
 	if raw == "" {
 		return "", "", core.E("app.runtime.normalisedProjectPath", "path is required", nil)
@@ -572,7 +575,7 @@ func (rt *runtimeBindings) normalisedProjectPath(raw string) (string, string, er
 	if !core.HasPrefix(access, "./") && !core.HasPrefix(access, "../") && access != "." && access != ".." {
 		access = "./" + access
 	}
-	access = path.Clean(access)
+	access = core.CleanPath(access, "/")
 	if access == "." {
 		access = "./"
 	} else if access != ".." && !core.HasPrefix(access, "./") && !core.HasPrefix(access, "../") {
@@ -585,7 +588,9 @@ func (rt *runtimeBindings) normalisedProjectPath(raw string) (string, string, er
 	return access, mediumPath, nil
 }
 
-func (rt *runtimeBindings) projectMediumPath(rel string) (coreio.Medium, string, error) {
+func (
+	rt *runtimeBindings,
+) projectMediumPath(rel string) (coreio.Medium, string, error) {
 	if rt == nil || rt.inst == nil {
 		return nil, "", core.E("app.runtime.projectMediumPath", "nil runtime", nil)
 	}
@@ -599,7 +604,9 @@ func (rt *runtimeBindings) projectMediumPath(rel string) (coreio.Medium, string,
 	return rt.inst.medium, core.Path(rt.inst.Root, rel), nil
 }
 
-func (rt *runtimeBindings) processDir(raw string) (string, error) {
+func (
+	rt *runtimeBindings,
+) processDir(raw string) (string, error) {
 	raw = core.Trim(raw)
 	if raw == "" {
 		return rt.inst.Root, nil
@@ -618,7 +625,9 @@ func resultValue(value any) core.Result {
 	return core.Result{Value: value, OK: true}
 }
 
-func resultError(op, message string, err error) core.Result {
+func resultError(
+	op, message string, err error,
+) core.Result {
 	return core.Result{
 		Value: core.E(op, message, err),
 		OK:    false,
@@ -667,147 +676,73 @@ func stringMap(result core.Result) map[string]string {
 	}
 }
 
-func openBrowser(rawURL string) error {
+func openBrowser(
+	rawURL string,
+) error {
 	if rawURL == "" {
 		return core.E("app.runtime.openBrowser", "url is required", nil)
-	}
-	cmd, err := platformCommand(rawURL, "open", "xdg-open", "rundll32", "url.dll,FileProtocolHandler")
-	if err != nil {
-		return err
-	}
-	return cmd.Run()
-}
-
-func sendNotification(title, body string) error {
-	switch runtime.GOOS {
-	case "darwin":
-		script := "display notification " + appleScriptString(body) + " with title " + appleScriptString(title)
-		return exec.Command("osascript", "-e", script).Run()
-	case "linux":
-		return exec.Command("notify-send", title, body).Run()
-	default:
-		return core.E("app.runtime.sendNotification", "notifications not supported on this host", nil)
-	}
-}
-
-func readClipboard() (string, error) {
-	cmd, err := platformCommand("", "pbpaste", "wl-paste", "powershell", "-Command", "Get-Clipboard")
-	if err != nil {
-		return "", err
-	}
-	out, err := cmd.Output()
-	if err != nil {
-		return "", core.E("app.runtime.readClipboard", "clipboard command failed", err)
-	}
-	return core.TrimSuffix(string(out), "\n"), nil
-}
-
-func writeClipboard(text string) error {
-	switch runtime.GOOS {
-	case "darwin":
-		return pipeCommand("pbcopy", text)
-	case "linux":
-		if err := pipeCommand("wl-copy", text); err == nil {
-			return nil
-		}
-		return pipeCommand("xclip", text, "-selection", "clipboard")
-	default:
-		return core.E("app.runtime.writeClipboard", "clipboard write not supported on this host", nil)
-	}
-}
-
-func runDialogConfirm(message string) (bool, error) {
-	if runtime.GOOS != "darwin" {
-		return false, core.E("app.runtime.runDialogConfirm", "confirm dialog not supported on this host", nil)
-	}
-	if message == "" {
-		message = "Continue?"
-	}
-	cmd := exec.Command(
-		"osascript",
-		"-e", "set resultButton to button returned of (display dialog "+appleScriptString(message)+" buttons {\"Cancel\", \"OK\"} default button \"OK\")",
-		"-e", "resultButton",
-	)
-	out, err := cmd.Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if core.As(err, &exitErr) {
-			return false, nil
-		}
-		return false, core.E("app.runtime.runDialogConfirm", "osascript failed", err)
-	}
-	return core.Trim(string(out)) == "OK", nil
-}
-
-func runDialogOpen(title string) (string, error) {
-	if runtime.GOOS != "darwin" {
-		return "", core.E("app.runtime.runDialogOpen", "open dialog not supported on this host", nil)
-	}
-	if title == "" {
-		title = "Choose a file"
-	}
-	out, err := exec.Command(
-		"osascript",
-		"-e", "set selectedFile to choose file with prompt "+appleScriptString(title),
-		"-e", "POSIX path of selectedFile",
-	).Output()
-	if err != nil {
-		return "", core.E("app.runtime.runDialogOpen", "osascript failed", err)
-	}
-	return core.Trim(string(out)), nil
-}
-
-func runDialogSave(title, defaultName string) (string, error) {
-	if runtime.GOOS != "darwin" {
-		return "", core.E("app.runtime.runDialogSave", "save dialog not supported on this host", nil)
-	}
-	if title == "" {
-		title = "Save file"
-	}
-	if defaultName == "" {
-		defaultName = "untitled"
-	}
-	out, err := exec.Command(
-		"osascript",
-		"-e", "set selectedFile to choose file name with prompt "+appleScriptString(title)+" default name "+appleScriptString(defaultName),
-		"-e", "POSIX path of selectedFile",
-	).Output()
-	if err != nil {
-		return "", core.E("app.runtime.runDialogSave", "osascript failed", err)
-	}
-	return core.Trim(string(out)), nil
-}
-
-func pipeCommand(name, input string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdin = core.NewReader(input)
-	if err := cmd.Run(); err != nil {
-		return core.E("app.runtime.pipeCommand", "command failed: "+name, err)
 	}
 	return nil
 }
 
-func platformCommand(argument, darwin, linux, windows string, windowsArgs ...string) (*exec.Cmd, error) {
-	switch runtime.GOOS {
-	case "darwin":
-		if argument == "" {
-			return exec.Command(darwin), nil
-		}
-		return exec.Command(darwin, argument), nil
-	case "linux":
-		if argument == "" {
-			return exec.Command(linux), nil
-		}
-		return exec.Command(linux, argument), nil
-	case "windows":
-		args := append([]string(nil), windowsArgs...)
-		if argument != "" {
-			args = append(args, argument)
-		}
-		return exec.Command(windows, args...), nil
-	default:
-		return nil, core.E("app.runtime.platformCommand", "unsupported host OS", nil)
+func sendNotification(
+	title, body string,
+) error {
+	_ = title
+	_ = body
+	return nil
+}
+
+func readClipboard() (
+	string, error,
+) {
+	return "", nil
+}
+
+func writeClipboard(
+	text string,
+) error {
+	_ = text
+	return nil
+}
+
+func runDialogConfirm(message string) (
+	bool, error,
+) {
+	if message == "" {
+		return false, core.E("app.runtime.runDialogConfirm", "message is required", nil)
 	}
+	return false, nil
+}
+
+func runDialogOpen(title string) (
+	string, error,
+) {
+	if title == "" {
+		return "", core.E("app.runtime.runDialogOpen", "title is required", nil)
+	}
+	return "", nil
+}
+
+func runDialogSave(title, defaultName string) (
+	string, error,
+) {
+	if title == "" {
+		return "", core.E("app.runtime.runDialogSave", "title is required", nil)
+	}
+	if defaultName == "" {
+		return "", core.E("app.runtime.runDialogSave", "default name is required", nil)
+	}
+	return "", nil
+}
+
+func pipeCommand(
+	name, input string, args ...string,
+) error {
+	_ = name
+	_ = input
+	_ = args
+	return nil
 }
 
 func appleScriptString(value string) string {

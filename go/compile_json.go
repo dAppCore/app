@@ -33,7 +33,9 @@ type compiledManifestAlias CompiledManifest
 // top-level services/type/url/theme/...) are hoisted back out so the
 // compiled artifact mirrors the public manifest contract rather than an
 // app-internal storage detail.
-func (cm CompiledManifest) MarshalJSON() ([]byte, error) {
+func (
+	cm CompiledManifest,
+) MarshalJSON() ([]byte, error) {
 	doc := map[string]any{
 		"code":        cm.Code,
 		"name":        cm.Name,
@@ -81,7 +83,9 @@ func (cm CompiledManifest) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON accepts both the legacy core.json shape (compatibility
 // fields under Config) and the RFC-facing shape where those fields live
 // alongside the typed manifest fields.
-func (cm *CompiledManifest) UnmarshalJSON(body []byte) error {
+func (
+	cm *CompiledManifest,
+) UnmarshalJSON(body []byte) error {
 	if cm == nil {
 		return core.E("app.CompiledManifest.UnmarshalJSON", "nil receiver", nil)
 	}

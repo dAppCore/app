@@ -4,7 +4,6 @@ package app
 
 import (
 	"archive/zip"
-	"bytes"
 	core "dappco.re/go"
 	coreio "dappco.re/go/io"
 	"testing"
@@ -146,8 +145,8 @@ func TestPkgElectronExtract_ReaderAt_ReadAt_Ugly(t *testing.T) {
 //
 //	body, _ := buildZip(map[string]string{"index.html": "<html/>"})
 func buildZip(files map[string]string) (string, error) {
-	var buf bytes.Buffer
-	w := zip.NewWriter(&buf)
+	buf := core.NewBuffer()
+	w := zip.NewWriter(buf)
 	for name, body := range files {
 		fw, err := w.Create(name)
 		if err != nil {

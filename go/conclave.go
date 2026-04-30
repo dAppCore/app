@@ -116,7 +116,9 @@ type Conclave struct {
 //
 //   - WithServiceLock is always applied — the conclave cannot register
 //     more services even if the caller forgets to pass the option.
-func NewConclave(ctx context.Context, opts ConclaveOptions) (*Conclave, error) {
+func NewConclave(ctx context.Context, opts ConclaveOptions) (
+	*Conclave, error,
+) {
 	if opts.Code == "" {
 		return nil, core.E("app.NewConclave", "empty code", nil)
 	}
@@ -221,7 +223,9 @@ func manifestFromConclaveOptions(opts ConclaveOptions) config.ViewManifest {
 // because they have no notion of an OS root.
 //
 //	sandbox, err := buildConclaveSandbox(medium, root)
-func buildConclaveSandbox(medium coreio.Medium, root string) (coreio.Medium, error) {
+func buildConclaveSandbox(medium coreio.Medium, root string) (
+	coreio.Medium, error,
+) {
 	if medium == coreio.Local {
 		return coreio.NewSandboxed(root)
 	}

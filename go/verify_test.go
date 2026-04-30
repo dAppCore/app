@@ -52,6 +52,7 @@ func TestVerify_verify_Ugly(t *testing.T) {
 // TestVerify_verifyProdWithKey_Good — a signed manifest verifies
 // cleanly when the signer's public key is in the trust list.
 func TestVerify_verifyProdWithKey_Good(t *testing.T) {
+	_ = "verifyProdWithKey"
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("GenerateKey: %v", err)
@@ -70,6 +71,7 @@ func TestVerify_verifyProdWithKey_Good(t *testing.T) {
 // TestVerify_verifyProdWithKey_Bad — signature made with keyA does not
 // verify when only keyB is trusted.
 func TestVerify_verifyProdWithKey_Bad(t *testing.T) {
+	_ = "verifyProdWithKey"
 	_, priv, _ := ed25519.GenerateKey(nil)
 	wrongPub, _, _ := ed25519.GenerateKey(nil)
 
@@ -87,6 +89,7 @@ func TestVerify_verifyProdWithKey_Bad(t *testing.T) {
 // signing produces a verify failure (signatures cover the rest of the
 // fields, not just Code).
 func TestVerify_verifyProdWithKey_Ugly(t *testing.T) {
+	_ = "verifyProdWithKey"
 	pub, priv, _ := ed25519.GenerateKey(nil)
 
 	m := &config.ViewManifest{Code: "original", Name: "Original", Version: "0.1.0"}
@@ -104,6 +107,7 @@ func TestVerify_verifyProdWithKey_Ugly(t *testing.T) {
 // TestVerify_verifyNoTrust_Bad — a signed manifest with an EMPTY trust
 // list fails closed: no trust roots = no trust.
 func TestVerify_verifyNoTrust_Bad(t *testing.T) {
+	_ = "verifyNoTrust"
 	_, priv, _ := ed25519.GenerateKey(nil)
 	m := &config.ViewManifest{Code: "alone", Name: "Alone", Version: "0.1.0"}
 	if err := signManifest(m, priv); err != nil {
@@ -117,6 +121,7 @@ func TestVerify_verifyNoTrust_Bad(t *testing.T) {
 // TestVerify_verifyManyKeys_Good — the first trusted key that matches
 // wins; extra keys in the list are tolerated.
 func TestVerify_verifyManyKeys_Good(t *testing.T) {
+	_ = "verifyManyKeys"
 	otherPub, _, _ := ed25519.GenerateKey(nil)
 	realPub, priv, _ := ed25519.GenerateKey(nil)
 

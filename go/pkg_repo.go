@@ -14,7 +14,9 @@ import (
 // within the extracted tree.
 //
 //	root, err := app.FetchRepoSource(ctx, coreio.Local, "github.com/owner/repo", scratch)
-func FetchRepoSource(ctx context.Context, medium coreio.Medium, ref, scratchDir string) (string, error) {
+func FetchRepoSource(ctx context.Context, medium coreio.Medium, ref, scratchDir string) (
+	string, error,
+) {
 	host, owner, repo, ok := ParseGitHubRepo(ref)
 	if !ok {
 		return "", core.E("app.FetchRepoSource", "cannot parse repo reference: "+ref, nil)
@@ -35,7 +37,9 @@ func FetchRepoSource(ctx context.Context, medium coreio.Medium, ref, scratchDir 
 // directory that looks like an app source tree.
 //
 //	root, err := app.FetchRepoSourceURL(ctx, coreio.Local, srv.URL+"/repo.zip", scratch, "repo.zip")
-func FetchRepoSourceURL(ctx context.Context, medium coreio.Medium, url, scratchDir, archiveName string) (string, error) {
+func FetchRepoSourceURL(ctx context.Context, medium coreio.Medium, url, scratchDir, archiveName string) (
+	string, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -84,7 +88,9 @@ func FetchRepoSourceURL(ctx context.Context, medium coreio.Medium, url, scratchD
 // `manifest.json` and `manifest.webmanifest`.
 //
 //	pwa, root, err := app.LoadRepoPWAManifest(ctx, coreio.Local, ref, scratch)
-func LoadRepoPWAManifest(ctx context.Context, medium coreio.Medium, ref, scratchDir string) (*PWAManifest, string, error) {
+func LoadRepoPWAManifest(ctx context.Context, medium coreio.Medium, ref, scratchDir string) (
+	*PWAManifest, string, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -125,7 +131,9 @@ func repoArchiveURL(host, owner, repo string) string {
 // project root.
 //
 //	root, err := resolveRepoSourceRoot(coreio.Local, "/tmp/scratch/repo-source")
-func resolveRepoSourceRoot(medium coreio.Medium, dir string) (string, error) {
+func resolveRepoSourceRoot(medium coreio.Medium, dir string) (
+	string, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -157,7 +165,9 @@ func resolveRepoSourceRoot(medium coreio.Medium, dir string) (string, error) {
 // `dir` contains exactly one non-hidden directory and no visible files.
 //
 //	next, ok, err := singleVisibleSubdir(coreio.Local, "/tmp/root")
-func singleVisibleSubdir(medium coreio.Medium, dir string) (string, bool, error) {
+func singleVisibleSubdir(medium coreio.Medium, dir string) (
+	string, bool, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}

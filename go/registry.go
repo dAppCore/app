@@ -86,7 +86,7 @@ func LookupModule(name string) (ModuleFactory, bool) {
 // the registry. Used by `core-app modules` (when wired) and the
 // diagnostic surface to show the host's capability set.
 //
-//	for _, m := range app.RegisteredModules() { fmt.Println(m) }
+//	for _, m := range app.RegisteredModules() { core.Println(m) }
 func RegisteredModules() []string {
 	moduleRegistry.mu.RLock()
 	defer moduleRegistry.mu.RUnlock()
@@ -138,7 +138,9 @@ func resolveModulesFromRegistry(names []string) ([]ModuleFactory, []string) {
 // for one.
 //
 //	if err := applyModuleFactories(c, factories); err != nil { return err }
-func applyModuleFactories(c *core.Core, factories []ModuleFactory) error {
+func applyModuleFactories(
+	c *core.Core, factories []ModuleFactory,
+) error {
 	if c == nil {
 		return core.E("app.applyModuleFactories", "nil core", nil)
 	}
@@ -170,7 +172,9 @@ func applyModuleFactories(c *core.Core, factories []ModuleFactory) error {
 // callers can ignore the error; prod callers must treat it as fatal.
 //
 //	err := loadModules(ctx, c, &manifest, ModeProd)
-func loadModules(_ context.Context, c *core.Core, m *config.ViewManifest, mode Mode) error {
+func loadModules(
+	_ context.Context, c *core.Core, m *config.ViewManifest, mode Mode,
+) error {
 	if c == nil {
 		return core.E("app.loadModules", "nil core", nil)
 	}

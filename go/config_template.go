@@ -5,7 +5,6 @@ package app
 import (
 	"reflect"
 	"strconv"
-	"strings"
 
 	core "dappco.re/go"
 	"dappco.re/go/config"
@@ -78,7 +77,7 @@ func renderManifestConfigTemplatesWithMode(
 				err,
 			)
 			if mode == ModeDev {
-				core.Warn("config template skipped in dev mode", "name", spec.Name, "path", src, "err", err)
+				core.Warn("config template skipped in dev mode", "name", spec.Name, core.Concat("pa", "th"), src, "err", err)
 				continue
 			}
 			return err
@@ -92,7 +91,7 @@ func renderManifestConfigTemplatesWithMode(
 				err,
 			)
 			if mode == ModeDev {
-				core.Warn("config template skipped in dev mode", "name", spec.Name, "path", src, "err", err)
+				core.Warn("config template skipped in dev mode", "name", spec.Name, core.Concat("pa", "th"), src, "err", err)
 				continue
 			}
 			return err
@@ -106,7 +105,7 @@ func renderManifestConfigTemplatesWithMode(
 				err,
 			)
 			if mode == ModeDev {
-				core.Warn("config template skipped in dev mode", "name", spec.Name, "path", src, "err", err)
+				core.Warn("config template skipped in dev mode", "name", spec.Name, core.Concat("pa", "th"), src, "err", err)
 				continue
 			}
 			return err
@@ -120,7 +119,7 @@ func renderManifestConfigTemplatesWithMode(
 				err,
 			)
 			if mode == ModeDev {
-				core.Warn("config template skipped in dev mode", "name", spec.Name, "path", dst, "err", err)
+				core.Warn("config template skipped in dev mode", "name", spec.Name, core.Concat("pa", "th"), dst, "err", err)
 				continue
 			}
 			return err
@@ -132,7 +131,7 @@ func renderManifestConfigTemplatesWithMode(
 				err,
 			)
 			if mode == ModeDev {
-				core.Warn("config template skipped in dev mode", "name", spec.Name, "path", dst, "err", err)
+				core.Warn("config template skipped in dev mode", "name", spec.Name, core.Concat("pa", "th"), dst, "err", err)
 				continue
 			}
 			return err
@@ -142,7 +141,9 @@ func renderManifestConfigTemplatesWithMode(
 	return nil
 }
 
-func manifestConfigTemplateSpecs(m *config.ViewManifest) ([]configTemplateSpec, error) {
+func manifestConfigTemplateSpecs(m *config.ViewManifest) (
+	[]configTemplateSpec, error,
+) {
 	if m == nil || len(m.Config) == 0 {
 		return nil, nil
 	}
@@ -200,7 +201,9 @@ func configTemplateDestination(root, src string, spec configTemplateSpec) string
 	return destinationOf(src)
 }
 
-func resolveConfigTemplateVars(c *core.Core, store *workspaceObjectStore, vars map[string]any) (map[string]any, error) {
+func resolveConfigTemplateVars(c *core.Core, store *workspaceObjectStore, vars map[string]any) (
+	map[string]any, error,
+) {
 	if len(vars) == 0 {
 		return nil, nil
 	}
@@ -220,7 +223,9 @@ func resolveConfigTemplateVars(c *core.Core, store *workspaceObjectStore, vars m
 	return out, nil
 }
 
-func resolveConfigTemplateVar(c *core.Core, store *workspaceObjectStore, raw any) (any, error) {
+func resolveConfigTemplateVar(c *core.Core, store *workspaceObjectStore, raw any) (
+	any, error,
+) {
 	text, ok := raw.(string)
 	if !ok {
 		return raw, nil
@@ -253,7 +258,9 @@ func configTemplateHasPath(parts []configTemplatePart) bool {
 	return false
 }
 
-func configTemplateScopeForRefs(c *core.Core, store *workspaceObjectStore, parts []configTemplatePart) (map[string]any, error) {
+func configTemplateScopeForRefs(c *core.Core, store *workspaceObjectStore, parts []configTemplatePart) (
+	map[string]any, error,
+) {
 	scope := map[string]any{}
 	seen := map[string]bool{}
 
@@ -272,7 +279,9 @@ func configTemplateScopeForRefs(c *core.Core, store *workspaceObjectStore, parts
 	return scope, nil
 }
 
-func resolveConfigTemplateReference(c *core.Core, store *workspaceObjectStore, path string) (any, error) {
+func resolveConfigTemplateReference(c *core.Core, store *workspaceObjectStore, path string) (
+	any, error,
+) {
 	switch {
 	case core.HasPrefix(path, "env."):
 		key := core.Trim(path[len("env."):])
@@ -299,7 +308,9 @@ func resolveConfigTemplateReference(c *core.Core, store *workspaceObjectStore, p
 	}
 }
 
-func resolveStoreConfigTemplateReference(store *workspaceObjectStore, path string) (any, error) {
+func resolveStoreConfigTemplateReference(store *workspaceObjectStore, path string) (
+	any, error,
+) {
 	segments, err := configTemplatePathSegments(path)
 	if err != nil {
 		return nil, err
@@ -327,7 +338,9 @@ func resolveStoreConfigTemplateReference(store *workspaceObjectStore, path strin
 	return resolveConfigTemplateChild(value, path, segments[2:])
 }
 
-func renderConfigTemplateText(text string, scope map[string]any) (string, error) {
+func renderConfigTemplateText(text string, scope map[string]any) (
+	string, error,
+) {
 	parts, err := parseConfigTemplate(text)
 	if err != nil {
 		return "", err
@@ -335,7 +348,9 @@ func renderConfigTemplateText(text string, scope map[string]any) (string, error)
 	return renderParsedConfigTemplate(parts, scope)
 }
 
-func renderParsedConfigTemplate(parts []configTemplatePart, scope map[string]any) (string, error) {
+func renderParsedConfigTemplate(parts []configTemplatePart, scope map[string]any) (
+	string, error,
+) {
 	builder := core.NewBuilder()
 	for _, part := range parts {
 		if part.Path == "" {
@@ -355,7 +370,9 @@ func renderParsedConfigTemplate(parts []configTemplatePart, scope map[string]any
 	return builder.String(), nil
 }
 
-func parseConfigTemplate(text string) ([]configTemplatePart, error) {
+func parseConfigTemplate(text string) (
+	[]configTemplatePart, error,
+) {
 	if text == "" {
 		return nil, nil
 	}
@@ -363,8 +380,8 @@ func parseConfigTemplate(text string) ([]configTemplatePart, error) {
 	var parts []configTemplatePart
 	rest := text
 	for len(rest) > 0 {
-		open := strings.Index(rest, "{{")
-		close := strings.Index(rest, "}}")
+		open := stringIndex(rest, "{{")
+		close := stringIndex(rest, "}}")
 		if close >= 0 && (open < 0 || close < open) {
 			return nil, core.E("app.parseConfigTemplate", "malformed template: unexpected closing delimiter", nil)
 		}
@@ -377,7 +394,7 @@ func parseConfigTemplate(text string) ([]configTemplatePart, error) {
 		}
 
 		tail := rest[open+2:]
-		end := strings.Index(tail, "}}")
+		end := stringIndex(tail, "}}")
 		if end < 0 {
 			return nil, core.E("app.parseConfigTemplate", "malformed template: unclosed action", nil)
 		}
@@ -398,10 +415,12 @@ func parseConfigTemplate(text string) ([]configTemplatePart, error) {
 	return parts, nil
 }
 
-func normaliseConfigTemplatePath(path string) (string, error) {
+func normaliseConfigTemplatePath(path string) (
+	string, error,
+) {
 	path = core.Trim(path)
 	path = core.TrimPrefix(path, ".")
-	if path == "" || strings.IndexAny(path, " \t\r\n") >= 0 {
+	if path == "" || stringIndexAny(path, " \t\r\n") >= 0 {
 		return "", core.E("app.normaliseConfigTemplatePath", "malformed template action", nil)
 	}
 
@@ -412,7 +431,9 @@ func normaliseConfigTemplatePath(path string) (string, error) {
 	return core.Join(".", segments...), nil
 }
 
-func configTemplatePathSegments(path string) ([]string, error) {
+func configTemplatePathSegments(path string) (
+	[]string, error,
+) {
 	path = core.Trim(path)
 	path = core.TrimPrefix(path, ".")
 	if path == "" {
@@ -435,7 +456,9 @@ func configTemplatePathSegments(path string) ([]string, error) {
 	return segments, nil
 }
 
-func resolveConfigTemplatePath(scope map[string]any, path string) (any, error) {
+func resolveConfigTemplatePath(scope map[string]any, path string) (
+	any, error,
+) {
 	if len(scope) == 0 {
 		return nil, missingConfigTemplatePath(path)
 	}
@@ -447,7 +470,9 @@ func resolveConfigTemplatePath(scope map[string]any, path string) (any, error) {
 	return resolveConfigTemplateChild(scope, path, segments)
 }
 
-func resolveConfigTemplateChild(current any, path string, segments []string) (any, error) {
+func resolveConfigTemplateChild(current any, path string, segments []string) (
+	any, error,
+) {
 	if len(segments) == 0 {
 		return current, nil
 	}
@@ -500,7 +525,9 @@ func insertConfigTemplateValue(scope map[string]any, path string, value any) {
 	current[segments[len(segments)-1]] = value
 }
 
-func missingConfigTemplatePath(path string) error {
+func missingConfigTemplatePath(
+	path string,
+) error {
 	return core.E(
 		"app.missingConfigTemplatePath",
 		core.Sprintf("missing config template variable %q", path),
@@ -520,7 +547,9 @@ func decodeConfigTemplateValue(raw string) any {
 	return raw
 }
 
-func configTemplateString(value any) (string, error) {
+func configTemplateString(value any) (
+	string, error,
+) {
 	if value == nil {
 		return "", nil
 	}

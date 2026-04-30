@@ -29,7 +29,9 @@ import (
 //
 //   - Dev: unresolved modules are logged via core.Warn and the boot
 //     keeps going so the developer can iterate on a partial host.
-func modules(ctx context.Context, c *core.Core, m *config.ViewManifest) error {
+func modules(
+	ctx context.Context, c *core.Core, m *config.ViewManifest,
+) error {
 	return loadModules(ctx, c, m, ModeProd)
 }
 
@@ -38,7 +40,9 @@ func modules(ctx context.Context, c *core.Core, m *config.ViewManifest) error {
 // not match the package-level Boot path.
 //
 //	err := modulesWithMode(ctx, c, &manifest, ModeDev)
-func modulesWithMode(ctx context.Context, c *core.Core, m *config.ViewManifest, mode Mode) error {
+func modulesWithMode(
+	ctx context.Context, c *core.Core, m *config.ViewManifest, mode Mode,
+) error {
 	return loadModules(ctx, c, m, mode)
 }
 

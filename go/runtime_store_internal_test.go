@@ -3,7 +3,6 @@
 package app
 
 import (
-	"bytes"
 	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -46,10 +45,10 @@ func TestRuntimeStore_DeriveWorkspaceSecrets_PasswordMode(t *testing.T) {
 	)
 	wantEnc := runtimeStoreTestHKDF(t, ws.Code, workspaceSecretMaterialPassword, "enc", master, salt)
 	wantHMAC := runtimeStoreTestHKDF(t, ws.Code, workspaceSecretMaterialPassword, "hmac", master, salt)
-	if !bytes.Equal(keys.encryption, wantEnc) {
+	if string(keys.encryption) != string(wantEnc) {
 		t.Fatal("password encryption key was not derived from Argon2id + HKDF-SHA256")
 	}
-	if !bytes.Equal(keys.hmac, wantHMAC) {
+	if string(keys.hmac) != string(wantHMAC) {
 		t.Fatal("password HMAC key was not derived from Argon2id + HKDF-SHA256")
 	}
 
@@ -57,7 +56,7 @@ func TestRuntimeStore_DeriveWorkspaceSecrets_PasswordMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("deriveWorkspaceSecrets password again: %v", err)
 	}
-	if !bytes.Equal(keys.encryption, again.encryption) || !bytes.Equal(keys.hmac, again.hmac) {
+	if string(keys.encryption) != string(again.encryption) || string(keys.hmac) != string(again.hmac) {
 		t.Fatal("password keys changed after persisted salt was written")
 	}
 }
@@ -76,10 +75,10 @@ func TestRuntimeStore_DeriveWorkspaceSecrets_KeyfileMode(t *testing.T) {
 	salt := runtimeStoreTestSalt(t, ws)
 	wantEnc := runtimeStoreTestHKDF(t, ws.Code, workspaceSecretMaterialKeyfile, "enc", []byte("ed25519-private-key-material"), salt)
 	wantHMAC := runtimeStoreTestHKDF(t, ws.Code, workspaceSecretMaterialKeyfile, "hmac", []byte("ed25519-private-key-material"), salt)
-	if !bytes.Equal(keys.encryption, wantEnc) {
+	if string(keys.encryption) != string(wantEnc) {
 		t.Fatal("keyfile encryption key was not derived with HKDF-SHA256")
 	}
-	if !bytes.Equal(keys.hmac, wantHMAC) {
+	if string(keys.hmac) != string(wantHMAC) {
 		t.Fatal("keyfile HMAC key was not derived with HKDF-SHA256")
 	}
 }
@@ -94,7 +93,7 @@ func TestRuntimeStore_DeriveWorkspaceSecrets_SubKeySeparation(t *testing.T) {
 		t.Fatalf("deriveWorkspaceSecrets subkeys: %v", err)
 	}
 	assertWorkspaceSecretKeyShape(t, keys)
-	if bytes.Equal(keys.encryption, keys.hmac) {
+	if string(keys.encryption) == string(keys.hmac) {
 		t.Fatal("encryption and HMAC sub-keys must be distinct")
 	}
 

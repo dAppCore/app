@@ -31,7 +31,9 @@ const DefaultKeyName = "default.key"
 //
 //   - priv must be an ed25519.PrivateKeySize slice (64 bytes). Anything
 //     else is rejected before any filesystem write.
-func Sign(medium coreio.Medium, path string, priv ed25519.PrivateKey) error {
+func Sign(
+	medium coreio.Medium, path string, priv ed25519.PrivateKey,
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -85,7 +87,9 @@ func DefaultPrivateKeyPath() string {
 // helpful error when the user has not yet run `core-app keygen`.
 //
 //	priv, err := app.LoadDefaultPrivateKey(coreio.Local)
-func LoadDefaultPrivateKey(medium coreio.Medium) (ed25519.PrivateKey, error) {
+func LoadDefaultPrivateKey(medium coreio.Medium) (
+	ed25519.PrivateKey, error,
+) {
 	path := DefaultPrivateKeyPath()
 	if path == "" {
 		return nil, core.E("app.LoadDefaultPrivateKey", "DIR_HOME is empty — cannot resolve default key", nil)
@@ -97,7 +101,9 @@ func LoadDefaultPrivateKey(medium coreio.Medium) (ed25519.PrivateKey, error) {
 // DIR_HOME-based loader and the install-time "sign into this alternate
 // home tree" path. The caller passes the fully-qualified default.key
 // location it wants resolved.
-func loadDefaultPrivateKeyAtPath(medium coreio.Medium, path string) (ed25519.PrivateKey, error) {
+func loadDefaultPrivateKeyAtPath(medium coreio.Medium, path string) (
+	ed25519.PrivateKey, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -120,7 +126,9 @@ func loadDefaultPrivateKeyAtPath(medium coreio.Medium, path string) (ed25519.Pri
 //
 // The file may contain trailing whitespace (editors add newlines); it
 // is trimmed before decoding.
-func LoadPrivateKey(medium coreio.Medium, path string) (ed25519.PrivateKey, error) {
+func LoadPrivateKey(medium coreio.Medium, path string) (
+	ed25519.PrivateKey, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -149,7 +157,9 @@ func LoadPrivateKey(medium coreio.Medium, path string) (ed25519.PrivateKey, erro
 // WritePublicKey to the corresponding `.pub` file.
 //
 //	_ = app.WritePrivateKey(coreio.Local, "~/.core/keys/app.key", priv)
-func WritePrivateKey(medium coreio.Medium, path string, priv ed25519.PrivateKey) error {
+func WritePrivateKey(
+	medium coreio.Medium, path string, priv ed25519.PrivateKey,
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -172,7 +182,9 @@ func WritePrivateKey(medium coreio.Medium, path string, priv ed25519.PrivateKey)
 // resolveTrustedKeys can pick it up in later boots.
 //
 //	_ = app.WritePublicKey(coreio.Local, "~/.core/keys/app.pub", pub)
-func WritePublicKey(medium coreio.Medium, path string, pub ed25519.PublicKey) error {
+func WritePublicKey(
+	medium coreio.Medium, path string, pub ed25519.PublicKey,
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -201,7 +213,9 @@ func WritePublicKey(medium coreio.Medium, path string, pub ed25519.PublicKey) er
 //
 // The function mutates `m` in place (writes to m.Sign). Callers that
 // need the signed bytes should YAML-marshal the manifest afterwards.
-func SignManifest(m *config.ViewManifest, priv ed25519.PrivateKey) error {
+func SignManifest(
+	m *config.ViewManifest, priv ed25519.PrivateKey,
+) error {
 	return signManifest(m, priv)
 }
 
@@ -211,7 +225,9 @@ func SignManifest(m *config.ViewManifest, priv ed25519.PrivateKey) error {
 // `~/.core/keys/<name>.key` + `~/.core/keys/<name>.pub`.
 //
 //	priv, pub, err := app.Keygen(coreio.Local, keysDir, "app")
-func Keygen(medium coreio.Medium, dir, name string) (privPath, pubPath string, err error) {
+func Keygen(medium coreio.Medium, dir, name string) (
+	privPath, pubPath string, err error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -240,7 +256,9 @@ func Keygen(medium coreio.Medium, dir, name string) (privPath, pubPath string, e
 // rooted under `home/.core/keys/`. If the keypair does not exist yet,
 // it is generated on demand so installed wrapped apps are immediately
 // bootable in prod mode without a separate `keygen` pre-step.
-func signManifestForHome(medium coreio.Medium, home string, manifest *config.ViewManifest) error {
+func signManifestForHome(
+	medium coreio.Medium, home string, manifest *config.ViewManifest,
+) error {
 	if manifest == nil {
 		return core.E("app.signManifestForHome", "nil manifest", nil)
 	}
@@ -258,7 +276,9 @@ func signManifestForHome(medium coreio.Medium, home string, manifest *config.Vie
 // the supplied home tree, generating `default.key` + `default.pub` on
 // first use. Wrapped installs call this so `pkg install` and
 // marketplace-driven wraps produce signed manifests by default.
-func ensureDefaultPrivateKey(medium coreio.Medium, home string) (ed25519.PrivateKey, error) {
+func ensureDefaultPrivateKey(medium coreio.Medium, home string) (
+	ed25519.PrivateKey, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}

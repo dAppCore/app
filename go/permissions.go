@@ -157,7 +157,9 @@ type actionGate struct {
 // honest (so an ungated action costs nothing at runtime), and the
 // per-arg layer keeps the sandbox honest (a manifest granting
 // `./photos/` must not admit `./photos/../etc/passwd`).
-func permissions(c *core.Core, m *config.ViewManifest, mode Mode) error {
+func permissions(
+	c *core.Core, m *config.ViewManifest, mode Mode,
+) error {
 	if c == nil {
 		return core.E("app.permissions", "nil core", nil)
 	}

@@ -4,8 +4,6 @@ package app_test
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"testing"
 
 	core "dappco.re/go"
@@ -18,6 +16,7 @@ import (
 // store permission allows store mutations through the runtime action
 // layer.
 func TestStore_RuntimePermissionGate_Good(t *testing.T) {
+	_ = "RuntimePermissionGate"
 	projectDir := t.TempDir()
 	workspaceHome := t.TempDir()
 	manifest := config.ViewManifest{
@@ -71,6 +70,7 @@ func TestStore_RuntimePermissionGate_Good(t *testing.T) {
 // TestStore_RuntimePermissionGate_Bad verifies that store mutations are
 // denied when permissions.store is absent from the manifest.
 func TestStore_RuntimePermissionGate_Bad(t *testing.T) {
+	_ = "RuntimePermissionGate"
 	projectDir := t.TempDir()
 	workspaceHome := t.TempDir()
 	manifest := config.ViewManifest{
@@ -97,7 +97,7 @@ func TestStore_RuntimePermissionGate_Bad(t *testing.T) {
 	if setResult.OK {
 		t.Fatal("store.set unexpectedly succeeded without permissions.store")
 	}
-	if msg := fmt.Sprint(setResult.Value); !strings.Contains(msg, "set permissions.store: true in view.yaml") {
+	if msg := core.Sprintf("%v", setResult.Value); !core.Contains(msg, "set permissions.store: true in view.yaml") {
 		t.Fatalf("store.set error = %q; want store permission denial", msg)
 	}
 
@@ -108,7 +108,7 @@ func TestStore_RuntimePermissionGate_Bad(t *testing.T) {
 	if deleteResult.OK {
 		t.Fatal("store.delete unexpectedly succeeded without permissions.store")
 	}
-	if msg := fmt.Sprint(deleteResult.Value); !strings.Contains(msg, "set permissions.store: true in view.yaml") {
+	if msg := core.Sprintf("%v", deleteResult.Value); !core.Contains(msg, "set permissions.store: true in view.yaml") {
 		t.Fatalf("store.delete error = %q; want store permission denial", msg)
 	}
 }

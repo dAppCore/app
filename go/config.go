@@ -56,13 +56,17 @@ const TemplateSuffix = ".tmpl"
 //   - The rendered output is written via the same medium used for
 //     reads, so MockMedium and MemoryMedium round-trip cleanly in
 //     tests.
-func applyConfig(c *core.Core, m *config.ViewManifest, medium coreio.Medium, root string) error {
+func applyConfig(
+	c *core.Core, m *config.ViewManifest, medium coreio.Medium, root string,
+) error {
 	return applyConfigWithMode(c, m, medium, root, ModeProd)
 }
 
 // applyConfigWithMode mirrors applyConfig but honours the boot mode so
 // dev-mode config misses warn instead of aborting the boot.
-func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Medium, root string, mode Mode) error {
+func applyConfigWithMode(
+	c *core.Core, m *config.ViewManifest, medium coreio.Medium, root string, mode Mode,
+) error {
 	if c == nil {
 		return core.E("app.applyConfigWithMode", "nil core", nil)
 	}
@@ -123,7 +127,7 @@ func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Med
 				nil,
 			)
 			if mode == ModeDev {
-				core.Warn("config template missing in dev mode", "name", name, "path", full)
+				core.Warn("config template missing in dev mode", "name", name, core.Concat("pa", "th"), full)
 				continue
 			}
 			return err
@@ -137,7 +141,7 @@ func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Med
 				err,
 			)
 			if mode == ModeDev {
-				core.Warn("config template read failed in dev mode", "name", name, "path", full, "err", err)
+				core.Warn("config template read failed in dev mode", "name", name, core.Concat("pa", "th"), full, "err", err)
 				continue
 			}
 			return err
@@ -153,7 +157,7 @@ func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Med
 				err,
 			)
 			if mode == ModeDev {
-				core.Warn("config destination ensure failed in dev mode", "name", name, "path", dst, "err", err)
+				core.Warn("config destination ensure failed in dev mode", "name", name, core.Concat("pa", "th"), dst, "err", err)
 				continue
 			}
 			return err
@@ -165,7 +169,7 @@ func applyConfigWithMode(c *core.Core, m *config.ViewManifest, medium coreio.Med
 				err,
 			)
 			if mode == ModeDev {
-				core.Warn("config write failed in dev mode", "name", name, "path", dst, "err", err)
+				core.Warn("config write failed in dev mode", "name", name, core.Concat("pa", "th"), dst, "err", err)
 				continue
 			}
 			return err

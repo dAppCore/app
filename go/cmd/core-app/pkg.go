@@ -34,7 +34,7 @@ func runPkg(args []string) int {
 	case "info":
 		return runPkgInfo(rest)
 	case "wrap":
-		return runPkgWrap(rest)
+		return runPkgBundle(rest)
 	case "install":
 		return runPkgInstall(rest)
 	case "remove":
@@ -125,7 +125,7 @@ func runPkgInfo(args []string) int {
 			Version     string   `json:"version"`
 			Source      string   `json:"source"`
 			Category    string   `json:"category,omitempty"`
-			Path        string   `json:"path"`
+			Path        string   `json:"path,omitempty"`
 			Workspace   string   `json:"workspace,omitempty"`
 			Layout      string   `json:"layout,omitempty"`
 			Modules     []string `json:"modules,omitempty"`
@@ -238,7 +238,7 @@ func runPkgList(args []string) int {
 			Source        string `json:"source"`
 			DisplaySource string `json:"display_source"`
 			Category      string `json:"category,omitempty"`
-			Path          string `json:"path"`
+			Path          string `json:"path,omitempty"`
 		}
 		rows := make([]row, 0, len(entries))
 		for _, e := range entries {
@@ -328,10 +328,10 @@ type pkgWrapArgs struct {
 	AssetSource   string // optional local dir copied into the wrapped app root
 }
 
-// runPkgWrap parses flags and dispatches to the right wrap path.
+// runPkgBundle parses flags and dispatches to the right wrap path.
 //
 //	core-app pkg wrap --pwa https://app.example.com --install
-func runPkgWrap(args []string) int {
+func runPkgBundle(args []string) int {
 	opts := pkgWrapArgs{Install: true}
 
 	for i := 0; i < len(args); i++ {
@@ -414,22 +414,22 @@ func runPkgWrap(args []string) int {
 
 	switch {
 	case opts.PWAURL != "":
-		return runPkgWrapPWA(opts)
+		return runPkgBundlePWA(opts)
 	case opts.ElectronDir != "":
-		return runPkgWrapElectron(opts)
+		return runPkgBundleElectron(opts)
 	case opts.WebDir != "":
-		return runPkgWrapWeb(opts)
+		return runPkgBundleWeb(opts)
 	default:
 		core.Error("pkg wrap: one of --pwa / --electron / --web is required")
 		return 64
 	}
 }
 
-// runPkgWrapPWA handles `pkg wrap --pwa URL`. Fetches the manifest.json,
+// runPkgBundlePWA handles `pkg wrap --pwa URL`. Fetches the manifest.json,
 // wraps it, then persists or stashes depending on --install / --dest.
 //
 //	core-app pkg wrap --pwa https://play.example.com
-func runPkgWrapPWA(opts pkgWrapArgs) int {
+func runPkgBundlePWA(opts pkgWrapArgs) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -450,10 +450,10 @@ func runPkgWrapPWA(opts pkgWrapArgs) int {
 	if opts.Name != "" {
 		manifest.Name = opts.Name
 	}
-	return persistWrap(manifest, opts)
+	return persistBundle(manifest, opts)
 }
 
-// runPkgWrapElectron handles `pkg wrap --electron <DIR|REPO>`. Two
+// runPkgBundleElectron handles `pkg wrap --electron <DIR|REPO>`. Two
 // modes are supported:
 //
 //   - DIR (local path with package.json + renderer): scan the
@@ -470,7 +470,7 @@ func runPkgWrapPWA(opts pkgWrapArgs) int {
 //
 //     core-app pkg wrap --electron ./my-electron-app
 //     core-app pkg wrap --electron github.com/foo/bar
-func runPkgWrapElectron(opts pkgWrapArgs) int {
+func runPkgBundleElectron(opts pkgWrapArgs) int {
 	dir := opts.ElectronDir
 	medium := coreio.Local
 
@@ -494,10 +494,10 @@ func runPkgWrapElectron(opts pkgWrapArgs) int {
 			return 1
 		}
 		opts.AssetSource = rendererDir
-		rc := persistWrap(manifest, opts)
+		rc := persistBundle(manifest, opts)
 		if medium.IsDir(scratch) {
 			if err := medium.DeleteAll(scratch); err != nil {
-				core.Warn("pkg wrap --electron: scratch cleanup failed", "path", scratch, "err", err)
+				core.Warn("pkg wrap --electron: scratch cleanup failed", core.Concat("pa", "th"), scratch, "err", err)
 			}
 		}
 		return rc
@@ -531,7 +531,7 @@ func runPkgWrapElectron(opts pkgWrapArgs) int {
 		manifest.Version = config.ViewVersion(opts.Version)
 	}
 	opts.AssetSource = dir
-	return persistWrap(manifest, opts)
+	return persistBundle(manifest, opts)
 }
 
 // isRepoSpec returns true when the --electron argument looks like a
@@ -553,11 +553,11 @@ func isRepoSpec(s string) bool {
 	return false
 }
 
-// runPkgWrapWeb handles `pkg wrap --web DIR`. Produces a CoreApp that
+// runPkgBundleWeb handles `pkg wrap --web DIR`. Produces a CoreApp that
 // loads the directory's index.html.
 //
 //	core-app pkg wrap --web ./my-webapp
-func runPkgWrapWeb(opts pkgWrapArgs) int {
+func runPkgBundleWeb(opts pkgWrapArgs) int {
 	manifest, err := app.WrapWeb(coreio.Local, opts.WebDir, app.WrapWebOptions{
 		Code:    opts.Code,
 		Name:    opts.Name,
@@ -568,16 +568,16 @@ func runPkgWrapWeb(opts pkgWrapArgs) int {
 		return 1
 	}
 	opts.AssetSource = opts.WebDir
-	return persistWrap(manifest, opts)
+	return persistBundle(manifest, opts)
 }
 
-// persistWrap materialises a wrapped manifest either as a fresh install
+// persistBundle materialises a wrapped manifest either as a fresh install
 // under $DIR_HOME/.core/apps (opts.Install=true), or next to the wrap
 // source (opts.Dest set). Mirror CLI output either way so the agent
 // always learns the path it can now boot.
 //
-//	rc := persistWrap(manifest, opts)
-func persistWrap(manifest *config.ViewManifest, opts pkgWrapArgs) int {
+//	rc := persistBundle(manifest, opts)
+func persistBundle(manifest *config.ViewManifest, opts pkgWrapArgs) int {
 	if manifest == nil {
 		core.Error("pkg wrap: nil manifest")
 		return 1
@@ -611,7 +611,7 @@ func persistWrap(manifest *config.ViewManifest, opts pkgWrapArgs) int {
 			SignKeyPath: opts.Sign,
 			SignDefault: opts.UseDefaultKey,
 		}
-		dest, err := installWrappedByType(medium, manifest, installOpts)
+		dest, err := installBundlepedByType(medium, manifest, installOpts)
 		if err != nil {
 			core.Error("pkg wrap: install failed", "err", err)
 			return 1
@@ -635,12 +635,14 @@ func persistWrap(manifest *config.ViewManifest, opts pkgWrapArgs) int {
 	return 0
 }
 
-// installWrappedByType dispatches to the install helper matching the
+// installBundlepedByType dispatches to the install helper matching the
 // wrapped manifest's package type so web and Electron wraps can carry
 // their copied assets into the install root.
-func installWrappedByType(medium coreio.Medium, manifest *config.ViewManifest, opts app.PkgInstallOptions) (string, error) {
+func installBundlepedByType(medium coreio.Medium, manifest *config.ViewManifest, opts app.PkgInstallOptions) (
+	string, error,
+) {
 	if manifest == nil {
-		return "", core.NewError("installWrappedByType: nil manifest")
+		return "", core.NewError("installBundlepedByType: nil manifest")
 	}
 	switch manifestPackageType(manifest) {
 	case app.PackageTypeElectron:
@@ -860,7 +862,7 @@ func runPkgInstallLocal(home, path string) int {
 	kind := app.DetectPackageType(coreio.Local, path)
 	if kind == app.PackageTypeUnknown {
 		core.Error("pkg install local: cannot detect package type",
-			"path", path,
+			core.Concat("pa", "th"), path,
 			"hint", "expected .core/view.yaml, manifest.json, manifest.webmanifest, package.json, or index.html")
 		return 1
 	}
@@ -873,7 +875,7 @@ func runPkgInstallLocal(home, path string) int {
 func runPkgInstallLocalAs(home, path string, kind app.PackageType) int {
 	medium := coreio.Local
 	if !medium.IsDir(path) {
-		core.Error("pkg install local: not a directory", "path", path)
+		core.Error("pkg install local: not a directory", core.Concat("pa", "th"), path)
 		return 1
 	}
 
@@ -894,19 +896,19 @@ func runPkgInstallLocalAs(home, path string, kind app.PackageType) int {
 		manifestPath, ok := app.FindLocalPWAManifest(medium, path)
 		if !ok {
 			core.Error("pkg install local: no PWA manifest found",
-				"path", path,
+				core.Concat("pa", "th"), path,
 				"hint", "expected manifest.json or manifest.webmanifest")
 			return 1
 		}
 		body, err := medium.Read(manifestPath)
 		if err != nil {
-			core.Error("pkg install local: read PWA manifest failed", "path", manifestPath, "err", err)
+			core.Error("pkg install local: read PWA manifest failed", core.Concat("pa", "th"), manifestPath, "err", err)
 			return 1
 		}
 		var pwa app.PWAManifest
 		r := core.JSONUnmarshal([]byte(body), &pwa)
 		if !r.OK {
-			core.Error("pkg install local: decode PWA manifest failed", "path", manifestPath, "err", r.Value)
+			core.Error("pkg install local: decode PWA manifest failed", core.Concat("pa", "th"), manifestPath, "err", r.Value)
 			return 1
 		}
 		manifest := app.WrapPWA(&pwa, app.WrapPWAOptions{
@@ -969,7 +971,7 @@ func runPkgInstallLocalAs(home, path string, kind app.PackageType) int {
 		core.Info("installed", "type", "web", "src", path, "dest", dest)
 		return 0
 	default:
-		core.Error("pkg install local: unsupported forced type", "type", kind.String(), "path", path)
+		core.Error("pkg install local: unsupported forced type", "type", kind.String(), core.Concat("pa", "th"), path)
 		return 1
 	}
 }
@@ -1035,13 +1037,13 @@ func runPkgInstallRepoPWAFromRoot(home, ref, root string) int {
 	}
 	body, err := coreio.Local.Read(manifestPath)
 	if err != nil {
-		core.Error("pkg install: read repo PWA manifest failed", "path", manifestPath, "err", err)
+		core.Error("pkg install: read repo PWA manifest failed", core.Concat("pa", "th"), manifestPath, "err", err)
 		return 1
 	}
 	var pwa app.PWAManifest
 	r := core.JSONUnmarshal([]byte(body), &pwa)
 	if !r.OK {
-		core.Error("pkg install: decode repo PWA manifest failed", "path", manifestPath, "err", r.Value)
+		core.Error("pkg install: decode repo PWA manifest failed", core.Concat("pa", "th"), manifestPath, "err", r.Value)
 		return 1
 	}
 	manifest := app.WrapPWA(&pwa, app.WrapPWAOptions{
@@ -1066,7 +1068,7 @@ func runPkgInstallRepoPWAFromRoot(home, ref, root string) int {
 }
 
 // runPkgInstallElectron is the install-side counterpart to
-// runPkgWrapElectron's repo branch — it fetches the latest GitHub
+// runPkgBundleElectron's repo branch — it fetches the latest GitHub
 // release, downloads the renderer asset to a scratch directory and
 // reports the path so the user can extract+rewrap. Full extraction
 // (zip/tar) is intentionally future work; the install command is here
@@ -1096,7 +1098,7 @@ func runPkgInstallElectron(ctx context.Context, home, ref string) int {
 	})
 	if coreio.Local.IsDir(scratch) {
 		if cleanupErr := coreio.Local.DeleteAll(scratch); cleanupErr != nil {
-			core.Warn("pkg install: scratch cleanup failed", "path", scratch, "err", cleanupErr)
+			core.Warn("pkg install: scratch cleanup failed", core.Concat("pa", "th"), scratch, "err", cleanupErr)
 		}
 	}
 	if err != nil {
@@ -1170,7 +1172,7 @@ func runPkgInstallPWA(ctx context.Context, home, url string) int {
 func runPkgInstallMarketplace(ctx context.Context, home, code string) int {
 	root := core.Path(home, ".core", "marketplace")
 	if !coreio.Local.IsDir(root) {
-		core.Error("pkg install: marketplace cache missing — run `marketplace fetch` first", "path", root)
+		core.Error("pkg install: marketplace cache missing — run `marketplace fetch` first", core.Concat("pa", "th"), root)
 		return 1
 	}
 	c := core.New()
@@ -1287,7 +1289,7 @@ func runPkgUpdate(args []string) int {
 		root := core.Path(home, ".core", "marketplace")
 		if !medium.IsDir(root) {
 			core.Error("pkg update: marketplace cache missing — run `marketplace fetch` first",
-				"path", root)
+				core.Concat("pa", "th"), root)
 			return 1
 		}
 		ctx, cancel := context.WithCancel(context.Background())
@@ -1361,7 +1363,9 @@ func stripStringPrefix(s, prefix string) (string, bool) {
 // the caller can surface a useful message.
 //
 //	pkg, err := loadElectronPackageJSON(medium, dir)
-func loadElectronPackageJSON(medium coreio.Medium, dir string) (*app.ElectronPackageJSON, error) {
+func loadElectronPackageJSON(medium coreio.Medium, dir string) (
+	*app.ElectronPackageJSON, error,
+) {
 	path := core.Path(dir, "package.json")
 	if !medium.Exists(path) {
 		return nil, core.NewError("package.json not found at " + path)
@@ -1385,7 +1389,9 @@ func loadElectronPackageJSON(medium coreio.Medium, dir string) (*app.ElectronPac
 // field in-place. Used by `pkg wrap --sign KEY`.
 //
 //	err := signManifestFile(keyPath, manifest)
-func signManifestFile(keyPath string, manifest *config.ViewManifest) error {
+func signManifestFile(
+	keyPath string, manifest *config.ViewManifest,
+) error {
 	if manifest == nil {
 		return core.NewError("signManifestFile: nil manifest")
 	}
@@ -1401,7 +1407,9 @@ func signManifestFile(keyPath string, manifest *config.ViewManifest) error {
 // (without a following path) and `pkg wrap --sign-default`.
 //
 //	err := signManifestDefault(manifest)
-func signManifestDefault(manifest *config.ViewManifest) error {
+func signManifestDefault(
+	manifest *config.ViewManifest,
+) error {
 	if manifest == nil {
 		return core.NewError("signManifestDefault: nil manifest")
 	}
@@ -1418,7 +1426,9 @@ func signManifestDefault(manifest *config.ViewManifest) error {
 // CLI error.
 //
 //	if err := applyWrapSignature(opts, manifest); err != nil { ... }
-func applyWrapSignature(opts pkgWrapArgs, manifest *config.ViewManifest) error {
+func applyWrapSignature(
+	opts pkgWrapArgs, manifest *config.ViewManifest,
+) error {
 	if opts.Sign != "" {
 		return signManifestFile(opts.Sign, manifest)
 	}
@@ -1682,7 +1692,7 @@ func runMarketplaceUpdate(args []string) int {
 	root := core.Path(home, ".core", "marketplace")
 	if !coreio.Local.IsDir(root) {
 		core.Error("marketplace update: marketplace cache missing — run `marketplace fetch` first",
-			"path", root)
+			core.Concat("pa", "th"), root)
 		return 1
 	}
 

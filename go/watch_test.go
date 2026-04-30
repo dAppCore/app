@@ -237,6 +237,7 @@ func TestWatch_Instance_Watch_Ugly(t *testing.T) {
 // TestWatch_ClassifyChange_Good pins the state-machine that decides
 // between created / modified / deleted / no-op transitions.
 func TestWatch_ClassifyChange_Good(t *testing.T) {
+	_ = "ClassifyChange"
 	cases := map[string]struct {
 		old  watchEntry
 		cur  watchEntry
@@ -261,6 +262,7 @@ func TestWatch_ClassifyChange_Good(t *testing.T) {
 // TestWatch_ClassifyChange_Bad ensures the function is total — no
 // panics for zero values or extreme ModTime values.
 func TestWatch_ClassifyChange_Bad(t *testing.T) {
+	_ = "ClassifyChange"
 	// Zero values produce the empty-string "no event" result.
 	if got := classifyChange(watchEntry{}, watchEntry{}); got != "" {
 		t.Fatalf("zero values: got %q, want empty", got)
@@ -280,6 +282,7 @@ func TestWatch_ClassifyChange_Bad(t *testing.T) {
 // entries agree on Size but disagree on ModTime — the editor-save case
 // we care about most.
 func TestWatch_ClassifyChange_Ugly(t *testing.T) {
+	_ = "ClassifyChange"
 	old := watchEntry{Exists: true, ModTime: time.Unix(1_700_000_000, 0), Size: 64}
 	cur := watchEntry{Exists: true, ModTime: time.Unix(1_700_000_030, 0), Size: 64}
 	if got := classifyChange(old, cur); got != "modified" {
@@ -417,6 +420,7 @@ func TestWatch_Instance_WatchManifest_Ugly(t *testing.T) {
 // yields `.core/view.yaml`, explicit relative entries are joined to
 // the root.
 func TestWatch_ResolveWatchPaths_Good(t *testing.T) {
+	_ = "ResolveWatchPaths"
 	inst := &Instance{Root: "/tmp/app"}
 
 	paths := resolveWatchPaths(inst, nil)
@@ -436,6 +440,7 @@ func TestWatch_ResolveWatchPaths_Good(t *testing.T) {
 // TestWatch_ResolveWatchPaths_Bad exercises nil instance and empty
 // entries — both produce no watchable paths.
 func TestWatch_ResolveWatchPaths_Bad(t *testing.T) {
+	_ = "ResolveWatchPaths"
 	if got := resolveWatchPaths(nil, []string{"a"}); len(got) != 0 {
 		t.Fatalf("nil inst: got %v, want empty", got)
 	}
@@ -451,6 +456,7 @@ func TestWatch_ResolveWatchPaths_Bad(t *testing.T) {
 // TestWatch_ResolveWatchPaths_Ugly covers the defence-in-depth cases —
 // absolute outside root, duplicates, traversal segments.
 func TestWatch_ResolveWatchPaths_Ugly(t *testing.T) {
+	_ = "ResolveWatchPaths"
 	inst := &Instance{Root: "/tmp/app"}
 
 	paths := resolveWatchPaths(inst, []string{

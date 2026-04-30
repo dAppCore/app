@@ -1455,3 +1455,28 @@ func TestPkg_ManifestPermissionSummary_Ugly(t *testing.T) {
 		t.Errorf("run: bin missing; got %v", out)
 	}
 }
+
+func TestPkg_PkgInstallLocal_Good(t *testing.T) {
+	src := t.TempDir()
+	home := t.TempDir()
+	writeYAML(t, coreio.Local, core.Path(src, ".core", "view.yaml"), "code: local-good\nname: Local Good\nversion: 0.1.0\n")
+	dest, err := app.PkgInstallLocal(coreio.Local, src, app.PkgInstallOptions{Home: home})
+	if err != nil {
+		t.Fatalf("PkgInstallLocal: %v", err)
+	}
+	if !coreio.Local.IsDir(dest) {
+		t.Fatalf("PkgInstallLocal destination missing: %s", dest)
+	}
+}
+
+func TestPkg_PkgInstallLocal_Bad(t *testing.T) {
+	if _, err := app.PkgInstallLocal(coreio.Local, "", app.PkgInstallOptions{Home: t.TempDir()}); err == nil {
+		t.Fatal("PkgInstallLocal should reject empty source")
+	}
+}
+
+func TestPkg_PkgInstallLocal_Ugly(t *testing.T) {
+	if _, err := app.PkgInstallLocal(coreio.Local, t.TempDir(), app.PkgInstallOptions{Home: t.TempDir()}); err == nil {
+		t.Fatal("PkgInstallLocal should reject directories without .core/view.yaml")
+	}
+}

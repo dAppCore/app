@@ -42,7 +42,9 @@ type workspaceCryptoMetadata struct {
 	Salt    string `json:"salt"`
 }
 
-func ensureWorkspaceSecretSalt(ws *Workspace) ([]byte, error) {
+func ensureWorkspaceSecretSalt(ws *Workspace) (
+	[]byte, error,
+) {
 	metadata, err := readWorkspaceCryptoMetadata(ws)
 	if err != nil {
 		if workspaceCryptoMetadataFileExists(ws) {
@@ -75,7 +77,9 @@ func ensureWorkspaceSecretSalt(ws *Workspace) ([]byte, error) {
 	return out, nil
 }
 
-func readWorkspaceCryptoMetadata(ws *Workspace) (workspaceCryptoMetadata, error) {
+func readWorkspaceCryptoMetadata(ws *Workspace) (
+	workspaceCryptoMetadata, error,
+) {
 	if ws == nil {
 		return workspaceCryptoMetadata{}, core.E("app.readWorkspaceCryptoMetadata", "nil workspace", nil)
 	}
@@ -102,7 +106,9 @@ func readWorkspaceCryptoMetadata(ws *Workspace) (workspaceCryptoMetadata, error)
 	return metadata, nil
 }
 
-func writeWorkspaceCryptoMetadata(ws *Workspace, metadata workspaceCryptoMetadata) error {
+func writeWorkspaceCryptoMetadata(
+	ws *Workspace, metadata workspaceCryptoMetadata,
+) error {
 	if ws == nil {
 		return core.E("app.writeWorkspaceCryptoMetadata", "nil workspace", nil)
 	}
@@ -129,7 +135,9 @@ func writeWorkspaceCryptoMetadata(ws *Workspace, metadata workspaceCryptoMetadat
 	return nil
 }
 
-func createWorkspaceCryptoMetadata(medium coreio.Medium, path, body string) error {
+func createWorkspaceCryptoMetadata(
+	medium coreio.Medium, path, body string,
+) error {
 	if medium != coreio.Local {
 		if medium.IsFile(path) {
 			return fs.ErrExist
@@ -159,7 +167,9 @@ func createWorkspaceCryptoMetadata(medium coreio.Medium, path, body string) erro
 	return nil
 }
 
-func readWorkspaceSecretSaltAfterCreateRace(ws *Workspace) ([]byte, error) {
+func readWorkspaceSecretSaltAfterCreateRace(ws *Workspace) (
+	[]byte, error,
+) {
 	var lastErr error
 	for i := 0; i < workspaceSecretSaltReadAttempts; i++ {
 		metadata, err := readWorkspaceCryptoMetadata(ws)
@@ -190,7 +200,9 @@ func workspaceCryptoMetadataFileExists(ws *Workspace) bool {
 	return workspaceMetadataMedium(ws).IsFile(workspaceCryptoMetadataPath(ws))
 }
 
-func decodeWorkspaceSecretSalt(encoded string) ([]byte, error) {
+func decodeWorkspaceSecretSalt(encoded string) (
+	[]byte, error,
+) {
 	result := core.Base64Decode(core.Trim(encoded))
 	if !result.OK {
 		return nil, core.E("app.decodeWorkspaceSecretSalt", "decode workspace salt failed", coreResultError(result))
@@ -221,7 +233,9 @@ func workspaceMetadataMedium(ws *Workspace) coreio.Medium {
 	return ws.medium
 }
 
-func coreResultError(result core.Result) error {
+func coreResultError(
+	result core.Result,
+) error {
 	if err, ok := result.Value.(error); ok {
 		return err
 	}

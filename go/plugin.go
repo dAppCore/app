@@ -66,7 +66,9 @@ type PluginOptions struct {
 //     responsible for sandboxing the medium (e.g. handing in a
 //     coreio.Sandboxed(root)) so any read/write the plugin performs
 //     stays inside its directory.
-func PluginBoot(ctx context.Context, opts PluginOptions) (*Instance, error) {
+func PluginBoot(ctx context.Context, opts PluginOptions) (
+	*Instance, error,
+) {
 	if opts.ProjectRoot == "" {
 		return nil, core.E("app.PluginBoot", "empty ProjectRoot", nil)
 	}

@@ -95,7 +95,9 @@ type Workspace struct {
 //
 //   - The medium's EnsureDir creates the layout sub-folders. Existing
 //     directories are left untouched.
-func OpenWorkspace(medium coreio.Medium, home, code string) (*Workspace, error) {
+func OpenWorkspace(medium coreio.Medium, home, code string) (
+	*Workspace, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -180,7 +182,9 @@ func (w *Workspace) Resolve(layout WorkspaceLayout, rel string) string {
 //
 // On a MemoryMedium / MockMedium where Sandboxed isn't available the
 // underlying medium is returned unchanged so tests compose naturally.
-func (w *Workspace) Sandboxed() (coreio.Medium, error) {
+func (
+	w *Workspace,
+) Sandboxed() (coreio.Medium, error) {
 	if w == nil {
 		return nil, core.E("app.Workspace.Sandboxed", "nil workspace", nil)
 	}
@@ -199,7 +203,9 @@ func (w *Workspace) Sandboxed() (coreio.Medium, error) {
 	return w.sandboxMedium, nil
 }
 
-func (w *Workspace) openSandboxed() (coreio.Medium, error) {
+func (
+	w *Workspace,
+) openSandboxed() (coreio.Medium, error) {
 	sandbox, err := coreio.NewSandboxed(w.Root)
 	if err != nil {
 		return nil, core.E("app.Workspace.Sandboxed", "sandbox workspace failed", err)
@@ -228,7 +234,9 @@ func zeroBytes(data []byte) {
 // fresh user calling Wipe should not see an error.
 //
 //	err := ws.Wipe()
-func (w *Workspace) Wipe() error {
+func (
+	w *Workspace,
+) Wipe() error {
 	if w == nil {
 		return core.E("app.Workspace.Wipe", "nil workspace", nil)
 	}
@@ -246,7 +254,9 @@ func (w *Workspace) Wipe() error {
 // with a clearer call site at the boot edge.
 //
 //	ws, err := app.WorkspaceForManifest(coreio.Local, home, &inst.Manifest)
-func WorkspaceForManifest(medium coreio.Medium, home string, m *config.ViewManifest) (*Workspace, error) {
+func WorkspaceForManifest(medium coreio.Medium, home string, m *config.ViewManifest) (
+	*Workspace, error,
+) {
 	if m == nil {
 		return nil, core.E("app.WorkspaceForManifest", "nil manifest", nil)
 	}

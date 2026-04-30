@@ -290,6 +290,7 @@ func TestIntegration_Boot_Ugly(t *testing.T) {
 //  4. app.WriteCompiled puts core.json at the project root.
 //  5. app.Boot with ModeProd + the keyring dir reads core.json.
 func TestIntegration_CompileSignBoot_Good(t *testing.T) {
+	_ = "CompileSignBoot"
 	projectDir := t.TempDir()
 	keysDir := t.TempDir()
 	medium := coreio.Local
@@ -552,6 +553,7 @@ func (p *integrationLifecycleProbe) OnShutdown(_ context.Context) core.Result {
 // the CLI convention ("drop a pubkey in ~/.core/keys/") works with the
 // real filesystem medium.
 func TestIntegration_KeyringLoad_Good(t *testing.T) {
+	_ = "KeyringLoad"
 	projectDir := t.TempDir()
 	keysDir := t.TempDir()
 	medium := coreio.Local

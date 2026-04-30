@@ -57,7 +57,7 @@ func start(ctx context.Context, inst *Instance) core.Result {
 	if !inst.started {
 		if r := c.ServiceStartup(ctx, nil); !r.OK {
 			return core.Result{
-				Value: core.E("app.start", "service startup failed", extractErr(r)),
+				Value: core.E("app.start", "service startup failed", extractFailure(r)),
 				OK:    false,
 			}
 		}
@@ -132,7 +132,7 @@ func stop(ctx context.Context, inst *Instance) core.Result {
 
 	if r := c.ServiceShutdown(ctx); !r.OK {
 		return core.Result{
-			Value: core.E("app.stop", "service shutdown failed", extractErr(r)),
+			Value: core.E("app.stop", "service shutdown failed", extractFailure(r)),
 			OK:    false,
 		}
 	}

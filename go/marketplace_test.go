@@ -3,6 +3,7 @@
 package app_test
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"testing"
@@ -653,5 +654,78 @@ func TestMarketplace_StampCategory_Ugly(t *testing.T) {
 	dest := t.TempDir()
 	if err := app.StampCategoryForTest(coreio.Local, dest, "media"); err != nil {
 		t.Errorf("missing manifest returned %v; want nil", err)
+	}
+}
+
+func TestMarketplace_MarketplaceFetch_Good(t *testing.T) {
+	err := app.MarketplaceFetch(context.Background(), core.New(), app.MarketplaceFetchOptions{URL: "https://example.invalid/repo.git", Dir: t.TempDir()})
+	if err == nil {
+		t.Fatal("MarketplaceFetch should fail when process action is unavailable")
+	}
+}
+
+func TestMarketplace_MarketplaceFetch_Bad(t *testing.T) {
+	if err := app.MarketplaceFetch(context.Background(), nil, app.MarketplaceFetchOptions{}); err == nil {
+		t.Fatal("MarketplaceFetch should reject nil core")
+	}
+}
+
+func TestMarketplace_MarketplaceFetch_Ugly(t *testing.T) {
+	if err := app.MarketplaceFetch(context.Background(), core.New(), app.MarketplaceFetchOptions{}); err == nil {
+		t.Fatal("MarketplaceFetch should reject empty options")
+	}
+}
+
+func TestMarketplace_MarketplaceInstall_Good(t *testing.T) {
+	if _, err := app.MarketplaceInstall(context.Background(), core.New(), app.MarketplaceInstallOptions{Root: t.TempDir(), Code: "missing", Home: t.TempDir()}); err == nil {
+		t.Fatal("MarketplaceInstall should fail for missing listing")
+	}
+}
+
+func TestMarketplace_MarketplaceInstall_Bad(t *testing.T) {
+	if _, err := app.MarketplaceInstall(context.Background(), nil, app.MarketplaceInstallOptions{}); err == nil {
+		t.Fatal("MarketplaceInstall should reject nil core")
+	}
+}
+
+func TestMarketplace_MarketplaceInstall_Ugly(t *testing.T) {
+	if _, err := app.MarketplaceInstall(context.Background(), core.New(), app.MarketplaceInstallOptions{}); err == nil {
+		t.Fatal("MarketplaceInstall should reject empty listing input")
+	}
+}
+
+func TestMarketplace_MarketplaceUpdate_Good(t *testing.T) {
+	if _, err := app.MarketplaceUpdate(context.Background(), core.New(), app.MarketplaceUpdateOptions{Root: t.TempDir(), Home: t.TempDir(), Code: "missing"}); err == nil {
+		t.Fatal("MarketplaceUpdate should fail for missing listing")
+	}
+}
+
+func TestMarketplace_MarketplaceUpdate_Bad(t *testing.T) {
+	if _, err := app.MarketplaceUpdate(context.Background(), nil, app.MarketplaceUpdateOptions{}); err == nil {
+		t.Fatal("MarketplaceUpdate should reject nil core")
+	}
+}
+
+func TestMarketplace_MarketplaceUpdate_Ugly(t *testing.T) {
+	if _, err := app.MarketplaceUpdate(context.Background(), core.New(), app.MarketplaceUpdateOptions{}); err == nil {
+		t.Fatal("MarketplaceUpdate should reject empty listing input")
+	}
+}
+
+func TestMarketplace_MarketplaceInstalled_Good(t *testing.T) {
+	if entries, err := app.MarketplaceInstalled(coreio.Local, t.TempDir()); err != nil || len(entries) != 0 {
+		t.Fatalf("MarketplaceInstalled empty home = %v,%v; want empty nil-error", entries, err)
+	}
+}
+
+func TestMarketplace_MarketplaceInstalled_Bad(t *testing.T) {
+	if _, err := app.MarketplaceInstalled(nil, ""); err == nil {
+		t.Fatal("MarketplaceInstalled should reject empty home")
+	}
+}
+
+func TestMarketplace_MarketplaceInstalled_Ugly(t *testing.T) {
+	if entries, err := app.MarketplaceInstalled(coreio.Local, core.Path(t.TempDir(), "missing")); err != nil || len(entries) != 0 {
+		t.Fatalf("MarketplaceInstalled missing apps root = %v,%v; want empty nil-error", entries, err)
 	}
 }

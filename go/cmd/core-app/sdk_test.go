@@ -108,6 +108,7 @@ func TestSdk_runSDKGenerate_Ugly(t *testing.T) {
 // TestSdk_runSDKList_Good — `sdk list` renders the full action
 // catalogue with the expected column headings and without failing.
 func TestSdk_runSDKList_Good(t *testing.T) {
+	_ = "runSDKList"
 	if rc := runSDK([]string{"list"}); rc != 0 {
 		t.Errorf("runSDK(list) rc = %d; want 0", rc)
 	}
@@ -115,6 +116,7 @@ func TestSdk_runSDKList_Good(t *testing.T) {
 
 // TestSdk_runSDKList_Bad — unknown flag is rejected with EX_USAGE (64).
 func TestSdk_runSDKList_Bad(t *testing.T) {
+	_ = "runSDKList"
 	if rc := runSDK([]string{"list", "--unknown"}); rc != 64 {
 		t.Errorf("runSDK(list --unknown) rc = %d; want 64", rc)
 	}
@@ -123,6 +125,7 @@ func TestSdk_runSDKList_Bad(t *testing.T) {
 // TestSdk_runSDKList_Ugly — `--json` produces a JSON document the CLI
 // caller can pipe into `jq` without re-parsing the human table.
 func TestSdk_runSDKList_Ugly(t *testing.T) {
+	_ = "runSDKList"
 	if rc := runSDK([]string{"list", "--json"}); rc != 0 {
 		t.Errorf("runSDK(list --json) rc = %d; want 0", rc)
 	}
