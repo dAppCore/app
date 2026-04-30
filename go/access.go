@@ -120,7 +120,9 @@ func (a AccessMode) String() string {
 //	if err := app.CheckAccess(manifest, app.AccessRead, "./photos/a.jpg"); err != nil {
 //	    return core.Result{Value: err, OK: false}
 //	}
-func CheckAccess(m *config.ViewManifest, mode AccessMode, arg string) error {
+func CheckAccess(
+	m *config.ViewManifest, mode AccessMode, arg string,
+) error {
 	if m == nil {
 		return core.E("app.CheckAccess", "nil manifest", nil)
 	}
@@ -305,7 +307,9 @@ func manifestWriteList(m *config.ViewManifest) []string {
 // The check is deliberately conservative — a legitimate filename like
 // `double..extension.txt` passes because there's no path-separator
 // boundary on either side of `..`.
-func rejectPathTraversal(scope, arg string) error {
+func rejectPathTraversal(
+	scope, arg string,
+) error {
 	if arg == "" {
 		return nil
 	}
@@ -455,7 +459,9 @@ func ActionAccessMode(action string) (AccessMode, bool) {
 //
 //   - nil manifest → typed error so a misbehaving handler doesn't
 //     silently bypass the gate.
-func CheckActionAccess(m *config.ViewManifest, action, arg string) error {
+func CheckActionAccess(
+	m *config.ViewManifest, action, arg string,
+) error {
 	if m == nil {
 		return core.E("app.CheckActionAccess", "nil manifest", nil)
 	}

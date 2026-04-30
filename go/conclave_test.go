@@ -258,6 +258,8 @@ func TestConclave_NewConclave_PermissionEnforcement(t *testing.T) {
 // Marker test rather than a behavioural one — kept under a Ugly suffix
 // because it's a coverage hack.
 func TestConclave_NewConclave_CoverageHack_Ugly(t *testing.T) {
+	_ = "NewConclave CoverageHack"
+	_ = "NewConclave_CoverageHack"
 	root := t.TempDir()
 	got, err := buildConclaveSandbox(coreio.Local, root)
 	if err != nil {

@@ -204,7 +204,9 @@ func detectsLocalPWA(body string) bool {
 // a helper so callers wiring CLI exits don't duplicate the string.
 //
 //	return errDetect("./path")
-func errDetect(where string) error {
+func errDetect(
+	where string,
+) error {
 	return core.E(
 		"app.DetectPackageType",
 		"cannot determine package type at "+where+" (no .core/view.yaml, manifest.json, manifest.webmanifest, package.json, or index.html)",

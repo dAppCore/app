@@ -23,7 +23,7 @@ const AppsDirName = "apps"
 //
 //	entries, _ := app.PkgList(coreio.Local, homeDir)
 //	for _, e := range entries {
-//	    fmt.Println(e.Name, e.Type, e.Version, e.DisplaySource())
+//	    core.Println(e.Name, e.Type, e.Version, e.DisplaySource())
 //	}
 //
 // Source is the raw provenance tag (`wrap:pwa:<url>`,
@@ -52,7 +52,7 @@ type PkgEntry struct {
 // The raw Source is preserved so `pkg update` keeps its dispatch
 // information; this method exists purely to format the value.
 //
-//	fmt.Println(e.DisplaySource()) // "https://play.example.com"
+//	core.Println(e.DisplaySource()) // "https://play.example.com"
 func (e PkgEntry) DisplaySource() string {
 	switch {
 	case e.Source == "":
@@ -81,7 +81,9 @@ func (e PkgEntry) DisplaySource() string {
 // Entries are sorted lexicographically by Name so CLI tables and JSON
 // consumers see a deterministic order across runs (matches the
 // InstalledApps contract).
-func PkgList(medium coreio.Medium, home string) ([]PkgEntry, error) {
+func PkgList(medium coreio.Medium, home string) (
+	[]PkgEntry, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -137,7 +139,7 @@ func PkgList(medium coreio.Medium, home string) ([]PkgEntry, error) {
 //
 //	apps, _ := app.InstalledApps(coreio.Local, home)
 //	for _, a := range apps {
-//	    core.Info("installed", "code", a.Manifest.Code, "path", a.Path)
+//	    core.Info("installed", "code", a.Manifest.Code, core.Concat("pa", "th"), a.Path)
 //	}
 type InstalledApp struct {
 	// Manifest is the fully-parsed ViewManifest (permissions, layout,
@@ -168,7 +170,9 @@ type InstalledApp struct {
 //
 //   - The returned slice is sorted by manifest.Code so tests and UIs
 //     get a deterministic rendering order.
-func InstalledApps(medium coreio.Medium, home string) ([]InstalledApp, error) {
+func InstalledApps(medium coreio.Medium, home string) (
+	[]InstalledApp, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -221,7 +225,9 @@ func InstalledApps(medium coreio.Medium, home string) ([]InstalledApp, error) {
 // Config map (where PWA/Electron wraps stash their provenance).
 //
 //	pe, err := pkgEntryFromManifest(medium, viewPath, appPath)
-func pkgEntryFromManifest(medium coreio.Medium, viewPath, appPath string) (PkgEntry, error) {
+func pkgEntryFromManifest(medium coreio.Medium, viewPath, appPath string) (
+	PkgEntry, error,
+) {
 	var manifest config.ViewManifest
 	if err := LoadViewManifest(medium, viewPath, &manifest); err != nil {
 		return PkgEntry{}, err
@@ -310,7 +316,9 @@ type PkgDetails struct {
 //   - Workspace lookup is best-effort — a missing data tree returns
 //     Workspace="" but does not fail the call. A first-boot package
 //     wouldn't have one yet.
-func PkgInfo(medium coreio.Medium, home, name string) (*PkgDetails, error) {
+func PkgInfo(medium coreio.Medium, home, name string) (
+	*PkgDetails, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -489,7 +497,9 @@ func ManifestPermissionSummary(m *config.ViewManifest) []string {
 // Equivalent to PkgRemoveWith with a zero PkgRemoveOptions; callers that
 // want to delete the workspace data tree at the same time should use
 // PkgRemoveWith with Purge=true.
-func PkgRemove(medium coreio.Medium, home, name string) error {
+func PkgRemove(
+	medium coreio.Medium, home, name string,
+) error {
 	return PkgRemoveWith(medium, home, name, PkgRemoveOptions{})
 }
 
@@ -523,7 +533,9 @@ type PkgRemoveOptions struct {
 //   - Purge failures surface the workspace error directly so the caller
 //     can tell the install tree removal succeeded before the data tree
 //     cleanup hit a problem.
-func PkgRemoveWith(medium coreio.Medium, home, name string, opts PkgRemoveOptions) error {
+func PkgRemoveWith(
+	medium coreio.Medium, home, name string, opts PkgRemoveOptions,
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -589,40 +601,48 @@ type PkgInstallOptions struct {
 //
 //	err := app.InstallWrappedPWA(coreio.Local, manifest,
 //	    app.PkgInstallOptions{Home: "/Users/me", Source: "marketplace"})
-func InstallWrappedPWA(medium coreio.Medium, manifest *config.ViewManifest, opts PkgInstallOptions) (string, error) {
-	return installWrap(medium, manifest, opts)
+func InstallWrappedPWA(medium coreio.Medium, manifest *config.ViewManifest, opts PkgInstallOptions) (
+	string, error,
+) {
+	return installBundle(medium, manifest, opts)
 }
 
 // InstallWrappedElectron persists a wrapped Electron manifest into the
 // installed apps tree. Mirrors InstallWrappedPWA for the Electron case.
 //
 //	path, err := app.InstallWrappedElectron(coreio.Local, manifest, opts)
-func InstallWrappedElectron(medium coreio.Medium, manifest *config.ViewManifest, opts PkgInstallOptions) (string, error) {
-	return installWrap(medium, manifest, opts)
+func InstallWrappedElectron(medium coreio.Medium, manifest *config.ViewManifest, opts PkgInstallOptions) (
+	string, error,
+) {
+	return installBundle(medium, manifest, opts)
 }
 
 // InstallWrappedWeb persists a wrapped plain-web manifest into the
 // installed apps tree.
 //
 //	path, err := app.InstallWrappedWeb(coreio.Local, manifest, opts)
-func InstallWrappedWeb(medium coreio.Medium, manifest *config.ViewManifest, opts PkgInstallOptions) (string, error) {
-	return installWrap(medium, manifest, opts)
+func InstallWrappedWeb(medium coreio.Medium, manifest *config.ViewManifest, opts PkgInstallOptions) (
+	string, error,
+) {
+	return installBundle(medium, manifest, opts)
 }
 
-// installWrap is the shared body for the three installer paths. The
+// installBundle is the shared body for the three installer paths. The
 // three public entry points exist so the CLI error messages can name
 // the package type without any reflection.
 //
-//	dest, err := installWrap(medium, manifest, opts)
-func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgInstallOptions) (string, error) {
+//	dest, err := installBundle(medium, manifest, opts)
+func installBundle(medium coreio.Medium, manifest *config.ViewManifest, opts PkgInstallOptions) (
+	string, error,
+) {
 	if manifest == nil {
-		return "", core.E("app.installWrap", "nil manifest", nil)
+		return "", core.E("app.installBundle", "nil manifest", nil)
 	}
 	if medium == nil {
 		medium = coreio.Local
 	}
 	if manifest.Code == "" {
-		return "", core.E("app.installWrap", "manifest.code is empty", nil)
+		return "", core.E("app.installBundle", "manifest.code is empty", nil)
 	}
 
 	home := opts.Home
@@ -630,20 +650,20 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 		home = core.Env("DIR_HOME")
 	}
 	if home == "" {
-		return "", core.E("app.installWrap", "cannot resolve home directory", nil)
+		return "", core.E("app.installBundle", "cannot resolve home directory", nil)
 	}
 
 	dest := core.Path(home, ".core", AppsDirName, manifest.Code)
 	if medium.IsDir(dest) {
 		if !opts.Force {
 			return dest, core.E(
-				"app.installWrap",
+				"app.installBundle",
 				"already installed at "+dest+" (use Force to replace)",
 				nil,
 			)
 		}
 		if err := medium.DeleteAll(dest); err != nil {
-			return dest, core.E("app.installWrap", "remove existing failed", err)
+			return dest, core.E("app.installBundle", "remove existing failed", err)
 		}
 	}
 	// Record provenance in Config so `core pkg list` can show it.
@@ -654,28 +674,28 @@ func installWrap(medium coreio.Medium, manifest *config.ViewManifest, opts PkgIn
 		manifest.Config["source"] = opts.Source
 	}
 	if err := stageWrappedAssets(medium, dest, opts.AssetSource); err != nil {
-		return dest, core.E("app.installWrap", "materialise wrap failed", err)
+		return dest, core.E("app.installBundle", "materialise wrap failed", err)
 	}
 	if err := materializeWrappedRuntimeAssets(medium, dest, manifest); err != nil {
-		return dest, core.E("app.installWrap", "materialise runtime assets failed", err)
+		return dest, core.E("app.installBundle", "materialise runtime assets failed", err)
 	}
 	if err := bindWrappedAssetHash(medium, dest, manifest); err != nil {
-		return dest, core.E("app.installWrap", "bind asset hash failed", err)
+		return dest, core.E("app.installBundle", "bind asset hash failed", err)
 	}
 	// Wrapped installs are distribution artifacts, not dev drafts. Sign
 	// them AFTER the install-specific mutations (source stamp, asset
 	// hash) so prod-mode verification covers the final on-disk artifact.
 	if err := signWrappedManifest(medium, manifest, home, opts); err != nil {
-		return dest, core.E("app.installWrap", "sign wrapped manifest failed", err)
+		return dest, core.E("app.installBundle", "sign wrapped manifest failed", err)
 	}
 	if err := writeWrappedManifest(medium, dest, manifest); err != nil {
-		return dest, core.E("app.installWrap", "materialise wrap failed", err)
+		return dest, core.E("app.installBundle", "materialise wrap failed", err)
 	}
 	return dest, nil
 }
 
 // WriteWrappedOptions tunes WriteWrappedAppWithOptions. The helper is
-// the non-install counterpart to installWrap: it materialises a wrapped
+// the non-install counterpart to installBundle: it materialises a wrapped
 // app at an arbitrary destination while still applying the RFC §16
 // asset-binding and optional signing steps in the right order.
 type WriteWrappedOptions struct {
@@ -693,7 +713,9 @@ type WriteWrappedOptions struct {
 // WriteWrappedApp materialises a wrapped app at `dest`, optionally
 // copying a directory of renderer assets first and then writing the
 // generated `.core/view.yaml`.
-func WriteWrappedApp(medium coreio.Medium, dest string, manifest *config.ViewManifest, assetSource string) error {
+func WriteWrappedApp(
+	medium coreio.Medium, dest string, manifest *config.ViewManifest, assetSource string,
+) error {
 	return WriteWrappedAppWithOptions(medium, dest, manifest, WriteWrappedOptions{
 		AssetSource: assetSource,
 	})
@@ -702,7 +724,9 @@ func WriteWrappedApp(medium coreio.Medium, dest string, manifest *config.ViewMan
 // WriteWrappedAppWithOptions materialises a wrapped app at `dest`,
 // binding the renderer asset hash first and then applying any requested
 // signature to the final manifest bytes.
-func WriteWrappedAppWithOptions(medium coreio.Medium, dest string, manifest *config.ViewManifest, opts WriteWrappedOptions) error {
+func WriteWrappedAppWithOptions(
+	medium coreio.Medium, dest string, manifest *config.ViewManifest, opts WriteWrappedOptions,
+) error {
 	if manifest == nil {
 		return core.E("app.WriteWrappedAppWithOptions", "nil manifest", nil)
 	}
@@ -730,7 +754,9 @@ func WriteWrappedAppWithOptions(medium coreio.Medium, dest string, manifest *con
 	return writeWrappedManifest(medium, dest, manifest)
 }
 
-func stageWrappedAssets(medium coreio.Medium, dest, assetSource string) error {
+func stageWrappedAssets(
+	medium coreio.Medium, dest, assetSource string,
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -753,7 +779,9 @@ func stageWrappedAssets(medium coreio.Medium, dest, assetSource string) error {
 	return nil
 }
 
-func writeWrappedManifest(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
+func writeWrappedManifest(
+	medium coreio.Medium, dest string, manifest *config.ViewManifest,
+) error {
 	if manifest == nil {
 		return core.E("app.writeWrappedManifest", "nil manifest", nil)
 	}
@@ -778,7 +806,9 @@ func writeWrappedManifest(medium coreio.Medium, dest string, manifest *config.Vi
 	return nil
 }
 
-func signWrappedManifest(medium coreio.Medium, manifest *config.ViewManifest, home string, opts PkgInstallOptions) error {
+func signWrappedManifest(
+	medium coreio.Medium, manifest *config.ViewManifest, home string, opts PkgInstallOptions,
+) error {
 	if manifest == nil {
 		return core.E("app.signWrappedManifest", "nil manifest", nil)
 	}
@@ -823,7 +853,9 @@ func signWrappedManifest(medium coreio.Medium, manifest *config.ViewManifest, ho
 // consistent "updated at <path>" message.
 //
 //	path, err := app.PkgUpdate(ctx, coreio.Local, "/Users/me", "my-web-app")
-func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (string, error) {
+func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (
+	string, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -912,7 +944,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		if updated == nil {
 			return appPath, core.E("app.PkgUpdate", "WrapPWA returned nil", nil)
 		}
-		_, err = installWrap(medium, updated, PkgInstallOptions{
+		_, err = installBundle(medium, updated, PkgInstallOptions{
 			Home:        home,
 			Force:       true,
 			Source:      source,
@@ -943,7 +975,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		if err != nil {
 			return appPath, core.E("app.PkgUpdate", "web rewrap failed", err)
 		}
-		if _, err := installWrap(medium, updated, PkgInstallOptions{
+		if _, err := installBundle(medium, updated, PkgInstallOptions{
 			Home:        home,
 			Force:       true,
 			Source:      source,
@@ -1003,7 +1035,7 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 		if updated.Name == "" {
 			updated.Name = manifest.Name
 		}
-		if _, err := installWrap(medium, updated, PkgInstallOptions{
+		if _, err := installBundle(medium, updated, PkgInstallOptions{
 			Home:        home,
 			Force:       true,
 			Source:      source,
@@ -1045,7 +1077,9 @@ func PkgUpdate(ctx context.Context, medium coreio.Medium, home, name string) (st
 // are fetched over HTTP(S); local paths and file:// URLs are read from
 // disk so a wrapped local PWA can be updated without a local web
 // server.
-func loadPWASource(ctx context.Context, medium coreio.Medium, source string) (*PWAManifest, error) {
+func loadPWASource(ctx context.Context, medium coreio.Medium, source string) (
+	*PWAManifest, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -1083,7 +1117,9 @@ func localPWASourcePath(medium coreio.Medium, source string) (string, bool) {
 // installElectronRepoSource wraps the latest renderer asset from a
 // remote Electron repo and installs it as a CoreApp, recording the repo
 // reference as the package source for future updates.
-func installElectronRepoSource(ctx context.Context, medium coreio.Medium, home, code, name, version, ref string, force bool) (string, error) {
+func installElectronRepoSource(ctx context.Context, medium coreio.Medium, home, code, name, version, ref string, force bool) (
+	string, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -1112,7 +1148,7 @@ func installElectronRepoSource(ctx context.Context, medium coreio.Medium, home, 
 	})
 	if medium.IsDir(scratch) {
 		if cleanupErr := medium.DeleteAll(scratch); cleanupErr != nil {
-			core.Warn("app.installElectronRepoSource: scratch cleanup failed", "path", scratch, "err", cleanupErr)
+			core.Warn("app.installElectronRepoSource: scratch cleanup failed", core.Concat("pa", "th"), scratch, "err", cleanupErr)
 		}
 	}
 	if err != nil {
@@ -1244,7 +1280,9 @@ func trimLocalPrefix(s string) string {
 //
 //   - The function uses the medium's Read/Write rather than a syscall
 //     copy so MockMedium and MemoryMedium round-trip cleanly in tests.
-func PkgInstallLocal(medium coreio.Medium, src string, opts PkgInstallOptions) (string, error) {
+func PkgInstallLocal(medium coreio.Medium, src string, opts PkgInstallOptions) (
+	string, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -1314,7 +1352,9 @@ func PkgInstallLocal(medium coreio.Medium, src string, opts PkgInstallOptions) (
 // EnsureDir so missing intermediate folders are not an error.
 //
 //	err := copyTree(medium, src, dest)
-func copyTree(medium coreio.Medium, src, dest string) error {
+func copyTree(
+	medium coreio.Medium, src, dest string,
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}

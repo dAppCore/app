@@ -58,7 +58,9 @@ type GitHubRelease struct {
 //
 //   - The function never downloads asset bodies — call DownloadAsset
 //     for each renderer asset you actually need.
-func FetchElectronRelease(ctx context.Context, host, owner, repo string) (*GitHubRelease, error) {
+func FetchElectronRelease(ctx context.Context, host, owner, repo string) (
+	*GitHubRelease, error,
+) {
 	if owner == "" || repo == "" {
 		return nil, core.E("app.FetchElectronRelease", "owner and repo are required", nil)
 	}
@@ -74,7 +76,9 @@ func FetchElectronRelease(ctx context.Context, host, owner, repo string) (*GitHu
 // by callers needing to override the API host.
 //
 //	rel, err := app.FetchElectronReleaseURL(ctx, srv.URL+"/rel.json")
-func FetchElectronReleaseURL(ctx context.Context, url string) (*GitHubRelease, error) {
+func FetchElectronReleaseURL(ctx context.Context, url string) (
+	*GitHubRelease, error,
+) {
 	if url == "" {
 		return nil, core.E("app.FetchElectronReleaseURL", "empty URL", nil)
 	}
@@ -199,7 +203,9 @@ func hasPlatformMarker(low string) bool {
 //
 //   - The function streams the body via io.Copy so multi-MB renderer
 //     bundles do not balloon memory.
-func DownloadAsset(ctx context.Context, medium coreio.Medium, asset GitHubAsset, dir string) (string, error) {
+func DownloadAsset(ctx context.Context, medium coreio.Medium, asset GitHubAsset, dir string) (
+	string, error,
+) {
 	if asset.DownloadURL == "" {
 		return "", core.E("app.DownloadAsset", "empty asset URL", nil)
 	}

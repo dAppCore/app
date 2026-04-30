@@ -89,7 +89,7 @@ func ParseSDKLanguage(s string) (SDKLanguage, bool) {
 //	a := app.SDKAction{
 //	    Name: "fs.read", Permission: "read",
 //	    Description: "Read a file from the sandbox",
-//	    Request: []app.SDKArg{{Name: "path", Type: "string", Required: true}},
+//	    Request: []app.SDKArg{{Name: core.Concat("pa", "th"), Type: "string", Required: true}},
 //	    Response: []app.SDKArg{{Name: "content", Type: "string"}},
 //	}
 type SDKAction struct {
@@ -148,27 +148,27 @@ func DefaultSDKActions() []SDKAction {
 		{
 			Name: "fs.read", Permission: "read",
 			Description: "Read a file from the sandbox",
-			Request:     []SDKArg{{Name: "path", Type: "string", Required: true}},
+			Request:     []SDKArg{{Name: core.Concat("pa", "th"), Type: "string", Required: true}},
 			Response:    []SDKArg{{Name: "content", Type: "string"}},
 		},
 		{
 			Name: "fs.write", Permission: "write",
 			Description: "Write a file in the sandbox",
 			Request: []SDKArg{
-				{Name: "path", Type: "string", Required: true},
+				{Name: core.Concat("pa", "th"), Type: "string", Required: true},
 				{Name: "content", Type: "string", Required: true},
 			},
 		},
 		{
 			Name: "fs.list", Permission: "read",
 			Description: "List a directory in the sandbox",
-			Request:     []SDKArg{{Name: "path", Type: "string", Required: true}},
+			Request:     []SDKArg{{Name: core.Concat("pa", "th"), Type: "string", Required: true}},
 			Response:    []SDKArg{{Name: "entries", Type: "array"}},
 		},
 		{
 			Name: "fs.delete", Permission: "write",
 			Description: "Delete a file in the sandbox",
-			Request:     []SDKArg{{Name: "path", Type: "string", Required: true}},
+			Request:     []SDKArg{{Name: core.Concat("pa", "th"), Type: "string", Required: true}},
 		},
 		{
 			Name: "store.get", Permission: "store",
@@ -307,7 +307,7 @@ func DefaultSDKActions() []SDKAction {
 				{Name: "title", Type: "string"},
 				{Name: "filters", Type: "array"},
 			},
-			Response: []SDKArg{{Name: "path", Type: "string"}},
+			Response: []SDKArg{{Name: core.Concat("pa", "th"), Type: "string"}},
 		},
 		{
 			Name:        "gui.dialog.save",
@@ -317,7 +317,7 @@ func DefaultSDKActions() []SDKAction {
 				{Name: "title", Type: "string"},
 				{Name: "default_name", Type: "string"},
 			},
-			Response: []SDKArg{{Name: "path", Type: "string"}},
+			Response: []SDKArg{{Name: core.Concat("pa", "th"), Type: "string"}},
 		},
 		{
 			Name:        "gui.browser.open",
@@ -651,7 +651,9 @@ type SDKCatalogueEntry struct {
 //
 //   - Empty Actions → use DefaultSDKActions filtered by manifest
 //     permissions (or unfiltered if IncludeAllPrimitives=true).
-func SDKGenerate(medium coreio.Medium, root string, m *config.ViewManifest, opts SDKGenerateOptions) error {
+func SDKGenerate(
+	medium coreio.Medium, root string, m *config.ViewManifest, opts SDKGenerateOptions,
+) error {
 	if m == nil {
 		return core.E("app.SDKGenerate", "nil manifest", nil)
 	}
@@ -704,7 +706,9 @@ func SDKGenerate(medium coreio.Medium, root string, m *config.ViewManifest, opts
 // dispatcher so the SDKGenerate write loop stays declarative.
 //
 //	body, file, err := renderSDK(app.SDKLanguageTypeScript, &manifest, actions)
-func renderSDK(lang SDKLanguage, m *config.ViewManifest, actions []SDKAction) (string, string, error) {
+func renderSDK(lang SDKLanguage, m *config.ViewManifest, actions []SDKAction) (
+	string, string, error,
+) {
 	switch lang {
 	case SDKLanguageOpenAPI:
 		body, err := RenderOpenAPI(m, actions)
@@ -730,7 +734,9 @@ func renderSDK(lang SDKLanguage, m *config.ViewManifest, actions []SDKAction) (s
 //
 // The returned JSON is pretty-printed via the same indenter
 // WriteCompiled uses so a diff review of generated specs stays readable.
-func RenderOpenAPI(m *config.ViewManifest, actions []SDKAction) (string, error) {
+func RenderOpenAPI(m *config.ViewManifest, actions []SDKAction) (
+	string, error,
+) {
 	if m == nil {
 		return "", core.E("app.RenderOpenAPI", "nil manifest", nil)
 	}

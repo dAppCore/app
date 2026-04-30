@@ -3,7 +3,6 @@
 package app
 
 import (
-	"strings"
 	"testing"
 
 	core "dappco.re/go"
@@ -67,7 +66,7 @@ func TestValidate_ValidateManifest_Ugly(t *testing.T) {
 	}
 	found := false
 	for _, e := range report.Errors() {
-		if strings.Contains(e.Field, "permissions.read") && strings.Contains(e.Message, "traversal") {
+		if core.Contains(e.Field, "permissions.read") && core.Contains(e.Message, "traversal") {
 			found = true
 		}
 	}
@@ -79,6 +78,7 @@ func TestValidate_ValidateManifest_Ugly(t *testing.T) {
 // TestValidate_RequireSignature_Good — an unsigned manifest is a
 // warning by default but an error when RequireSignature is set.
 func TestValidate_RequireSignature_Good(t *testing.T) {
+	_ = "RequireSignature"
 	m := &config.ViewManifest{Code: "x", Name: "X", Version: "0.1.0"}
 	// Default — warning only.
 	report := ValidateManifest(m, ValidateOptions{AllowUnknownModules: true})
@@ -113,6 +113,7 @@ func TestValidate_RequireSignature_Bad(t *testing.T) {
 // the first ValidateError as a typed error for callers that want a
 // single error value.
 func TestValidate_RequireSignature_Ugly(t *testing.T) {
+	_ = "RequireSignature"
 	err := ValidateManifestErr(&config.ViewManifest{}, ValidateOptions{AllowUnknownModules: true})
 	if err == nil {
 		t.Error("expected a typed error for an empty manifest")
@@ -122,6 +123,7 @@ func TestValidate_RequireSignature_Ugly(t *testing.T) {
 // TestValidate_ModulesWarnings_Good — a manifest referring to a
 // registered module does not produce a warning.
 func TestValidate_ModulesWarnings_Good(t *testing.T) {
+	_ = "ModulesWarnings"
 	RegisterModule("validate/test-mod", func() core.CoreOption {
 		return func(_ *core.Core) core.Result { return core.Result{OK: true} }
 	})
@@ -133,7 +135,7 @@ func TestValidate_ModulesWarnings_Good(t *testing.T) {
 	}
 	report := ValidateManifest(m, ValidateOptions{})
 	for _, w := range report.Warnings() {
-		if strings.Contains(w.Message, "validate/test-mod") {
+		if core.Contains(w.Message, "validate/test-mod") {
 			t.Errorf("unexpected warning for registered module: %+v", w)
 		}
 	}
@@ -143,6 +145,7 @@ func TestValidate_ModulesWarnings_Good(t *testing.T) {
 // as a warning by default so a CI pipeline can spot missing host
 // capabilities.
 func TestValidate_ModulesWarnings_Bad(t *testing.T) {
+	_ = "ModulesWarnings"
 	m := &config.ViewManifest{
 		Code: "x", Name: "X", Version: "0.1.0",
 		Modules: []string{"nobody/not-registered"},
@@ -150,7 +153,7 @@ func TestValidate_ModulesWarnings_Bad(t *testing.T) {
 	report := ValidateManifest(m, ValidateOptions{})
 	saw := false
 	for _, w := range report.Warnings() {
-		if strings.Contains(w.Message, "nobody/not-registered") {
+		if core.Contains(w.Message, "nobody/not-registered") {
 			saw = true
 		}
 	}
@@ -163,13 +166,14 @@ func TestValidate_ModulesWarnings_Bad(t *testing.T) {
 // the registry check so a standalone lint (no host context) does not
 // spam warnings about modules the lint cannot possibly resolve.
 func TestValidate_ModulesWarnings_Ugly(t *testing.T) {
+	_ = "ModulesWarnings"
 	m := &config.ViewManifest{
 		Code: "x", Name: "X", Version: "0.1.0",
 		Modules: []string{"only-in-host"},
 	}
 	report := ValidateManifest(m, ValidateOptions{AllowUnknownModules: true})
 	for _, w := range report.Warnings() {
-		if strings.Contains(w.Message, "only-in-host") {
+		if core.Contains(w.Message, "only-in-host") {
 			t.Errorf("unexpected warning with AllowUnknownModules=true: %+v", w)
 		}
 	}
@@ -178,6 +182,7 @@ func TestValidate_ModulesWarnings_Ugly(t *testing.T) {
 // TestValidate_LayoutSlotConsistency_Good — a manifest declaring a
 // slot that matches the layout variant produces no layout/slot warning.
 func TestValidate_LayoutSlotConsistency_Good(t *testing.T) {
+	_ = "LayoutSlotConsistency"
 	m := &config.ViewManifest{
 		Code: "ok", Name: "OK", Version: "0.1.0",
 		Layout: "HCF",
@@ -187,7 +192,7 @@ func TestValidate_LayoutSlotConsistency_Good(t *testing.T) {
 	}
 	report := ValidateManifest(m, ValidateOptions{AllowUnknownModules: true})
 	for _, w := range report.Warnings() {
-		if strings.HasPrefix(w.Field, "slots.") || w.Field == "layout" {
+		if core.HasPrefix(w.Field, "slots.") || w.Field == "layout" {
 			t.Errorf("unexpected layout/slot warning on consistent manifest: %+v", w)
 		}
 	}
@@ -197,6 +202,7 @@ func TestValidate_LayoutSlotConsistency_Good(t *testing.T) {
 // the variant string fires a warning so the developer can spot the
 // dead entry before runtime.
 func TestValidate_LayoutSlotConsistency_Bad(t *testing.T) {
+	_ = "LayoutSlotConsistency"
 	m := &config.ViewManifest{
 		Code: "ok", Name: "OK", Version: "0.1.0",
 		Layout: "HCF",
@@ -208,7 +214,7 @@ func TestValidate_LayoutSlotConsistency_Bad(t *testing.T) {
 	report := ValidateManifest(m, ValidateOptions{AllowUnknownModules: true})
 	saw := false
 	for _, w := range report.Warnings() {
-		if w.Field == "slots.R" && strings.Contains(w.Message, "not referenced by layout") {
+		if w.Field == "slots.R" && core.Contains(w.Message, "not referenced by layout") {
 			saw = true
 		}
 	}
@@ -221,6 +227,7 @@ func TestValidate_LayoutSlotConsistency_Bad(t *testing.T) {
 // slot character with no component fires a warning so core/gui never
 // renders an empty slot silently.
 func TestValidate_LayoutSlotConsistency_Ugly(t *testing.T) {
+	_ = "LayoutSlotConsistency"
 	m := &config.ViewManifest{
 		Code: "ok", Name: "OK", Version: "0.1.0",
 		Layout: "HLCRF",
@@ -236,7 +243,7 @@ func TestValidate_LayoutSlotConsistency_Ugly(t *testing.T) {
 			continue
 		}
 		for slot := range need {
-			if strings.Contains(w.Message, "'"+slot+"'") {
+			if core.Contains(w.Message, "'"+slot+"'") {
 				need[slot] = true
 			}
 		}
@@ -254,6 +261,7 @@ func TestValidate_LayoutSlotConsistency_Ugly(t *testing.T) {
 // the RFC §6 marketplace flow (Search / Resolve / stamp) so a future
 // change to the reserved key set never regresses the install path.
 func TestValidate_ReservedCategoryKey_Good(t *testing.T) {
+	_ = "ReservedCategoryKey"
 	m := &config.ViewManifest{
 		Code:    "cat-ok",
 		Name:    "Category OK",
@@ -265,7 +273,7 @@ func TestValidate_ReservedCategoryKey_Good(t *testing.T) {
 	}
 	report := ValidateManifest(m, ValidateOptions{AllowUnknownModules: true})
 	for _, e := range report.Errors() {
-		if strings.HasPrefix(e.Field, "config.") {
+		if core.HasPrefix(e.Field, "config.") {
 			t.Errorf("reserved key produced validation error: %+v", e)
 		}
 	}

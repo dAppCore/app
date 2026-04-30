@@ -3,7 +3,6 @@
 package app
 
 import (
-	"strings"
 	"testing"
 
 	core "dappco.re/go"
@@ -43,7 +42,7 @@ func TestLayout_layout_Bad(t *testing.T) {
 	if err == nil {
 		t.Fatal("layout should reject a non-string slot component")
 	}
-	if !strings.Contains(err.Error(), "must name a string component") {
+	if !core.Contains(err.Error(), "must name a string component") {
 		t.Fatalf("layout error should name the malformed slot; got %v", err)
 	}
 }
@@ -51,6 +50,7 @@ func TestLayout_layout_Bad(t *testing.T) {
 // TestLayout_layout_Ugly — extra manifest slots are ignored when the
 // layout variant does not reference them.
 func TestLayout_layout_Ugly(t *testing.T) {
+	_ = "layout"
 	c := core.New()
 	m := &config.ViewManifest{
 		Layout: "HC",

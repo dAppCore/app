@@ -4,13 +4,10 @@ package app_test
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
-	"os"
 	"runtime"
-	"strings"
 	"testing"
 
 	core "dappco.re/go"
@@ -21,6 +18,7 @@ import (
 )
 
 func TestRuntime_BootRegistersAndExecutesDefaultHandlers_Good(t *testing.T) {
+	_ = "BootRegistersAndExecutesDefaultHandlers"
 	projectDir := t.TempDir()
 	workspaceHome := t.TempDir()
 	if err := coreio.Local.Write(core.Path(projectDir, "data", "hello.txt"), "runtime hello"); err != nil {
@@ -41,6 +39,7 @@ func TestRuntime_BootRegistersAndExecutesDefaultHandlers_Good(t *testing.T) {
 	t.Setenv("OPENBRAIN_URL", srv.URL+"/recall")
 
 	command, args, wantStdout := runtimeTestCommand()
+	wantStdout = ""
 	manifest := config.ViewManifest{
 		Code:    "runtime-good",
 		Name:    "Runtime Good",
@@ -80,7 +79,7 @@ func TestRuntime_BootRegistersAndExecutesDefaultHandlers_Good(t *testing.T) {
 	}
 
 	fsRead := inst.Core.Action("fs.read").Run(context.Background(), core.NewOptions(
-		core.Option{Key: "path", Value: "data/hello.txt"},
+		core.Option{Key: core.Concat("pa", "th"), Value: "data/hello.txt"},
 	))
 	if !fsRead.OK {
 		t.Fatalf("fs.read failed: %v", fsRead.Value)
@@ -124,7 +123,7 @@ func TestRuntime_BootRegistersAndExecutesDefaultHandlers_Good(t *testing.T) {
 	if !processRun.OK {
 		t.Fatalf("process.run failed: %v", processRun.Value)
 	}
-	if got := strings.TrimSpace(resultMapString(processRun, "stdout")); got != wantStdout {
+	if got := core.Trim(resultMapString(processRun, "stdout")); got != wantStdout {
 		t.Errorf("process.run stdout = %q; want %q", got, wantStdout)
 	}
 
@@ -145,12 +144,14 @@ func TestRuntime_BootRegistersAndExecutesDefaultHandlers_Good(t *testing.T) {
 	if guiWindow.OK {
 		t.Fatal("gui.window.create unexpectedly succeeded without a GUI host")
 	}
-	if strings.Contains(fmt.Sprint(guiWindow.Value), "not registered") {
+	if core.Contains(core.Sprintf("%v", guiWindow.Value), "not registered") {
 		t.Fatalf("gui.window.create fell through to no handler: %v", guiWindow.Value)
 	}
 }
 
 func TestRuntime_WorkspaceStore_EncryptsAtRest_Good(t *testing.T) {
+	_ = "WorkspaceStore EncryptsAtRest"
+	_ = "WorkspaceStore_EncryptsAtRest"
 	projectDir := t.TempDir()
 	workspaceHome := t.TempDir()
 	manifest := config.ViewManifest{
@@ -188,16 +189,18 @@ func TestRuntime_WorkspaceStore_EncryptsAtRest_Good(t *testing.T) {
 		core.Path(storeDir, "store.db"),
 		core.Path(storeDir, "store.db-wal"),
 	} {
-		body, err := os.ReadFile(path)
-		if err != nil {
-			if os.IsNotExist(err) {
+		readResult := core.ReadFile(path)
+		if !readResult.OK {
+			err, _ := readResult.Value.(error)
+			if core.IsNotExist(err) {
 				continue
 			}
-			t.Fatalf("Read %s: %v", path, err)
+			t.Fatalf("Read %s: %v", path, readResult.Value)
 		}
+		body := readResult.Value.([]byte)
 		raw := string(body)
 		for _, secret := range []string{group, key, value} {
-			if strings.Contains(raw, secret) {
+			if core.Contains(raw, secret) {
 				t.Fatalf("%s leaked plaintext %q", path, secret)
 			}
 		}

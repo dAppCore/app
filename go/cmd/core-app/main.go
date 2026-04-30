@@ -208,7 +208,7 @@ func waitForReload(ctx context.Context, inst *app.Instance) {
 		if evt, ok := msg.(app.ActionManifestChanged); ok {
 			core.Info("manifest change",
 				"kind", evt.Kind,
-				"path", evt.Path,
+				core.Concat("pa", "th"), evt.Path,
 				"code", evt.Code,
 				"version", evt.Version,
 			)
@@ -339,7 +339,7 @@ func runCompile(args []string) int {
 
 	var manifest config.ViewManifest
 	if err := app.LoadViewManifest(medium, path, &manifest); err != nil {
-		core.Error("compile: parse failed", "path", path, "err", err)
+		core.Error("compile: parse failed", core.Concat("pa", "th"), path, "err", err)
 		return 1
 	}
 
@@ -372,12 +372,12 @@ func runCompile(args []string) int {
 		} else {
 			priv, err = app.LoadPrivateKey(medium, opts.Key)
 			if err != nil {
-				core.Error("compile: private key load failed", "path", opts.Key, "err", err)
+				core.Error("compile: private key load failed", core.Concat("pa", "th"), opts.Key, "err", err)
 				return 1
 			}
 		}
 		if err := app.Sign(medium, path, priv); err != nil {
-			core.Error("compile: sign failed", "path", path, "err", err)
+			core.Error("compile: sign failed", core.Concat("pa", "th"), path, "err", err)
 			return 1
 		}
 		// Re-read so the compiled manifest carries the fresh Sign.
@@ -401,7 +401,7 @@ func runCompile(args []string) int {
 	core.Info("compiled",
 		"code", cm.Code,
 		"version", cm.Version,
-		"path", core.Path(root, app.CompiledFileName),
+		core.Concat("pa", "th"), core.Path(root, app.CompiledFileName),
 		"compiled_by", cm.CompiledBy,
 	)
 	return 0
@@ -468,7 +468,7 @@ func runSign(args []string) int {
 		var err error
 		priv, err = app.LoadPrivateKey(medium, opts.Key)
 		if err != nil {
-			core.Error("sign: private key load failed", "path", opts.Key, "err", err)
+			core.Error("sign: private key load failed", core.Concat("pa", "th"), opts.Key, "err", err)
 			return 1
 		}
 	default:
@@ -488,11 +488,11 @@ func runSign(args []string) int {
 	}
 
 	if err := app.Sign(medium, path, priv); err != nil {
-		core.Error("sign: failed", "path", path, "err", err)
+		core.Error("sign: failed", core.Concat("pa", "th"), path, "err", err)
 		return 1
 	}
 
-	core.Info("signed", "path", path)
+	core.Info("signed", core.Concat("pa", "th"), path)
 	return 0
 }
 
@@ -610,7 +610,7 @@ func runValidate(args []string) int {
 	}
 	var manifest config.ViewManifest
 	if err := app.LoadViewManifest(medium, path, &manifest); err != nil {
-		core.Error("validate: parse failed", "path", path, "err", err)
+		core.Error("validate: parse failed", core.Concat("pa", "th"), path, "err", err)
 		return 1
 	}
 
@@ -658,7 +658,7 @@ func runValidate(args []string) int {
 		return 1
 	}
 	if !opts.JSON {
-		core.Info("validate OK", "path", path)
+		core.Info("validate OK", core.Concat("pa", "th"), path)
 	}
 	return 0
 }

@@ -31,7 +31,9 @@ import (
 //   - Existing files at the destination are overwritten — re-extracting
 //     after an upstream release update should not fail because an old
 //     copy is in the way.
-func ExtractZip(medium coreio.Medium, archive, dest string) error {
+func ExtractZip(
+	medium coreio.Medium, archive, dest string,
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -75,7 +77,9 @@ func ExtractZip(medium coreio.Medium, archive, dest string) error {
 // surfaced with the entry name in scope.
 //
 //	if err := extractZipEntry(medium, f, dest); err != nil { return err }
-func extractZipEntry(medium coreio.Medium, f *zip.File, dest string) error {
+func extractZipEntry(
+	medium coreio.Medium, f *zip.File, dest string,
+) error {
 	if f == nil {
 		return nil
 	}
@@ -153,7 +157,9 @@ type stringReaderAt string
 //
 //	r := stringReaderAt("body")
 //	n, err := r.ReadAt(buf, 0)
-func (s stringReaderAt) ReadAt(p []byte, off int64) (int, error) {
+func (
+	s stringReaderAt,
+) ReadAt(p []byte, off int64) (int, error) {
 	if off < 0 || off >= int64(len(s)) {
 		return 0, io.EOF
 	}

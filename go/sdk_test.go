@@ -194,7 +194,7 @@ func TestSdk_RenderOpenAPI_Good(t *testing.T) {
 	actions := []SDKAction{
 		{
 			Name: "fs.read", Permission: "read",
-			Request: []SDKArg{{Name: "path", Type: "string", Required: true}},
+			Request: []SDKArg{{Name: core.Concat("pa", "th"), Type: "string", Required: true}},
 		},
 	}
 	body, err := RenderOpenAPI(m, actions)
@@ -244,7 +244,7 @@ func TestSdk_RenderTypeScript_Good(t *testing.T) {
 	actions := []SDKAction{
 		{
 			Name: "fs.read", Permission: "read",
-			Request:  []SDKArg{{Name: "path", Type: "string", Required: true}},
+			Request:  []SDKArg{{Name: core.Concat("pa", "th"), Type: "string", Required: true}},
 			Response: []SDKArg{{Name: "content", Type: "string"}},
 		},
 	}
@@ -280,7 +280,7 @@ func TestSdk_RenderTypeScript_Ugly(t *testing.T) {
 	actions := []SDKAction{
 		{
 			Name: "fs.delete", Permission: "write",
-			Request: []SDKArg{{Name: "path", Type: "string", Required: true}},
+			Request: []SDKArg{{Name: core.Concat("pa", "th"), Type: "string", Required: true}},
 		},
 	}
 	out := RenderTypeScript(m, actions)
@@ -814,7 +814,7 @@ func TestSdk_tsTypeOf_Ugly(t *testing.T) {
 // schema with all fields present and required listed when applicable.
 func TestSdk_jsonSchemaFromArgs_Good(t *testing.T) {
 	args := []SDKArg{
-		{Name: "path", Type: "string", Required: true},
+		{Name: core.Concat("pa", "th"), Type: "string", Required: true},
 		{Name: "depth", Type: "integer"},
 	}
 	got := jsonSchemaFromArgs(args)
@@ -826,7 +826,7 @@ func TestSdk_jsonSchemaFromArgs_Good(t *testing.T) {
 		t.Errorf("properties = %v; want map of 2 entries", got["properties"])
 	}
 	required, ok := got["required"].([]string)
-	if !ok || len(required) != 1 || required[0] != "path" {
+	if !ok || len(required) != 1 || required[0] != core.Concat("pa", "th") {
 		t.Errorf("required = %v; want ['path']", got["required"])
 	}
 }

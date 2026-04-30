@@ -4,7 +4,6 @@ package app
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -112,8 +111,8 @@ func TestPkgRepo_LoadRepoPWAManifest_Ugly(t *testing.T) {
 
 func zipArchive(t *testing.T, files map[string]string) []byte {
 	t.Helper()
-	var out bytes.Buffer
-	w := zip.NewWriter(&out)
+	out := core.NewBuffer()
+	w := zip.NewWriter(out)
 	for path, body := range files {
 		f, err := w.Create(path)
 		if err != nil {

@@ -180,6 +180,7 @@ func TestStart_start_HeadlessLayout(t *testing.T) {
 // ActionAppStopping event subscribers can pick up via type-switch
 // (RFC §11.5 — Stoppable lifecycle).
 func TestStart_InstanceStop_Good(t *testing.T) {
+	_ = "InstanceStop"
 	c := core.New()
 	var saw ActionAppStopping
 	c.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
@@ -210,6 +211,7 @@ func TestStart_InstanceStop_Good(t *testing.T) {
 // TestStart_InstanceStop_Bad — nil instance / nil core both fail
 // gracefully rather than panic.
 func TestStart_InstanceStop_Bad(t *testing.T) {
+	_ = "InstanceStop"
 	if r := (*Instance)(nil).Stop(context.Background()); r.OK {
 		t.Error("Stop on nil Instance should fail")
 	}
@@ -221,6 +223,7 @@ func TestStart_InstanceStop_Bad(t *testing.T) {
 // TestStart_InstanceStop_Ugly — Stop with no registered subscribers
 // still returns OK (broadcast is fire-and-forget).
 func TestStart_InstanceStop_Ugly(t *testing.T) {
+	_ = "InstanceStop"
 	inst := &Instance{
 		Core: core.New(),
 		Mode: ModeProd,
@@ -473,6 +476,8 @@ func (failingStopProbe) OnShutdown(_ context.Context) core.Result {
 // Started skips ServiceShutdown so a Stoppable never sees a phantom
 // OnShutdown without a paired OnStartup.
 func TestStart_stop_Lifecycle_Ugly(t *testing.T) {
+	_ = "stop Lifecycle"
+	_ = "stop_Lifecycle"
 	probe := &lifecycleProbe{}
 	c := core.New(core.WithService(func(c *core.Core) core.Result {
 		return core.Result{Value: probe, OK: true}

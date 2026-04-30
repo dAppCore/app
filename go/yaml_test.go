@@ -3,8 +3,9 @@
 package app
 
 import (
-	"strings"
 	"testing"
+
+	core "dappco.re/go"
 
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
@@ -298,7 +299,7 @@ func TestYaml_yamlMarshalBytes_Good_RFCCompat(t *testing.T) {
 		"config:",
 		"source: wrap:pwa:https://play.example.com",
 	} {
-		if !strings.Contains(out, want) {
+		if !core.Contains(out, want) {
 			t.Errorf("yaml output missing %q:\n%s", want, out)
 		}
 	}
@@ -338,7 +339,7 @@ func TestYaml_yamlMarshalBytes_Good_DeviceGates(t *testing.T) {
 		"device.location: true",
 		"- ffmpeg",
 	} {
-		if !strings.Contains(out, want) {
+		if !core.Contains(out, want) {
 			t.Errorf("yaml output missing %q:\n%s", want, out)
 		}
 	}
@@ -347,7 +348,7 @@ func TestYaml_yamlMarshalBytes_Good_DeviceGates(t *testing.T) {
 		"\n    camera: true",
 		"\n    microphone: true",
 	} {
-		if strings.Contains(out, forbidden) {
+		if core.Contains(out, forbidden) {
 			t.Errorf("yaml output should suppress %q when an RFC-native device gate exists:\n%s", forbidden, out)
 		}
 	}
@@ -390,7 +391,7 @@ func TestYaml_yamlMarshalBytes_Ugly_GUICompatDedup(t *testing.T) {
 		"gui.clipboard.write: true",
 		"- '*'",
 	} {
-		if !strings.Contains(out, want) {
+		if !core.Contains(out, want) {
 			t.Errorf("yaml output missing %q:\n%s", want, out)
 		}
 	}
@@ -399,7 +400,7 @@ func TestYaml_yamlMarshalBytes_Ugly_GUICompatDedup(t *testing.T) {
 		"clipboard: true",
 		"network: true",
 	} {
-		if strings.Contains(out, forbidden) {
+		if core.Contains(out, forbidden) {
 			t.Errorf("yaml output should suppress %q when a narrower RFC key exists:\n%s", forbidden, out)
 		}
 	}

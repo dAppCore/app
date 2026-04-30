@@ -3,9 +3,6 @@
 package app_test
 
 import (
-	"fmt"
-	"os"
-
 	core "dappco.re/go"
 	"dappco.re/go/app"
 	coreio "dappco.re/go/io"
@@ -21,10 +18,10 @@ func ExampleWrapPWA() {
 		TargetURL: "https://play.example.com/",
 	})
 
-	fmt.Println(manifest.Code)
-	fmt.Println(manifest.Config["type"])
-	fmt.Println(manifest.Permissions.Notifications)
-	fmt.Println(manifest.Config["store"])
+	core.Println(manifest.Code)
+	core.Println(manifest.Config["type"])
+	core.Println(manifest.Permissions.Notifications)
+	core.Println(manifest.Config["store"])
 	// Output:
 	// play
 	// pwa
@@ -42,10 +39,10 @@ func ExampleWrapElectron() {
 		IPCChannels: []string{"miner:start"},
 	}, app.WrapElectronOptions{})
 
-	fmt.Println(manifest.Code)
-	fmt.Println(manifest.Config["type"])
-	fmt.Println(manifest.Config["main"])
-	fmt.Println(manifest.Permissions.Read[0])
+	core.Println(manifest.Code)
+	core.Println(manifest.Config["type"])
+	core.Println(manifest.Config["main"])
+	core.Println(manifest.Permissions.Read[0])
 	// Output:
 	// electron-miner
 	// electron
@@ -54,17 +51,17 @@ func ExampleWrapElectron() {
 }
 
 func ExampleWrapWeb() {
-	root, _ := os.MkdirTemp("", "wrap-web-example")
-	defer os.RemoveAll(root)
+	root := core.MkdirTemp("", "wrap-web-example").Value.(string)
+	defer core.RemoveAll(root)
 
 	site := core.Path(root, "marketing-site")
 	_ = coreio.Local.EnsureDir(site)
 	_ = coreio.Local.Write(core.Path(site, "index.html"), "<html><body>Landing</body></html>")
 
 	manifest, _ := app.WrapWeb(coreio.Local, site, app.WrapWebOptions{})
-	fmt.Println(manifest.Code)
-	fmt.Println(manifest.Name)
-	fmt.Println(manifest.Config["entry"])
+	core.Println(manifest.Code)
+	core.Println(manifest.Name)
+	core.Println(manifest.Config["entry"])
 	// Output:
 	// marketing-site
 	// Marketing Site

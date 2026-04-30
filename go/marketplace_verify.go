@@ -31,7 +31,9 @@ import (
 //   - A listing key + signature mismatch errors with the listing code
 //     so the operator can match the rejection back to the marketplace
 //     entry.
-func VerifyListing(medium coreio.Medium, dest string, listing *MarketplaceListing) error {
+func VerifyListing(
+	medium coreio.Medium, dest string, listing *MarketplaceListing,
+) error {
 	if listing == nil {
 		return core.E("app.VerifyListing", "nil listing", nil)
 	}
@@ -92,7 +94,9 @@ func VerifyListing(medium coreio.Medium, dest string, listing *MarketplaceListin
 // without writing to disk first.
 //
 //	err := app.VerifyListingBytes(yamlBody, listing.SignKey)
-func VerifyListingBytes(body []byte, hexKey string) error {
+func VerifyListingBytes(
+	body []byte, hexKey string,
+) error {
 	if hexKey == "" {
 		return nil
 	}
@@ -146,7 +150,9 @@ func hexEncode(b []byte) string {
 // marketplace verify path follows.
 //
 //	_ = yamlUnmarshal(body, &manifest)
-func yamlUnmarshal(body []byte, dst any) error {
+func yamlUnmarshal(
+	body []byte, dst any,
+) error {
 	if manifest, ok := dst.(*config.ViewManifest); ok {
 		return UnmarshalViewManifest(body, manifest)
 	}

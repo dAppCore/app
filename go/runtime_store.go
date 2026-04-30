@@ -55,7 +55,9 @@ func newWorkspaceObjectStore(ws *Workspace) *workspaceObjectStore {
 	return &workspaceObjectStore{ws: ws}
 }
 
-func (store *workspaceObjectStore) Close() error {
+func (
+	store *workspaceObjectStore,
+) Close() error {
 	if store == nil {
 		return nil
 	}
@@ -72,7 +74,9 @@ func (store *workspaceObjectStore) Close() error {
 	return err
 }
 
-func (store *workspaceObjectStore) Get(group, key string) (string, error) {
+func (
+	store *workspaceObjectStore,
+) Get(group, key string) (string, error) {
 	if group == "" || key == "" {
 		return "", core.E("app.workspaceObjectStore.Get", "group and key are required", nil)
 	}
@@ -92,7 +96,9 @@ func (store *workspaceObjectStore) Get(group, key string) (string, error) {
 	return decoded, nil
 }
 
-func (store *workspaceObjectStore) Set(group, key, value string) error {
+func (
+	store *workspaceObjectStore,
+) Set(group, key, value string) error {
 	if group == "" || key == "" {
 		return core.E("app.workspaceObjectStore.Set", "group and key are required", nil)
 	}
@@ -111,7 +117,9 @@ func (store *workspaceObjectStore) Set(group, key, value string) error {
 	return nil
 }
 
-func (store *workspaceObjectStore) Delete(group, key string) error {
+func (
+	store *workspaceObjectStore,
+) Delete(group, key string) error {
 	if group == "" || key == "" {
 		return core.E("app.workspaceObjectStore.Delete", "group and key are required", nil)
 	}
@@ -126,7 +134,9 @@ func (store *workspaceObjectStore) Delete(group, key string) error {
 	return nil
 }
 
-func (store *workspaceObjectStore) ensureLocked() error {
+func (
+	store *workspaceObjectStore,
+) ensureLocked() error {
 	if store == nil {
 		return core.E("app.workspaceObjectStore.ensureLocked", "nil store", nil)
 	}
@@ -171,7 +181,9 @@ func (store *workspaceObjectStore) hashLocked(scope, value string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-func (store *workspaceObjectStore) encryptLocked(value string) (string, error) {
+func (
+	store *workspaceObjectStore,
+) encryptLocked(value string) (string, error) {
 	ciphertext, err := store.sigil.In([]byte(value))
 	if err != nil {
 		return "", err
@@ -179,7 +191,9 @@ func (store *workspaceObjectStore) encryptLocked(value string) (string, error) {
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
-func (store *workspaceObjectStore) decryptLocked(value string) (string, error) {
+func (
+	store *workspaceObjectStore,
+) decryptLocked(value string) (string, error) {
 	ciphertext, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
 		return "", err
@@ -191,7 +205,9 @@ func (store *workspaceObjectStore) decryptLocked(value string) (string, error) {
 	return string(plaintext), nil
 }
 
-func deriveWorkspaceSecret(ws *Workspace) ([]byte, error) {
+func deriveWorkspaceSecret(ws *Workspace) (
+	[]byte, error,
+) {
 	keys, err := deriveWorkspaceSecrets(ws)
 	if err != nil {
 		return nil, err
@@ -201,7 +217,9 @@ func deriveWorkspaceSecret(ws *Workspace) ([]byte, error) {
 	return out, nil
 }
 
-func deriveWorkspaceSecrets(ws *Workspace) (workspaceSecretKeys, error) {
+func deriveWorkspaceSecrets(ws *Workspace) (
+	workspaceSecretKeys, error,
+) {
 	if ws == nil {
 		return workspaceSecretKeys{}, core.E("app.deriveWorkspaceSecrets", "nil workspace", nil)
 	}
@@ -232,7 +250,9 @@ func deriveWorkspaceSecrets(ws *Workspace) (workspaceSecretKeys, error) {
 	return deriveWorkspaceSecretMaterial(ws.Code, workspaceSecretMaterialKeyfile, []byte(priv), salt)
 }
 
-func deriveWorkspaceSecretMaterial(code string, mode workspaceSecretMaterialMode, material, salt []byte) (workspaceSecretKeys, error) {
+func deriveWorkspaceSecretMaterial(code string, mode workspaceSecretMaterialMode, material, salt []byte) (
+	workspaceSecretKeys, error,
+) {
 	switch mode {
 	case workspaceSecretMaterialKeyfile:
 		return deriveWorkspaceSecretSubKeys(code, mode, material, salt)
@@ -251,7 +271,9 @@ func deriveWorkspaceSecretMaterial(code string, mode workspaceSecretMaterialMode
 	}
 }
 
-func deriveWorkspaceSecretSubKeys(code string, mode workspaceSecretMaterialMode, material, salt []byte) (workspaceSecretKeys, error) {
+func deriveWorkspaceSecretSubKeys(code string, mode workspaceSecretMaterialMode, material, salt []byte) (
+	workspaceSecretKeys, error,
+) {
 	enc, err := deriveWorkspaceSecretSubKey(code, mode, "enc", material, salt)
 	if err != nil {
 		return workspaceSecretKeys{}, err
@@ -263,7 +285,9 @@ func deriveWorkspaceSecretSubKeys(code string, mode workspaceSecretMaterialMode,
 	return workspaceSecretKeys{encryption: enc, hmac: mac}, nil
 }
 
-func deriveWorkspaceSecretSubKey(code string, mode workspaceSecretMaterialMode, purpose string, material, salt []byte) ([]byte, error) {
+func deriveWorkspaceSecretSubKey(code string, mode workspaceSecretMaterialMode, purpose string, material, salt []byte) (
+	[]byte, error,
+) {
 	info := "core.app.workspace.v1\x00" + string(mode) + "\x00" + purpose + "\x00" + code
 	key, err := hkdf.Key(sha256.New, material, salt, info, workspaceSecretKeyBytes)
 	if err != nil {

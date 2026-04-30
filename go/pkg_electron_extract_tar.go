@@ -32,7 +32,9 @@ import (
 //   - Existing files at the destination are overwritten — re-extracting
 //     after an upstream release update should not fail because an old
 //     copy is in the way.
-func ExtractTar(medium coreio.Medium, archive, dest string) error {
+func ExtractTar(
+	medium coreio.Medium, archive, dest string,
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -84,7 +86,9 @@ func ExtractTar(medium coreio.Medium, archive, dest string) error {
 // is sufficient and avoids buffering the whole archive twice.
 //
 //	r, err := openTarReader("renderer.tar.gz", body)
-func openTarReader(archive, body string) (*tar.Reader, error) {
+func openTarReader(archive, body string) (
+	*tar.Reader, error,
+) {
 	low := core.Lower(archive)
 	// stringReaderAt also satisfies io.Reader through a thin wrapper:
 	// the local readSeekCloser exposes ReadAt + Read so both the gzip
@@ -122,7 +126,9 @@ func newStringReader(body string) *stringReader {
 //	r := newStringReader("hello")
 //	buf := make([]byte, 3)
 //	n, err := r.Read(buf) // n=3, err=nil
-func (r *stringReader) Read(p []byte) (int, error) {
+func (
+	r *stringReader,
+) Read(p []byte) (int, error) {
 	if r == nil || r.off >= len(r.body) {
 		return 0, io.EOF
 	}
@@ -136,7 +142,9 @@ func (r *stringReader) Read(p []byte) (int, error) {
 // ExtractTar so the loop reads cleanly.
 //
 //	if err := extractTarEntry(medium, reader, hdr, dest); err != nil { return err }
-func extractTarEntry(medium coreio.Medium, reader *tar.Reader, hdr *tar.Header, dest string) error {
+func extractTarEntry(
+	medium coreio.Medium, reader *tar.Reader, hdr *tar.Header, dest string,
+) error {
 	if hdr == nil {
 		return nil
 	}
@@ -202,7 +210,9 @@ func extractTarEntry(medium coreio.Medium, reader *tar.Reader, hdr *tar.Header, 
 // Supported suffixes: `.zip`, `.tar`, `.tar.gz`, `.tgz`. Anything else
 // is rejected with a typed error so an unknown format surfaces at the
 // caller rather than silently no-oping.
-func ExtractArchive(medium coreio.Medium, archive, dest string) error {
+func ExtractArchive(
+	medium coreio.Medium, archive, dest string,
+) error {
 	if archive == "" {
 		return core.E("app.ExtractArchive", "empty archive path", nil)
 	}

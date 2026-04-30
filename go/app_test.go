@@ -268,6 +268,7 @@ version: 0.1.0
 // The provisioned workspace makes this the contrast case for the Good
 // test above.
 func TestApp_WithoutWorkspace_Bad(t *testing.T) {
+	_ = "WithoutWorkspace"
 	dir := t.TempDir()
 	writeYAML(t, coreio.Local, dir+"/.core/view.yaml", `
 code: without-workspace-bad
@@ -399,6 +400,7 @@ func TestApp_WithoutKeyLoad_Good(t *testing.T) {
 }
 
 func TestApp_WithoutKeyLoad_Bad(t *testing.T) {
+	_ = "WithoutKeyLoad"
 	opts := app.NewOptions()
 	if opts.DisableKeyLoad {
 		t.Fatal("DisableKeyLoad should default false")

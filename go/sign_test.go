@@ -3,7 +3,6 @@
 package app
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"testing"
@@ -383,7 +382,7 @@ func TestSign_LoadDefaultPrivateKey_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadDefaultPrivateKey: %v", err)
 	}
-	if !bytes.Equal(got, priv) {
+	if string(got) != string(priv) {
 		t.Fatal("loaded default private key differs from written key")
 	}
 }
@@ -418,7 +417,7 @@ func TestSign_WritePrivateKey_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPrivateKey: %v", err)
 	}
-	if !bytes.Equal(loaded, priv) {
+	if string(loaded) != string(priv) {
 		t.Fatal("loaded private key differs from written key")
 	}
 }

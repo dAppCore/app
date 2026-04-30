@@ -35,7 +35,9 @@ import (
 //
 //   - ModeProd + Sign + trusted keys: accepts the manifest iff any key
 //     validates the signature.
-func verify(m *config.ViewManifest, mode Mode, trusted []ed25519.PublicKey) error {
+func verify(
+	m *config.ViewManifest, mode Mode, trusted []ed25519.PublicKey,
+) error {
 	if m == nil {
 		return core.E("app.verify", "nil manifest", nil)
 	}
@@ -99,7 +101,9 @@ func verify(m *config.ViewManifest, mode Mode, trusted []ed25519.PublicKey) erro
 // developer's signature.
 //
 //	msg, _ := signableBytes(&manifest)
-func signableBytes(m *config.ViewManifest) ([]byte, error) {
+func signableBytes(m *config.ViewManifest) (
+	[]byte, error,
+) {
 	if m == nil {
 		return nil, core.E("app.signableBytes", "nil manifest", nil)
 	}
@@ -115,7 +119,9 @@ func signableBytes(m *config.ViewManifest) ([]byte, error) {
 //
 //	pub, _ := hex.DecodeString(indexEntry.SignKey)
 //	err := verifyWithKey(&manifest, pub)
-func verifyWithKey(m *config.ViewManifest, pub ed25519.PublicKey) error {
+func verifyWithKey(
+	m *config.ViewManifest, pub ed25519.PublicKey,
+) error {
 	if m == nil {
 		return core.E("app.verifyWithKey", "nil manifest", nil)
 	}
@@ -145,7 +151,9 @@ func verifyWithKey(m *config.ViewManifest, pub ed25519.PublicKey) error {
 // fetch can share the helper.
 //
 //	pub, err := parsePublicKey("3b6a…")
-func parsePublicKey(hexKey string) (ed25519.PublicKey, error) {
+func parsePublicKey(hexKey string) (
+	ed25519.PublicKey, error,
+) {
 	if hexKey == "" {
 		return nil, core.E("app.parsePublicKey", "empty key", nil)
 	}
@@ -166,7 +174,9 @@ func parsePublicKey(hexKey string) (ed25519.PublicKey, error) {
 //
 //	ed25519Priv, _ := ed25519.GenerateKey(nil) // keep the priv secure
 //	_ = signManifest(&manifest, priv)
-func signManifest(m *config.ViewManifest, priv ed25519.PrivateKey) error {
+func signManifest(
+	m *config.ViewManifest, priv ed25519.PrivateKey,
+) error {
 	if m == nil {
 		return core.E("app.signManifest", "nil manifest", nil)
 	}
@@ -214,7 +224,9 @@ func signableConfig(src map[string]any) map[string]any {
 // Errors surface malformed keys, not missing directories; a missing
 // directory is treated as "no keys here" so a fresh install still boots
 // dev mode and only prod mode complains.
-func resolveTrustedKeys(o Options) ([]ed25519.PublicKey, error) {
+func resolveTrustedKeys(o Options) (
+	[]ed25519.PublicKey, error,
+) {
 	var keys []ed25519.PublicKey
 
 	if o.PublicKeyHex != "" {

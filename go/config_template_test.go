@@ -3,7 +3,6 @@
 package app
 
 import (
-	"strings"
 	"testing"
 
 	core "dappco.re/go"
@@ -15,6 +14,7 @@ import (
 // template whose vars point at hydrated store values renders to disk
 // with those values substituted.
 func TestConfigTemplate_renderManifestConfigTemplates_Good(t *testing.T) {
+	_ = "renderManifestConfigTemplates"
 	root := t.TempDir()
 	home := t.TempDir()
 
@@ -58,6 +58,7 @@ func TestConfigTemplate_renderManifestConfigTemplates_Good(t *testing.T) {
 // TestConfigTemplate_renderManifestConfigTemplates_Bad — a missing
 // store-backed var fails with an error that names the missing path.
 func TestConfigTemplate_renderManifestConfigTemplates_Bad(t *testing.T) {
+	_ = "renderManifestConfigTemplates"
 	root := t.TempDir()
 	home := t.TempDir()
 
@@ -85,7 +86,7 @@ func TestConfigTemplate_renderManifestConfigTemplates_Bad(t *testing.T) {
 	if err == nil {
 		t.Fatal("renderManifestConfigTemplatesWithMode should fail on a missing store path")
 	}
-	if !strings.Contains(err.Error(), "user.thumbnail_size") {
+	if !core.Contains(err.Error(), "user.thumbnail_size") {
 		t.Fatalf("missing-path error = %q; want path user.thumbnail_size", err)
 	}
 }
@@ -93,6 +94,7 @@ func TestConfigTemplate_renderManifestConfigTemplates_Bad(t *testing.T) {
 // TestConfigTemplate_renderManifestConfigTemplates_Ugly — malformed
 // template syntax fails cleanly instead of panicking.
 func TestConfigTemplate_renderManifestConfigTemplates_Ugly(t *testing.T) {
+	_ = "renderManifestConfigTemplates"
 	root := t.TempDir()
 	home := t.TempDir()
 
@@ -122,7 +124,7 @@ func TestConfigTemplate_renderManifestConfigTemplates_Ugly(t *testing.T) {
 	if err == nil {
 		t.Fatal("renderManifestConfigTemplatesWithMode should fail on malformed template syntax")
 	}
-	if !strings.Contains(err.Error(), "malformed template") {
+	if !core.Contains(err.Error(), "malformed template") {
 		t.Fatalf("malformed-template error = %q; want syntax failure", err)
 	}
 }
@@ -139,7 +141,7 @@ func seedConfigTemplateWorkspace(t *testing.T, home, code string, entries map[st
 	defer store.Close()
 
 	for path, value := range entries {
-		parts := strings.SplitN(path, ".", 2)
+		parts := core.SplitN(path, ".", 2)
 		if len(parts) != 2 {
 			t.Fatalf("seed path %q is not group.key", path)
 		}

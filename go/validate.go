@@ -349,7 +349,9 @@ func ValidateManifest(m *config.ViewManifest, opts ValidateOptions) ValidateRepo
 //
 // Callers needing structured output should use ValidateManifest
 // instead.
-func ValidateManifestErr(m *config.ViewManifest, opts ValidateOptions) error {
+func ValidateManifestErr(
+	m *config.ViewManifest, opts ValidateOptions,
+) error {
 	report := ValidateManifest(m, opts)
 	if report.OK() {
 		return nil

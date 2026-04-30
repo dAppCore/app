@@ -104,7 +104,9 @@ type CompileOptions struct {
 //   - layout slots whose component value is not a string → error
 //     (config.ViewManifest.Slots is map[string]any for YAML flexibility;
 //     the compiled form is strict).
-func Compile(m *config.ViewManifest, opts CompileOptions) (*CompiledManifest, error) {
+func Compile(m *config.ViewManifest, opts CompileOptions) (
+	*CompiledManifest, error,
+) {
 	if m == nil {
 		return nil, core.E("app.Compile", "nil manifest", nil)
 	}
@@ -176,7 +178,9 @@ func copyConfig(src map[string]any) map[string]any {
 // `shadow` setting defaults to true — matching the RFC §3.1 example.
 //
 // Returns (slots, components, err).
-func resolveSlots(raw map[string]any) (map[string]string, map[string]ComponentSpec, error) {
+func resolveSlots(raw map[string]any) (
+	map[string]string, map[string]ComponentSpec, error,
+) {
 	if len(raw) == 0 {
 		return nil, nil, nil
 	}
@@ -211,7 +215,9 @@ func resolveSlots(raw map[string]any) (map[string]string, map[string]ComponentSp
 // matches dAppServer's committed-artifact style.
 //
 //	err := app.WriteCompiled(coreio.Local, root, cm)
-func WriteCompiled(medium coreio.Medium, root string, cm *CompiledManifest) error {
+func WriteCompiled(
+	medium coreio.Medium, root string, cm *CompiledManifest,
+) error {
 	if cm == nil {
 		return core.E("app.WriteCompiled", "nil compiled manifest", nil)
 	}
@@ -238,7 +244,9 @@ func WriteCompiled(medium coreio.Medium, root string, cm *CompiledManifest) erro
 // `.core/view.yaml`.
 //
 //	cm, err := app.LoadCompiled(coreio.Local, root)
-func LoadCompiled(medium coreio.Medium, root string) (*CompiledManifest, error) {
+func LoadCompiled(medium coreio.Medium, root string) (
+	*CompiledManifest, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -263,7 +271,9 @@ func LoadCompiled(medium coreio.Medium, root string) (*CompiledManifest, error) 
 // policy is in one place when core/go grows a JSONMarshalIndent.
 //
 //	body, _ := marshalPretty(cm)
-func marshalPretty(v any) (string, error) {
+func marshalPretty(v any) (
+	string, error,
+) {
 	r := core.JSONMarshal(v)
 	if !r.OK {
 		cause, _ := r.Value.(error)

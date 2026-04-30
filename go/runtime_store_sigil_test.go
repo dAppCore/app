@@ -3,9 +3,9 @@
 package app
 
 import (
-	"bytes"
 	"encoding/base64"
-	"strings"
+
+	core "dappco.re/go"
 	"testing"
 
 	"dappco.re/go/io/sigil"
@@ -16,7 +16,7 @@ import (
 // object store's encryptLocked / decryptLocked round-trip via a
 // ChaChaPoly + ShuffleMaskObfuscator sigil.
 func TestRuntimeStore_EncryptDecryptRoundTripWithSigil(t *testing.T) {
-	key := bytes.Repeat([]byte{0x42}, workspaceSecretKeyBytes)
+	key := repeatByte(0x42, workspaceSecretKeyBytes)
 	cipherSigil, err := sigil.NewChaChaPolySigil(key, &sigil.ShuffleMaskObfuscator{})
 	if err != nil {
 		t.Fatalf("NewChaChaPolySigil: %v", err)
@@ -42,7 +42,15 @@ func TestRuntimeStore_EncryptDecryptRoundTripWithSigil(t *testing.T) {
 		t.Fatalf("round-trip mismatch: want %q, got %q", value, plain)
 	}
 	// Sanity — ensure the encoded form is not just a base64 of the value.
-	if strings.Contains(encoded, base64.StdEncoding.EncodeToString([]byte(value))) {
+	if core.Contains(encoded, base64.StdEncoding.EncodeToString([]byte(value))) {
 		t.Fatal("encoded form contains plaintext base64 — encryption is a no-op")
 	}
+}
+
+func repeatByte(b byte, n int) []byte {
+	out := make([]byte, n)
+	for i := range out {
+		out[i] = b
+	}
+	return out
 }

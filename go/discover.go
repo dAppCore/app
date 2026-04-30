@@ -20,7 +20,9 @@ import (
 //   - manifest: the parsed view.yaml contents
 //   - root:     the project directory (parent of the .core/ that won)
 //   - err:      core.E-wrapped if the walk produces nothing or parse fails
-func discover(medium coreio.Medium, start string) (config.ViewManifest, string, error) {
+func discover(medium coreio.Medium, start string) (
+	config.ViewManifest, string, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -63,7 +65,9 @@ func discover(medium coreio.Medium, start string) (config.ViewManifest, string, 
 // without leaking compile/runtime shape details into discover.
 //
 //	manifest, root, err := discoverCompiled(coreio.Local, "./", ModeProd)
-func discoverCompiled(medium coreio.Medium, start string, mode Mode) (config.ViewManifest, string, error) {
+func discoverCompiled(medium coreio.Medium, start string, mode Mode) (
+	config.ViewManifest, string, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -153,7 +157,9 @@ func compiledToManifest(cm *CompiledManifest) config.ViewManifest {
 //
 //   - Package missing → typed error naming the expected location so the
 //     CLI message points the user at the right `pkg install` command.
-func DiscoverInstalled(medium coreio.Medium, home, code string) (string, error) {
+func DiscoverInstalled(medium coreio.Medium, home, code string) (
+	string, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -184,7 +190,9 @@ func DiscoverInstalled(medium coreio.Medium, home, code string) (string, error) 
 // "code" to "loaded manifest" without the intermediate path step.
 //
 //	manifest, dir, err := app.DiscoverInstalledManifest(coreio.Local, home, "photo-browser")
-func DiscoverInstalledManifest(medium coreio.Medium, home, code string) (config.ViewManifest, string, error) {
+func DiscoverInstalledManifest(medium coreio.Medium, home, code string) (
+	config.ViewManifest, string, error,
+) {
 	dir, err := DiscoverInstalled(medium, home, code)
 	if err != nil {
 		return config.ViewManifest{}, "", err

@@ -80,7 +80,9 @@ const pwaFetchTimeout = 15 * time.Second
 //     `manifest.webmanifest` beneath that URL so the RFC §16 examples
 //     (`core pkg wrap --pwa https://app.example.com`) work without the
 //     caller knowing the exact manifest path upfront.
-func FetchPWAManifest(ctx context.Context, url string) (*PWAManifest, error) {
+func FetchPWAManifest(ctx context.Context, url string) (
+	*PWAManifest, error,
+) {
 	url = core.Trim(url)
 	if url == "" {
 		return nil, core.E("app.FetchPWAManifest", "empty URL", nil)
@@ -330,7 +332,9 @@ func pwaWindowMode(display string) string {
 // Marshal+medium.Write can't do directly.
 //
 //	err := app.WritePWAWrap(coreio.Local, "/Users/me/.core/apps/play", manifest)
-func WritePWAWrap(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
+func WritePWAWrap(
+	medium coreio.Medium, dest string, manifest *config.ViewManifest,
+) error {
 	if manifest == nil {
 		return core.E("app.WritePWAWrap", "nil manifest", nil)
 	}
@@ -398,7 +402,9 @@ func applyPWAPermissionMapping(m *config.ViewManifest, perms []string) {
 // Kept separate from FetchPWAManifest so the caller can try multiple
 // candidate URLs (root, /manifest.json, /manifest.webmanifest)
 // without duplicating the request plumbing.
-func fetchPWAURL(ctx context.Context, url string) ([]byte, error) {
+func fetchPWAURL(ctx context.Context, url string) (
+	[]byte, error,
+) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, core.E("app.fetchPWAURL", "request build failed", err)
@@ -434,7 +440,9 @@ func fetchPWAURL(ctx context.Context, url string) ([]byte, error) {
 // Manifest we care about. At least one identity-bearing field must be
 // present so a random HTML page or API response is not misclassified as
 // a valid PWA manifest.
-func decodePWAManifest(body []byte) (*PWAManifest, error) {
+func decodePWAManifest(body []byte) (
+	*PWAManifest, error,
+) {
 	var m PWAManifest
 	r := core.JSONUnmarshal(body, &m)
 	if !r.OK {

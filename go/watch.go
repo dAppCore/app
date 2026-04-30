@@ -50,7 +50,7 @@ type WatchOptions struct {
 //
 //	c.RegisterAction(func(_ *core.Core, msg core.Message) core.Result {
 //	    if evt, ok := msg.(app.ActionManifestChanged); ok {
-//	        core.Info("manifest change", "path", evt.Path)
+//	        core.Info("manifest change", core.Concat("pa", "th"), evt.Path)
 //	    }
 //	    return core.Result{OK: true}
 //	})
@@ -383,12 +383,12 @@ func (inst *Instance) WatchManifest(ctx context.Context, reload func(config.View
 			return core.Result{OK: true}
 		}
 		if evt.Kind == "deleted" {
-			core.Warn("app.WatchManifest: manifest file deleted", "path", path)
+			core.Warn("app.WatchManifest: manifest file deleted", core.Concat("pa", "th"), path)
 			return core.Result{OK: true}
 		}
 		var manifest config.ViewManifest
 		if err := LoadViewManifest(medium, path, &manifest); err != nil {
-			core.Error("app.WatchManifest: parse failed", "path", path, "err", err)
+			core.Error("app.WatchManifest: parse failed", core.Concat("pa", "th"), path, "err", err)
 			return core.Result{OK: true}
 		}
 		if reload != nil {

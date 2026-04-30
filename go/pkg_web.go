@@ -34,7 +34,9 @@ type WrapWebOptions struct {
 //   - Name defaults to a title-cased form of the directory basename.
 //   - Entry defaults to "index.html"; any path may be passed (useful
 //     when the site splits its entry per environment).
-func WrapWeb(medium coreio.Medium, dir string, opts WrapWebOptions) (*config.ViewManifest, error) {
+func WrapWeb(medium coreio.Medium, dir string, opts WrapWebOptions) (
+	*config.ViewManifest, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -97,7 +99,9 @@ func WrapWeb(medium coreio.Medium, dir string, opts WrapWebOptions) (*config.Vie
 // WriteElectronWrap for consistent CLI wiring.
 //
 //	err := app.WriteWebWrap(coreio.Local, dest, manifest)
-func WriteWebWrap(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
+func WriteWebWrap(
+	medium coreio.Medium, dest string, manifest *config.ViewManifest,
+) error {
 	if manifest == nil {
 		return core.E("app.WriteWebWrap", "nil manifest", nil)
 	}

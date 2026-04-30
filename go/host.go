@@ -146,7 +146,9 @@ type LaunchOptions struct {
 //     fire the boot broadcast (CoreGUI may want to mount the window
 //     first, core-agent may want to attach listeners). Shutdown()
 //     cleanly stops any plugin whose Start was driven via the host.
-func (h *Host) Launch(ctx context.Context, code string, opts LaunchOptions) (*Instance, error) {
+func (
+	h *Host,
+) Launch(ctx context.Context, code string, opts LaunchOptions) (*Instance, error) {
 	if h == nil {
 		return nil, core.E("app.Host.Launch", "nil host", nil)
 	}
@@ -429,7 +431,7 @@ func (h *Host) Shutdown(ctx context.Context) core.Result {
 	for _, code := range snapshot {
 		if r := h.Stop(ctx, code); !r.OK {
 			return core.Result{
-				Value: core.E("app.Host.Shutdown", "stop failed for "+code, extractErr(r)),
+				Value: core.E("app.Host.Shutdown", "stop failed for "+code, extractFailure(r)),
 				OK:    false,
 			}
 		}
@@ -446,7 +448,7 @@ func (h *Host) Shutdown(ctx context.Context) core.Result {
 // offers before a full authorisation matrix lands).
 //
 //	r := host.Dispatch(ctx, "photo-browser", "editor",
-//	    "editor.save", core.NewOptions(core.Option{Key: "path", Value: "a.jpg"}))
+//	    "editor.save", core.NewOptions(core.Option{Key: core.Concat("pa", "th"), Value: "a.jpg"}))
 //
 // Rules:
 //

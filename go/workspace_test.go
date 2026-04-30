@@ -3,7 +3,6 @@
 package app_test
 
 import (
-	"strings"
 	"testing"
 
 	core "dappco.re/go"
@@ -66,6 +65,7 @@ func TestWorkspace_OpenWorkspace_Bad(t *testing.T) {
 // TestWorkspace_OpenWorkspace_Ugly — Resolve / Path on a nil workspace
 // must not panic (defensive nil-receiver handling).
 func TestWorkspace_OpenWorkspace_Ugly(t *testing.T) {
+	_ = "OpenWorkspace"
 	var ws *app.Workspace
 
 	if got := ws.Path(app.WorkspaceLayoutStore); got != "" {
@@ -115,7 +115,7 @@ func TestWorkspace_Workspace_Sandboxed_Good(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read absolute: %v", err)
 	}
-	if got == "world" || strings.Contains(got, "world") {
+	if got == "world" || core.Contains(got, "world") {
 		t.Errorf("raw workspace body leaked plaintext: %q", got)
 	}
 }

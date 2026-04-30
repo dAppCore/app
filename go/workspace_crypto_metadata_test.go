@@ -3,16 +3,14 @@
 package app
 
 import (
-	"bytes"
-	"errors"
 	"io"
 	"io/fs"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	core "dappco.re/go"
 	coreio "dappco.re/go/io"
 )
 
@@ -37,7 +35,7 @@ func TestEnsureWorkspaceSecretSalt_Concurrent(t *testing.T) {
 	var writes int64
 	allAttemptingCreate := make(chan struct{})
 
-	openWorkspaceCryptoMetadataFile = func(path string, flag int, perm os.FileMode) (*os.File, error) {
+	openWorkspaceCryptoMetadataFile = func(path string, flag int, perm core.FileMode) (*core.OSFile, error) {
 		if atomic.AddInt64(&attempts, 1) == workers {
 			close(allAttemptingCreate)
 		}
@@ -50,7 +48,7 @@ func TestEnsureWorkspaceSecretSalt_Concurrent(t *testing.T) {
 		if err == nil {
 			atomic.AddInt64(&creates, 1)
 		}
-		if errors.Is(err, fs.ErrExist) {
+		if core.Is(err, fs.ErrExist) {
 			atomic.AddInt64(&exists, 1)
 		}
 		return file, err
@@ -85,7 +83,7 @@ func TestEnsureWorkspaceSecretSalt_Concurrent(t *testing.T) {
 		if len(salt) != workspaceSecretSaltBytes {
 			t.Fatalf("salt[%d] length = %d; want %d", i, len(salt), workspaceSecretSaltBytes)
 		}
-		if !bytes.Equal(salts[0], salt) {
+		if string(salts[0]) != string(salt) {
 			t.Fatalf("salt[%d] differed from salt[0]", i)
 		}
 	}

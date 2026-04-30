@@ -4,11 +4,9 @@ package app
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	core "dappco.re/go"
 	coreio "dappco.re/go/io"
-	"strings"
 	"testing"
 )
 
@@ -87,6 +85,7 @@ func TestPkgElectronExtractTar_ExtractTar_Ugly(t *testing.T) {
 // extracts cleanly. Mirrors the plain-tar happy path with the extra
 // gzip layer to confirm openTarReader picks the right decompressor.
 func TestPkgElectronExtractTar_ExtractTarGz_Good(t *testing.T) {
+	_ = "ExtractTarGz"
 	medium := coreio.Local
 	dir := t.TempDir()
 	archivePath := core.Path(dir, "renderer.tar.gz")
@@ -235,14 +234,14 @@ type tarEntry struct {
 //	body := buildTar(t, false, []tarEntry{{Name: "a.txt", Body: "hi"}})
 func buildTar(t *testing.T, gzipped bool, entries []tarEntry) string {
 	t.Helper()
-	var buf bytes.Buffer
+	buf := core.NewBuffer()
 	var w *tar.Writer
 	var gz *gzip.Writer
 	if gzipped {
-		gz = gzip.NewWriter(&buf)
+		gz = gzip.NewWriter(buf)
 		w = tar.NewWriter(gz)
 	} else {
-		w = tar.NewWriter(&buf)
+		w = tar.NewWriter(buf)
 	}
 
 	for _, e := range entries {
@@ -255,7 +254,7 @@ func buildTar(t *testing.T, gzipped bool, entries []tarEntry) string {
 			hdr.Typeflag = tar.TypeDir
 			hdr.Mode = 0o755
 			hdr.Size = 0
-			if !strings.HasSuffix(hdr.Name, "/") {
+			if !core.HasSuffix(hdr.Name, "/") {
 				hdr.Name += "/"
 			}
 		} else {

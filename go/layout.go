@@ -61,7 +61,9 @@ func (s *LayoutSpec) Has(slot string) bool {
 // The returned LayoutSpec is the narrow form of `manifest.slots` —
 // already string-typed, with a deterministic iteration order matching
 // the variant string. A nil spec means "no layout" (headless CLI).
-func layout(c *core.Core, m *config.ViewManifest) error {
+func layout(
+	c *core.Core, m *config.ViewManifest,
+) error {
 	_, err := resolveLayout(c, m)
 	return err
 }
@@ -72,7 +74,9 @@ func layout(c *core.Core, m *config.ViewManifest) error {
 // suite predates the struct.
 //
 //	spec, err := resolveLayout(c, m)
-func resolveLayout(c *core.Core, m *config.ViewManifest) (*LayoutSpec, error) {
+func resolveLayout(c *core.Core, m *config.ViewManifest) (
+	*LayoutSpec, error,
+) {
 	if c == nil {
 		return nil, core.E("app.layout", "nil core", nil)
 	}
@@ -153,7 +157,9 @@ func containsString(list []string, entry string) bool {
 //	_ = validateLayoutVariant("HLCRF") // nil
 //	_ = validateLayoutVariant("C")     // nil
 //	_ = validateLayoutVariant("XYZ")   // error
-func validateLayoutVariant(v string) error {
+func validateLayoutVariant(
+	v string,
+) error {
 	if v == "" {
 		return nil
 	}

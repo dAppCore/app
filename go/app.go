@@ -225,7 +225,9 @@ type Instance struct {
 //	if r := inst.Start(ctx); !r.OK {
 //	    core.Error("start failed", "err", r.Value)
 //	}
-func Boot(ctx context.Context, start string, opts ...Option) (*Instance, error) {
+func Boot(ctx context.Context, start string, opts ...Option) (
+	*Instance, error,
+) {
 	o := NewOptions(opts...)
 
 	c := o.Core

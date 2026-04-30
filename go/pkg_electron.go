@@ -68,7 +68,9 @@ type ElectronScanResult struct {
 // It favours false positives (extra permissions) over false negatives
 // (missing capability) because a wrapped Electron app that's missing a
 // capability dies at first use.
-func ScanElectronRenderer(medium coreio.Medium, dir string) (*ElectronScanResult, error) {
+func ScanElectronRenderer(medium coreio.Medium, dir string) (
+	*ElectronScanResult, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -205,8 +207,10 @@ func collectIPCChannels(body string, seen map[string]bool) {
 // walker behaviour (skip hidden, skip non-files) matches the RFC intent
 // without burdening coreio.
 //
-//	_ = walkFiles(medium, dir, func(p string) { fmt.Println(p) })
-func walkFiles(medium coreio.Medium, dir string, visit func(string)) error {
+//	_ = walkFiles(medium, dir, func(p string) { core.Println(p) })
+func walkFiles(
+	medium coreio.Medium, dir string, visit func(string),
+) error {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -396,7 +400,9 @@ func WrapElectron(pkg *ElectronPackageJSON, scan *ElectronScanResult, opts WrapE
 // release reference, extracts it when needed, scans the unpacked tree,
 // and returns the wrapped manifest plus the renderer directory that
 // should be copied into the install root.
-func WrapElectronRepo(ctx context.Context, medium coreio.Medium, ref string, opts WrapElectronRepoOptions) (*config.ViewManifest, string, error) {
+func WrapElectronRepo(ctx context.Context, medium coreio.Medium, ref string, opts WrapElectronRepoOptions) (
+	*config.ViewManifest, string, error,
+) {
 	if medium == nil {
 		medium = coreio.Local
 	}
@@ -531,7 +537,9 @@ func isGitHubReleaseHost(host string) bool {
 // `<dest>/.core/view.yaml`. Mirrors WritePWAWrap for the CLI path.
 //
 //	err := app.WriteElectronWrap(coreio.Local, "/.../apps/bitwarden", manifest)
-func WriteElectronWrap(medium coreio.Medium, dest string, manifest *config.ViewManifest) error {
+func WriteElectronWrap(
+	medium coreio.Medium, dest string, manifest *config.ViewManifest,
+) error {
 	if manifest == nil {
 		return core.E("app.WriteElectronWrap", "nil manifest", nil)
 	}

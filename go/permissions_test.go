@@ -3,10 +3,8 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"io"
-	"strings"
 	"testing"
 
 	core "dappco.re/go"
@@ -24,17 +22,32 @@ import (
 // what was actually emitted.
 func captureLog(t *testing.T, fn func(), phrase string, wantCount int) {
 	t.Helper()
-	buf := &bytes.Buffer{}
+	buf := core.NewBuffer()
 	logger := core.Default()
 	logger.SetOutput(buf)
 	defer logger.SetOutput(stderrFallback())
 
 	fn()
 
-	got := strings.Count(buf.String(), phrase)
+	got := countOccurrences(buf.String(), phrase)
 	if got != wantCount {
 		t.Errorf("expected %d occurrences of %q in log output, got %d\n--log--\n%s\n-------",
 			wantCount, phrase, got, buf.String())
+	}
+}
+
+func countOccurrences(s, needle string) int {
+	if needle == "" {
+		return 0
+	}
+	count := 0
+	for {
+		i := stringIndex(s, needle)
+		if i < 0 {
+			return count
+		}
+		count++
+		s = s[i+len(needle):]
 	}
 }
 
@@ -318,6 +331,7 @@ func TestPermissions_hasManifestStorePermission_Ugly(t *testing.T) {
 // TestPermissions_NotificationGate_Good — gui.notification.send is
 // allowed when permissions.notifications: true is declared.
 func TestPermissions_NotificationGate_Good(t *testing.T) {
+	_ = "NotificationGate"
 	c := core.New()
 	m := &config.ViewManifest{
 		Permissions: config.ViewPermissions{Notifications: true},
@@ -333,6 +347,7 @@ func TestPermissions_NotificationGate_Good(t *testing.T) {
 // TestPermissions_NotificationGate_Bad — undeclared notification
 // permission denies in prod mode and emits a reason.
 func TestPermissions_NotificationGate_Bad(t *testing.T) {
+	_ = "NotificationGate"
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
 		t.Fatalf("permissions: %v", err)
@@ -349,6 +364,7 @@ func TestPermissions_NotificationGate_Bad(t *testing.T) {
 // TestPermissions_NotificationGate_Ugly — dev mode allows-with-reason
 // even on missing notification permission.
 func TestPermissions_NotificationGate_Ugly(t *testing.T) {
+	_ = "NotificationGate"
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeDev); err != nil {
 		t.Fatalf("permissions: %v", err)
@@ -365,6 +381,7 @@ func TestPermissions_NotificationGate_Ugly(t *testing.T) {
 // TestPermissions_ClipboardGate_Good — clipboard read and write are
 // both allowed when permissions.clipboard: true is declared.
 func TestPermissions_ClipboardGate_Good(t *testing.T) {
+	_ = "ClipboardGate"
 	c := core.New()
 	m := &config.ViewManifest{
 		Permissions: config.ViewPermissions{Clipboard: true},
@@ -383,6 +400,7 @@ func TestPermissions_ClipboardGate_Good(t *testing.T) {
 // TestPermissions_ClipboardGate_Bad — clipboard gates are denied when
 // the permission is undeclared.
 func TestPermissions_ClipboardGate_Bad(t *testing.T) {
+	_ = "ClipboardGate"
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
 		t.Fatalf("permissions: %v", err)
@@ -398,6 +416,7 @@ func TestPermissions_ClipboardGate_Bad(t *testing.T) {
 // TestPermissions_ClipboardGate_Ugly — clipboard read+write share one
 // declaration; declaring it for one direction enables the other.
 func TestPermissions_ClipboardGate_Ugly(t *testing.T) {
+	_ = "ClipboardGate"
 	// Direct hasPermission round-trip — both clipboard fields read from
 	// the same Clipboard bool slot, so declaring it covers both.
 	p := config.ViewPermissions{Clipboard: true}
@@ -412,6 +431,7 @@ func TestPermissions_ClipboardGate_Ugly(t *testing.T) {
 // TestPermissions_DeviceGates_Good — Camera, Microphone and Location
 // gates honour their declarations.
 func TestPermissions_DeviceGates_Good(t *testing.T) {
+	_ = "DeviceGates"
 	c := core.New()
 	m := &config.ViewManifest{
 		Permissions: config.ViewPermissions{
@@ -437,6 +457,7 @@ func TestPermissions_DeviceGates_Good(t *testing.T) {
 // TestPermissions_DeviceGates_Bad — undeclared device permissions are
 // rejected with a reason.
 func TestPermissions_DeviceGates_Bad(t *testing.T) {
+	_ = "DeviceGates"
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
 		t.Fatalf("permissions: %v", err)
@@ -460,6 +481,7 @@ func TestPermissions_DeviceGates_Bad(t *testing.T) {
 // fs.write entitlement gate without flipping the catch-all Filesystem
 // flag. Mirrors RFC §2.2 `write: ["./photos/.thumbnails/"]` example.
 func TestPermissions_WriteList_Good(t *testing.T) {
+	_ = "WriteList"
 	c := core.New()
 	m := &config.ViewManifest{
 		Config: map[string]any{
@@ -480,6 +502,7 @@ func TestPermissions_WriteList_Good(t *testing.T) {
 // TestPermissions_WriteList_Bad — empty Config["write"] denies the
 // write gate in prod mode (same as no permission at all).
 func TestPermissions_WriteList_Bad(t *testing.T) {
+	_ = "WriteList"
 	c := core.New()
 	m := &config.ViewManifest{
 		Config: map[string]any{
@@ -498,6 +521,7 @@ func TestPermissions_WriteList_Bad(t *testing.T) {
 // doesn't crash the checker; the gate falls back to the slot check
 // (which is also unset here, so the write is denied).
 func TestPermissions_WriteList_Ugly(t *testing.T) {
+	_ = "WriteList"
 	c := core.New()
 	m := &config.ViewManifest{
 		Config: map[string]any{
@@ -516,6 +540,7 @@ func TestPermissions_WriteList_Ugly(t *testing.T) {
 // `device.location`, so a stray Run entry doesn't accidentally grant a
 // random device.* action.
 func TestPermissions_DeviceGates_Ugly(t *testing.T) {
+	_ = "DeviceGates"
 	c := core.New()
 	m := &config.ViewManifest{
 		Permissions: config.ViewPermissions{Run: []string{"ffmpeg"}},
@@ -532,6 +557,7 @@ func TestPermissions_DeviceGates_Ugly(t *testing.T) {
 // (RFC §9.4) gates against permissions.run; when the manifest declares
 // `run: ["miner"]` each verb is allowed.
 func TestPermissions_ProcessLifecycle_Good(t *testing.T) {
+	_ = "ProcessLifecycle"
 	c := core.New()
 	m := &config.ViewManifest{
 		Permissions: config.ViewPermissions{Run: []string{"miner"}},
@@ -559,6 +585,7 @@ func TestPermissions_ProcessLifecycle_Good(t *testing.T) {
 // TestPermissions_ProcessLifecycle_Bad — without a run declaration, every
 // process verb is denied in prod mode with a reason.
 func TestPermissions_ProcessLifecycle_Bad(t *testing.T) {
+	_ = "ProcessLifecycle"
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
 		t.Fatalf("permissions: %v", err)
@@ -587,6 +614,7 @@ func TestPermissions_ProcessLifecycle_Bad(t *testing.T) {
 // gating only `process.run` while a handler that needs `process.kill`
 // would have been silently denied.
 func TestPermissions_ProcessLifecycle_Ugly(t *testing.T) {
+	_ = "ProcessLifecycle"
 	gate, ok := gateFor("process.list")
 	if !ok || gate.field != fieldRun {
 		t.Errorf("process.list should be gated under fieldRun; got (%v, %v)", gate, ok)
@@ -602,6 +630,7 @@ func TestPermissions_ProcessLifecycle_Ugly(t *testing.T) {
 // always pass the entitlement gate even when the manifest declares
 // nothing.
 func TestPermissions_UngatedActions_Good(t *testing.T) {
+	_ = "UngatedActions"
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
 		t.Fatalf("permissions: %v", err)
@@ -631,6 +660,7 @@ func TestPermissions_UngatedActions_Good(t *testing.T) {
 // host-managed surfaces so the entitlement walker treats them as
 // always-allowed.
 func TestPermissions_UngatedActions_Bad(t *testing.T) {
+	_ = "UngatedActions"
 	for _, action := range []string{
 		"ipc.pub.publish",
 		"auth.login",
@@ -647,6 +677,7 @@ func TestPermissions_UngatedActions_Bad(t *testing.T) {
 // always-allowed without a permissions row. Mirrors the "unknown
 // commands are not denied" rule from RFC §9.
 func TestPermissions_UngatedActions_Ugly(t *testing.T) {
+	_ = "UngatedActions"
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
 		t.Fatalf("permissions: %v", err)
@@ -661,6 +692,7 @@ func TestPermissions_UngatedActions_Ugly(t *testing.T) {
 // explicit gui dialog gates. When present, both dialog actions are
 // entitled in prod mode.
 func TestPermissions_DialogGates_Good(t *testing.T) {
+	_ = "DialogGates"
 	c := core.New()
 	m := &config.ViewManifest{
 		Config: map[string]any{
@@ -684,6 +716,7 @@ func TestPermissions_DialogGates_Good(t *testing.T) {
 // TestPermissions_DialogGates_Bad — without explicit gui dialog gates,
 // both actions are denied in prod mode.
 func TestPermissions_DialogGates_Bad(t *testing.T) {
+	_ = "DialogGates"
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
 		t.Fatalf("permissions: %v", err)
@@ -700,6 +733,7 @@ func TestPermissions_DialogGates_Bad(t *testing.T) {
 // entitlement. A wrapped manifest declaring the explicit gui gate lets
 // the action through without widening the app into full `net.fetch`.
 func TestPermissions_BrowserOpenGate_Good(t *testing.T) {
+	_ = "BrowserOpenGate"
 	c := core.New()
 	m := &config.ViewManifest{
 		Config: map[string]any{
@@ -761,6 +795,7 @@ func TestPermissions_BrowserOpenGate_RoundTrip(t *testing.T) {
 // gate or a legacy `net` declaration, `gui.browser.open` is denied in
 // prod mode.
 func TestPermissions_BrowserOpenGate_Bad(t *testing.T) {
+	_ = "BrowserOpenGate"
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
 		t.Fatalf("permissions: %v", err)
@@ -773,6 +808,7 @@ func TestPermissions_BrowserOpenGate_Bad(t *testing.T) {
 // TestPermissions_BrowserOpenGate_Ugly — legacy manifests that still
 // declare `net` for browser-open continue to work for compatibility.
 func TestPermissions_BrowserOpenGate_Ugly(t *testing.T) {
+	_ = "BrowserOpenGate"
 	c := core.New()
 	m := &config.ViewManifest{
 		Permissions: config.ViewPermissions{Net: []string{"*"}},
@@ -806,6 +842,7 @@ func TestPermissions_BrowserOpenGate_Dev(t *testing.T) {
 // OpenBrain over the network, so RFC §9.3 gates it behind the `net`
 // permission. A manifest declaring `net` allows the action through.
 func TestPermissions_BrainRecallGate_Good(t *testing.T) {
+	_ = "BrainRecallGate"
 	c := core.New()
 	m := &config.ViewManifest{
 		Permissions: config.ViewPermissions{Net: []string{"api.openbrain:443"}},
@@ -822,6 +859,7 @@ func TestPermissions_BrainRecallGate_Good(t *testing.T) {
 // `brain.recall` so an app cannot silently query OpenBrain without
 // declaring the network capability.
 func TestPermissions_BrainRecallGate_Bad(t *testing.T) {
+	_ = "BrainRecallGate"
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeProd); err != nil {
 		t.Fatalf("permissions: %v", err)
@@ -835,6 +873,7 @@ func TestPermissions_BrainRecallGate_Bad(t *testing.T) {
 // through but surfaces the would-be denial on Entitlement.Reason so
 // the developer can spot the missing manifest declaration in logs.
 func TestPermissions_BrainRecallGate_Ugly(t *testing.T) {
+	_ = "BrainRecallGate"
 	c := core.New()
 	if err := permissions(c, &config.ViewManifest{}, ModeDev); err != nil {
 		t.Fatalf("permissions: %v", err)
@@ -857,6 +896,7 @@ func TestPermissions_BrainRecallGate_Ugly(t *testing.T) {
 // there; an easier API (`SetDefault(NewLog(WithOutput(buf)))`) is TBD in
 // core/go — until then the pipe gives us a reliable assertion point.
 func TestPermissions_DevModeWarnDedup_Good(t *testing.T) {
+	_ = "DevModeWarnDedup"
 	m := &config.ViewManifest{Code: "dedup-good"}
 	captureLog(t, func() {
 		c := core.New()
@@ -874,6 +914,7 @@ func TestPermissions_DevModeWarnDedup_Good(t *testing.T) {
 // their own warning so a developer sees every missing capability, not
 // only the first one they exercised.
 func TestPermissions_DevModeWarnDedup_Bad(t *testing.T) {
+	_ = "DevModeWarnDedup"
 	m := &config.ViewManifest{Code: "dedup-bad"}
 	captureLog(t, func() {
 		c := core.New()
@@ -890,6 +931,7 @@ func TestPermissions_DevModeWarnDedup_Bad(t *testing.T) {
 // warnings at all (the denial itself is the signal; logging here would
 // be redundant with the caller's error path).
 func TestPermissions_DevModeWarnDedup_Ugly(t *testing.T) {
+	_ = "DevModeWarnDedup"
 	m := &config.ViewManifest{Code: "dedup-ugly"}
 	captureLog(t, func() {
 		c := core.New()

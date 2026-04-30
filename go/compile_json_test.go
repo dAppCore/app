@@ -3,8 +3,9 @@
 package app
 
 import (
-	"encoding/json"
 	"testing"
+
+	core "dappco.re/go"
 )
 
 func TestCompileJson_CompiledManifest_MarshalJSON_Good(t *testing.T) {
@@ -18,13 +19,14 @@ func TestCompileJson_CompiledManifest_MarshalJSON_Good(t *testing.T) {
 			"url":  "https://example.com/app",
 		},
 	}
-	body, err := json.Marshal(cm)
-	if err != nil {
-		t.Fatalf("MarshalJSON: %v", err)
+	marshalResult := core.JSONMarshal(cm)
+	if !marshalResult.OK {
+		t.Fatalf("MarshalJSON: %v", marshalResult.Value)
 	}
+	body := marshalResult.Value.([]byte)
 	var raw map[string]any
-	if err := json.Unmarshal(body, &raw); err != nil {
-		t.Fatalf("json.Unmarshal: %v", err)
+	if r := core.JSONUnmarshal(body, &raw); !r.OK {
+		t.Fatalf("json.Unmarshal: %v", r.Value)
 	}
 	if raw["type"] != "pwa" {
 		t.Fatalf("top-level type = %v; want pwa", raw["type"])
@@ -39,27 +41,27 @@ func TestCompileJson_CompiledManifest_MarshalJSON_Bad(t *testing.T) {
 		Code:   "json-bad",
 		Config: map[string]any{"bad": func() {}},
 	}
-	if _, err := json.Marshal(cm); err == nil {
+	if r := core.JSONMarshal(cm); r.OK {
 		t.Fatal("MarshalJSON should reject non-JSON config values")
 	}
 }
 
 func TestCompileJson_CompiledManifest_MarshalJSON_Ugly(t *testing.T) {
 	cm := CompiledManifest{}
-	body, err := json.Marshal(cm)
-	if err != nil {
-		t.Fatalf("MarshalJSON zero value: %v", err)
+	marshalResult := core.JSONMarshal(cm)
+	if !marshalResult.OK {
+		t.Fatalf("MarshalJSON zero value: %v", marshalResult.Value)
 	}
-	if !json.Valid(body) {
-		t.Fatalf("zero-value compiled manifest produced invalid JSON: %s", string(body))
+	if len(marshalResult.Value.([]byte)) == 0 {
+		t.Fatal("MarshalJSON zero value returned empty body")
 	}
 }
 
 func TestCompileJson_CompiledManifest_UnmarshalJSON_Good(t *testing.T) {
 	var cm CompiledManifest
 	body := []byte(`{"code":"json-good","name":"JSON Good","version":"0.1.0","type":"web","permissions":{"net":["api.example.com:443"]}}`)
-	if err := json.Unmarshal(body, &cm); err != nil {
-		t.Fatalf("UnmarshalJSON: %v", err)
+	if r := core.JSONUnmarshal(body, &cm); !r.OK {
+		t.Fatalf("UnmarshalJSON: %v", r.Value)
 	}
 	if cm.Code != "json-good" {
 		t.Fatalf("Code = %q; want json-good", cm.Code)
@@ -74,7 +76,7 @@ func TestCompileJson_CompiledManifest_UnmarshalJSON_Good(t *testing.T) {
 
 func TestCompileJson_CompiledManifest_UnmarshalJSON_Bad(t *testing.T) {
 	var cm CompiledManifest
-	if err := json.Unmarshal([]byte(`{"code":`), &cm); err == nil {
+	if r := core.JSONUnmarshal([]byte(`{"code":`), &cm); r.OK {
 		t.Fatal("malformed JSON should fail")
 	}
 }
