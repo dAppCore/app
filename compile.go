@@ -16,8 +16,8 @@ import (
 // runtimes can reject compiled artifacts older than the minimum supported
 // version.
 //
-//	core.json → "compiled_by": "core v0.8.0-alpha.1"
-const CompiledVersion = "core v0.8.0-alpha.1"
+//	core.json → "compiled_by": "core v0.9.0"
+const CompiledVersion = "core v0.9.0"
 
 // CompiledFileName is the distribution-ready artifact name written at the
 // project root (not inside .core/). Matches RFC §3.1.

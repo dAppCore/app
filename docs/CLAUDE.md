@@ -9,7 +9,7 @@ The keystone spec. A CoreApp is a directory with a `.core/view.yaml` manifest. R
 ## Key Facts
 
 - **Status**: Specced (973 lines), implementing
-- **Module**: `dappco.re/go/core` (CoreApp subsystem)
+- **Module**: `dappco.re/go/app` (CoreApp subsystem)
 - **Repo**: `core/go` (framework)
 - **Depends on**: core/config, core/gui, core/go/ipc, core/go/build, core/go/cli, core/ts, go-io, go-store, go-crypt, go-html
 - **Prior art**: dAppServer (2021) — object store, PGP auth, process management, marketplace

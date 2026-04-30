@@ -47,7 +47,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	// AX-6 process-lifecycle exception: this file is the binary boundary.
-	// dappco.re/go/core/cli owns argv/signal wrappers, but core/app does
+	// The CLI layer owns argv/signal wrappers, but core/app does
 	// not depend on that module in this lane, and go.mod is off-limits here.
 	"os"
 	"os/signal"

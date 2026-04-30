@@ -25,7 +25,7 @@ tags:
 > The keystone spec. Every other RFC exists to make this work.
 > A developer should be able to build, sign, and distribute a CoreApp from this document alone.
 
-**Module:** `dappco.re/go/core` (CoreApp subsystem)
+**Module:** `dappco.re/go/app` (CoreApp subsystem)
 **Repository:** `core/go` (framework)
 **Prior art:** dAppServer (2021, EUPL-1.2) — `~/Lethean/` convention, object store, marketplace, PGP auth
 **Heritage:** Every `.core/` convention traces to a dAppServer prototype decision
