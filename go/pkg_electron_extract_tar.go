@@ -106,7 +106,7 @@ func openTarReader(archive, body string) (
 
 // stringReader wraps a string body with an io.Reader implementation so
 // tar/gzip layers can stream the bytes without depending on the banned
-// `strings` package. Mirrors the stringReaderAt helper in
+// stdlib strings package. Mirrors the stringReaderAt helper in
 // pkg_electron_extract.go for the zip path.
 type stringReader struct {
 	body string
