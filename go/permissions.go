@@ -147,7 +147,7 @@ type actionGate struct {
 //     is rejected before the handler runs.
 //
 //   - `CheckActionAccess` (access.go) performs the per-argument match
-//     — fs.read's `path` is checked against `permissions.read[]`,
+//     — fs.read's path argument is checked against `permissions.read[]`,
 //     net.fetch's `host:port` is checked against `permissions.net[]`,
 //     etc. Handlers in go-io / core-net / go-process call it once
 //     with the caller-supplied argument before performing any
