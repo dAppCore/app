@@ -23,7 +23,7 @@ require (
 )
 
 require (
-	dappco.re/go v0.10.3
+	dappco.re/go v0.10.4
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
