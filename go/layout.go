@@ -3,6 +3,8 @@
 package app
 
 import (
+	"slices"
+
 	core "dappco.re/go"
 	"dappco.re/go/config"
 )
@@ -142,12 +144,7 @@ func resolveLayout(c *core.Core, m *config.ViewManifest) (
 //
 //	containsString([]string{"H","C"}, "C") // true
 func containsString(list []string, entry string) bool {
-	for _, v := range list {
-		if v == entry {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, entry)
 }
 
 // validateLayoutVariant accepts any string made up of HLCRF characters

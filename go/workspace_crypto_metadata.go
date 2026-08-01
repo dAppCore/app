@@ -171,7 +171,7 @@ func readWorkspaceSecretSaltAfterCreateRace(ws *Workspace) (
 	[]byte, error,
 ) {
 	var lastErr error
-	for i := 0; i < workspaceSecretSaltReadAttempts; i++ {
+	for i := range workspaceSecretSaltReadAttempts {
 		metadata, err := readWorkspaceCryptoMetadata(ws)
 		if err == nil && core.Trim(metadata.Salt) != "" {
 			salt, err := decodeWorkspaceSecretSalt(metadata.Salt)

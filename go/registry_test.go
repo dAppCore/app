@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	core "dappco.re/go"
@@ -138,13 +139,7 @@ func TestRegistry_RegisteredModules_Good(t *testing.T) {
 
 	// Confirm every name is present.
 	for _, n := range names {
-		found := false
-		for _, g := range got {
-			if g == n {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(got, n)
 		if !found {
 			t.Errorf("module %q missing from RegisteredModules listing", n)
 		}

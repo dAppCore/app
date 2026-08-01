@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"io"
+	"maps"
 	"net/http"
 	neturl "net/url"
 	"sync"
@@ -661,9 +662,7 @@ func stringMap(result core.Result) map[string]string {
 	switch value := result.Value.(type) {
 	case map[string]string:
 		out := make(map[string]string, len(value))
-		for key, item := range value {
-			out[key] = item
-		}
+		maps.Copy(out, value)
 		return out
 	case map[string]any:
 		out := make(map[string]string, len(value))

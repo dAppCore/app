@@ -373,7 +373,7 @@ func TestStart_start_Lifecycle_Ugly(t *testing.T) {
 			Code: "twice", Name: "Twice", Version: "0.1.0",
 		},
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if r := start(context.Background(), inst); !r.OK {
 			t.Fatalf("start[%d] failed: %v", i, r.Value)
 		}

@@ -48,8 +48,7 @@ func TestWatch_Instance_Watch_Good(t *testing.T) {
 			}
 			return core.Result{OK: true}
 		})
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 		stop := inst.Watch(ctx, WatchOptions{Interval: 20 * time.Millisecond})
 		defer stop()
 
@@ -166,8 +165,7 @@ func TestWatch_Instance_Watch_Ugly(t *testing.T) {
 			}
 			return core.Result{OK: true}
 		})
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 		stop := inst.Watch(ctx, WatchOptions{Interval: 15 * time.Millisecond})
 		defer stop()
 		time.Sleep(45 * time.Millisecond)
@@ -224,8 +222,7 @@ func TestWatch_Instance_Watch_Ugly(t *testing.T) {
 			Mode:     ModeDev,
 			medium:   medium,
 		}
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 		// Zero interval should use DefaultWatchInterval; the test just
 		// confirms Watch returns without spinning — actual timing
 		// coverage is in the "modified" subtest.
@@ -315,8 +312,7 @@ func TestWatch_Instance_WatchManifest_Good(t *testing.T) {
 		latest  config.ViewManifest
 		arrived int
 	)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	stop := inst.WatchManifest(ctx, func(m config.ViewManifest) {
 		mu.Lock()
 		latest = m
@@ -390,8 +386,7 @@ func TestWatch_Instance_WatchManifest_Ugly(t *testing.T) {
 		Mode:     ModeDev,
 		medium:   medium,
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	called := make(chan struct{}, 4)
 	stop := inst.WatchManifest(ctx, func(config.ViewManifest) { called <- struct{}{} })
 	defer stop()

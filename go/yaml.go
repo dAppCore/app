@@ -3,6 +3,10 @@
 package app
 
 import (
+	"maps"
+
+	"slices"
+
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
@@ -296,22 +300,15 @@ func mergeManifestNamedGate(m *config.ViewManifest, key, gate string) {
 }
 
 func permissionListContains(list []string, want string) bool {
-	for _, entry := range list {
-		if entry == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, want)
 }
 
 func appendUniqueString(dst *[]string, value string) {
 	if dst == nil || value == "" {
 		return
 	}
-	for _, existing := range *dst {
-		if existing == value {
-			return
-		}
+	if slices.Contains(*dst, value) {
+		return
 	}
 	*dst = append(*dst, value)
 }
@@ -388,9 +385,7 @@ func manifestPermissionsForYAML(m *config.ViewManifest) map[string]any {
 		perms["store"] = v
 	}
 	if len(guiGates) > 0 {
-		for key, value := range guiGates {
-			perms[key] = value
-		}
+		maps.Copy(perms, guiGates)
 	}
 	if len(perms) == 0 {
 		return nil
@@ -403,9 +398,7 @@ func manifestConfigForYAML(m *config.ViewManifest) map[string]any {
 		return nil
 	}
 	out := make(map[string]any, len(m.Config))
-	for key, value := range m.Config {
-		out[key] = value
-	}
+	maps.Copy(out, m.Config)
 	for _, key := range manifestTopLevelConfigKeys {
 		delete(out, key)
 	}
@@ -491,10 +484,5 @@ func hasManifestLocationPermission(m *config.ViewManifest) bool {
 	if m == nil {
 		return false
 	}
-	for _, entry := range m.Permissions.Run {
-		if entry == "device.location" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.Permissions.Run, "device.location")
 }
