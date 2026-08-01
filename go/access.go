@@ -3,6 +3,8 @@
 package app
 
 import (
+	"slices"
+
 	core "dappco.re/go"
 	"dappco.re/go/config"
 )
@@ -353,12 +355,7 @@ func matchPrefix(list []string, arg string) bool {
 //
 //	matchExact([]string{"api.example.com:443"}, "api.example.com:443") // true
 func matchExact(list []string, arg string) bool {
-	for _, entry := range list {
-		if entry == arg {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, arg)
 }
 
 // matchNet mirrors matchExact but honours the RFC §16.2 wildcard form

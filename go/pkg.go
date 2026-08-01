@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"slices"
 
 	core "dappco.re/go"
 	"dappco.re/go/config"
@@ -472,11 +473,8 @@ func ManifestPermissionSummary(m *config.ViewManifest) []string {
 	if m.Permissions.Microphone {
 		out = append(out, "microphone")
 	}
-	for _, p := range m.Permissions.Run {
-		if p == "device.location" {
-			out = append(out, "location")
-			break
-		}
+	if slices.Contains(m.Permissions.Run, "device.location") {
+		out = append(out, "location")
 	}
 	return out
 }

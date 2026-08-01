@@ -3,6 +3,7 @@
 package app
 
 import (
+	"maps"
 	"time"
 
 	core "dappco.re/go"
@@ -166,9 +167,7 @@ func copyConfig(src map[string]any) map[string]any {
 		return nil
 	}
 	out := make(map[string]any, len(src))
-	for k, v := range src {
-		out[k] = v
-	}
+	maps.Copy(out, src)
 	return out
 }
 

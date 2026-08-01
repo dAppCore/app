@@ -3,6 +3,8 @@
 package app
 
 import (
+	"maps"
+
 	core "dappco.re/go"
 	"dappco.re/go/config"
 	coreio "dappco.re/go/io"
@@ -125,9 +127,7 @@ func compiledToManifest(cm *CompiledManifest) config.ViewManifest {
 	var cfg map[string]any
 	if len(cm.Config) > 0 {
 		cfg = make(map[string]any, len(cm.Config))
-		for k, v := range cm.Config {
-			cfg[k] = v
-		}
+		maps.Copy(cfg, cm.Config)
 	}
 	return config.ViewManifest{
 		Code:        cm.Code,

@@ -575,7 +575,7 @@ type validateArgs struct {
 func runValidate(args []string) int {
 	opts := validateArgs{Start: "./"}
 	strict := false
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		switch args[i] {
 		case "--require-signature":
 			opts.RequireSignature = true

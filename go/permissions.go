@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	core "dappco.re/go"
@@ -335,12 +336,7 @@ func hasPermission(p config.ViewPermissions, field permissionField) bool {
 		// gate can detect the explicit declaration. Mirrors the
 		// pattern hasManifestStorePermission uses for the legacy store
 		// flag.
-		for _, entry := range p.Run {
-			if entry == "device.location" {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(p.Run, "device.location")
 	default:
 		return false
 	}

@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"slices"
 
 	core "dappco.re/go"
 	"dappco.re/go/config"
@@ -244,13 +245,7 @@ func MarketplaceBrowse(medium coreio.Medium, root, category string) (
 	if err != nil {
 		return nil, err
 	}
-	known := false
-	for _, cat := range idx.Categories {
-		if cat == category {
-			known = true
-			break
-		}
-	}
+	known := slices.Contains(idx.Categories, category)
 	if !known {
 		return nil, core.E(
 			"app.MarketplaceBrowse",

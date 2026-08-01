@@ -145,7 +145,7 @@ func resolveRepoSourceRoot(medium coreio.Medium, dir string) (
 	}
 
 	cur := dir
-	for depth := 0; depth < 8; depth++ {
+	for range 8 {
 		if DetectPackageType(medium, cur) != PackageTypeUnknown {
 			return cur, nil
 		}

@@ -77,7 +77,7 @@ func pkgUsage() {
 func runPkgInfo(args []string) int {
 	asJSON := false
 	name := ""
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		switch args[i] {
 		case "--json":
 			asJSON = true
@@ -300,10 +300,7 @@ func formatRow(cells []string, widths []int, gutter int) string {
 		if i == len(cells)-1 {
 			break
 		}
-		pad := widths[i] - len(cell) + gutter
-		if pad < gutter {
-			pad = gutter
-		}
+		pad := max(widths[i]-len(cell)+gutter, gutter)
 		for j := 0; j < pad; j++ {
 			out.WriteByte(' ')
 		}
@@ -1199,7 +1196,7 @@ func runPkgInstallMarketplace(ctx context.Context, home, code string) int {
 func runPkgRemove(args []string) int {
 	purge := false
 	name := ""
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		switch args[i] {
 		case "--purge":
 			purge = true
@@ -1252,7 +1249,7 @@ func runPkgRemove(args []string) int {
 //	core-app pkg update bitwarden-clients
 func runPkgUpdate(args []string) int {
 	name := ""
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		switch args[i] {
 		case "--help", "-h":
 			core.Println("core-app pkg update NAME")
@@ -1662,7 +1659,7 @@ func runMarketplaceBrowse(args []string) int {
 func runMarketplaceUpdate(args []string) int {
 	skipVerify := false
 	code := ""
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		switch args[i] {
 		case "--skip-verify":
 			skipVerify = true
