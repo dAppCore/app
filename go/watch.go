@@ -202,19 +202,24 @@ func snapshotWatched(medium coreio.Medium, paths []string) map[string]watchEntry
 //
 //	entry := statWatched(medium, ".core/view.yaml")
 func statWatched(medium coreio.Medium, path string) watchEntry {
-	if !medium.Exists(path) {
-		return watchEntry{}
-	}
 	info, err := medium.Stat(path)
 	if err == nil && info != nil {
 		return watchEntry{Exists: true, ModTime: info.ModTime(), Size: info.Size()}
 	}
-	// Medium without a real Stat (MockMedium) → fall back to a body
-	// length read so content edits still register as a diff. Failure
-	// here is absorbed: the file is present (Exists returned true) but
-	// we cannot size it; record the Exists bit alone.
+	// Stat failed: the file is gone (perhaps deleted mid-poll), or the
+	// medium has no real Stat (MockMedium). Absence is checked AFTER the
+	// failed Stat, so a delete racing the poll reads as "deleted", never as
+	// a zero-ModTime "modified".
+	if !medium.Exists(path) {
+		return watchEntry{}
+	}
+	// Medium without a real Stat → fall back to a body length read so
+	// content edits still register as a diff.
 	body, readErr := medium.Read(path)
 	if readErr != nil {
+		if !medium.Exists(path) {
+			return watchEntry{}
+		}
 		return watchEntry{Exists: true}
 	}
 	return watchEntry{Exists: true, Size: int64(len(body))}
