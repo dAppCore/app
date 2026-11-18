@@ -25,7 +25,7 @@ tags:
 > The keystone spec. Every other RFC exists to make this work.
 > A developer should be able to build, sign, and distribute a CoreApp from this document alone.
 
-**Module:** `dappco.re/go/app` (CoreApp subsystem)
+**Module:** `github.com/dappcore/app/go` (CoreApp subsystem)
 **Repository:** `core/go` (framework)
 **Prior art:** dAppServer (2021, EUPL-1.2) — `~/Lethean/` convention, object store, marketplace, PGP auth
 **Heritage:** Every `.core/` convention traces to a dAppServer prototype decision
@@ -267,7 +267,7 @@ Files in `~/.core/data/` encrypted via Sigil framework:
 - SHA-256 workspace IDs (file names reveal nothing)
 - Decryption requires workspace key (derived from user password)
 
-**Implementation:** Enchantrix — <https://forge.lthn.ai/Snider/Enchantrix>. Core imports Enchantrix for the Sigil primitives (encrypt/decrypt, Pre-Obfuscation, workspace-key derivation). CoreApp wires it into the storage layer, nothing is re-implemented in `dappco.re/go/*`.
+**Implementation:** Enchantrix — <https://forge.lthn.ai/Snider/Enchantrix>. Core imports Enchantrix for the Sigil primitives (encrypt/decrypt, Pre-Obfuscation, workspace-key derivation). CoreApp wires it into the storage layer, nothing is re-implemented in `github.com/dappcore/*`.
 
 From dAppServer: `~/Lethean/data/{lthnHash/QuasiSalt}/{lthnHash}` → you couldn't even see what the filenames meant until you decrypted the enclave.
 

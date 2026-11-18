@@ -5,10 +5,10 @@ package app
 import (
 	"encoding/base64"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 	"testing"
 
-	"dappco.re/go/io/sigil"
+	"github.com/dappcore/go-io/go/sigil"
 )
 
 // TestRuntimeStore_EncryptDecryptRoundTripWithSigil rescued from primary

@@ -6,9 +6,9 @@ import (
 	"context"
 	"sync"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // HostOptions tunes NewHost. A host is the RFC §11 orchestrator that

@@ -1,19 +1,19 @@
-module dappco.re/go/app
+module github.com/dappcore/app/go
 
 go 1.26.0
 
 require (
-	dappco.re/go/config v0.18.0
-	dappco.re/go/io v0.15.3
-	dappco.re/go/log v0.13.1
+	github.com/dappcore/config/go v0.19.0
+	github.com/dappcore/go-io/go v0.16.0
+	github.com/dappcore/go-log/go v0.14.0
 	golang.org/x/crypto v0.54.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	forge.lthn.ai/Snider/Borg v0.3.1 // indirect
-	forge.lthn.ai/Snider/Enchantrix v0.0.4 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
+	github.com/Snider/Borg v0.4.0 // indirect
+	github.com/Snider/Enchantrix v0.0.4 // indirect
 	github.com/apache/arrow-go/v18 v18.7.0 // indirect
 	github.com/cloudflare/circl v1.6.4 // indirect
 	github.com/duckdb/duckdb-go-bindings v0.10505.0 // indirect
@@ -36,7 +36,7 @@ require (
 )
 
 require (
-	dappco.re/go v0.12.0
+	github.com/dappcore/go v0.14.0
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect

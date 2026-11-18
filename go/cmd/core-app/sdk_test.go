@@ -5,9 +5,9 @@ package main
 import (
 	"testing"
 
-	core "dappco.re/go"
-	"dappco.re/go/app"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/app/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // TestSdk_runSDK_Good — `sdk generate` against a fixture project writes

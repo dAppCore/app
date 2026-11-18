@@ -6,9 +6,9 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // DefaultKeyName is the filename convention for the user's default app

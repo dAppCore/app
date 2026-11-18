@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"strconv"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // configTemplateSpec is the narrowed shape of one manifest `config:`

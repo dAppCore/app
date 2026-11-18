@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
 )
 
 // TestModules_modules_Good — a manifest with no modules is a no-op.

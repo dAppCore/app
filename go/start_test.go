@@ -6,9 +6,9 @@ import (
 	"context"
 	"testing"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
-	coreerr "dappco.re/go/log"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
+	coreerr "github.com/dappcore/go-log/go"
 )
 
 // TestStart_start_Good — a ready Instance broadcasts ActionAppStarted

@@ -3,7 +3,7 @@
 package app
 
 import (
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 func Example_configTemplate() {

@@ -4,7 +4,7 @@ Reference: `docs/RFC.md` — **keystone spec**. Every other Core RFC exists to m
 
 ## Identity
 
-`dappco.re/go/app` — CoreApp runtime. Reads `.core/view.yaml`, runs the 7-step boot, enforces manifest permissions on Named Actions, composes HLCRF layout into the gui window, starts the app.
+`github.com/dappcore/app/go` — CoreApp runtime. Reads `.core/view.yaml`, runs the 7-step boot, enforces manifest permissions on Named Actions, composes HLCRF layout into the gui window, starts the app.
 
 ## The 7-step boot (RFC §4)
 
@@ -22,7 +22,7 @@ Go module now lives under `go/` and the repo root is cross-language / metadata o
 
 ```
 core/app/
-├── go/                                  ← Go module root (dappco.re/go/app)
+├── go/                                  ← Go module root (github.com/dappcore/app/go)
 │   ├── *.go
 │   ├── go.mod, go.sum
 │   ├── cmd/

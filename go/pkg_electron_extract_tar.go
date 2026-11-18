@@ -7,8 +7,8 @@ import (
 	"compress/gzip"
 	"io"
 
-	core "dappco.re/go"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // ExtractTar unpacks a downloaded `.tar` (uncompressed) or `.tar.gz` /

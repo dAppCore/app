@@ -5,7 +5,7 @@ package app
 import (
 	"context"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 // start is Step 7 of the 7-step boot — unblock the app's entry point.

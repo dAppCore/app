@@ -5,8 +5,8 @@ package app
 import (
 	"context"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
 )
 
 // modules is Step 4 of the 7-step boot — load the modules declared in

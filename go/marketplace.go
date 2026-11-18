@@ -6,9 +6,9 @@ import (
 	"context"
 	"slices"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // MarketplaceIndexFileName is the top-level index file every category

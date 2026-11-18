@@ -5,8 +5,8 @@ package app
 import (
 	"testing"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
 )
 
 // TestValidate_ValidateManifest_Good — a well-formed manifest passes

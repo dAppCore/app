@@ -5,7 +5,7 @@ package app
 import (
 	"testing"
 
-	"dappco.re/go/config"
+	"github.com/dappcore/config/go"
 )
 
 func TestPwaRuntime_SW_Good(t *testing.T) {

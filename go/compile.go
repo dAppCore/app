@@ -6,9 +6,9 @@ import (
 	"maps"
 	"time"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // CompiledVersion is the compiler identity stapled into every core.json

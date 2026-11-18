@@ -6,9 +6,9 @@ import (
 	"context"
 	"testing"
 
-	core "dappco.re/go"
-	"dappco.re/go/app"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/app/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // TestApp_Boot_Good — a manifest exists under start/.core/view.yaml and

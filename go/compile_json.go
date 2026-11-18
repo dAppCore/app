@@ -3,7 +3,7 @@
 package app
 
 import (
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 // compiledTypedTopLevelKeys are the fields CompiledManifest models
