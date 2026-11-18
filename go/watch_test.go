@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"io/fs"
 	"sync"
 	"testing"
 	"time"
@@ -469,5 +470,50 @@ func TestWatch_ResolveWatchPaths_Ugly(t *testing.T) {
 		if !core.HasPrefix(p, inst.Root) {
 			t.Fatalf("resolved path escaped root: %q", p)
 		}
+	}
+}
+
+func TestWatch_statWatched_Good(t *testing.T) {
+	root := t.TempDir()
+	path := core.Path(root, "view.yaml")
+	if err := coreio.Local.Write(path, "code: app\n"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	entry := statWatched(coreio.Local, path)
+	if !entry.Exists || entry.Size != int64(len("code: app\n")) || entry.ModTime.IsZero() {
+		t.Fatalf("entry = %+v, want present with size and modtime", entry)
+	}
+}
+
+func TestWatch_statWatched_Bad(t *testing.T) {
+	entry := statWatched(coreio.Local, core.Path(t.TempDir(), "missing.yaml"))
+	if entry.Exists {
+		t.Fatalf("entry = %+v, want absent", entry)
+	}
+}
+
+// vanishingMedium reproduces a delete landing between the watcher's checks:
+// the file is there for the first Exists, then Stat and Read fail and it's gone.
+type vanishingMedium struct {
+	coreio.Medium
+	existsCalls int
+}
+
+func (m *vanishingMedium) Exists(string) bool {
+	m.existsCalls++
+	return m.existsCalls == 1
+}
+
+func (m *vanishingMedium) Stat(string) (fs.FileInfo, error) { return nil, fs.ErrNotExist }
+
+func (m *vanishingMedium) Read(string) (string, error) { return "", fs.ErrNotExist }
+
+func TestWatch_statWatched_Ugly(t *testing.T) {
+	// A delete racing the poll must read as absent. Before the fix this
+	// returned {Exists: true} with a zero ModTime, a spurious "modified".
+	entry := statWatched(&vanishingMedium{}, "view.yaml")
+	if entry.Exists {
+		t.Fatalf("entry = %+v, want absent (file vanished mid-poll)", entry)
 	}
 }
