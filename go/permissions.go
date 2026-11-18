@@ -7,8 +7,8 @@ import (
 	"slices"
 	"sync"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
 )
 
 // Named Action prefixes gated by manifest permissions. Keeping the

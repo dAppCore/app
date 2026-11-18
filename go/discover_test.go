@@ -5,7 +5,7 @@ package app
 import (
 	"testing"
 
-	coreio "dappco.re/go/io"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // TestDiscover_discover_Good — a manifest at start/.core/view.yaml is

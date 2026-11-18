@@ -3,8 +3,8 @@
 package app
 
 import (
-	core "dappco.re/go"
-	"dappco.re/go/config"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
 )
 
 // ValidateOptions tunes ValidateManifest. Zero values produce the

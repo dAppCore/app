@@ -9,7 +9,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	coreio "dappco.re/go/io"
+	coreio "github.com/dappcore/go-io/go"
 	"golang.org/x/crypto/argon2"
 )
 

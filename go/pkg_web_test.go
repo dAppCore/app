@@ -5,10 +5,10 @@ package app_test
 import (
 	"testing"
 
-	core "dappco.re/go"
-	"dappco.re/go/app"
-	"dappco.re/go/config"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/app/go"
+	"github.com/dappcore/config/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // TestPkgWeb_WrapWeb_Good wraps a local web directory and asserts the

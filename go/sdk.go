@@ -3,9 +3,9 @@
 package app
 
 import (
-	core "dappco.re/go"
-	"dappco.re/go/config"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // SDKLanguage selects which client SDK the generator emits. Each language

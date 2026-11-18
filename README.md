@@ -12,7 +12,7 @@
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=dappcore_app&metric=reliability_rating)](https://sonarcloud.io/dashboard?id=dappcore_app)
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=dappcore_app&metric=code_smells)](https://sonarcloud.io/dashboard?id=dappcore_app)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=dappcore_app&metric=ncloc)](https://sonarcloud.io/dashboard?id=dappcore_app)
-[![Go Reference](https://pkg.go.dev/badge/dappco.re/go/app.svg)](https://pkg.go.dev/dappco.re/go/app)
+[![Go Reference](https://pkg.go.dev/badge/github.com/dappcore/app/go.svg)](https://pkg.go.dev/github.com/dappcore/app/go)
 [![License: EUPL-1.2](https://img.shields.io/badge/License-EUPL--1.2-blue.svg)](https://eupl.eu/1.2/en/)
 
 
@@ -20,7 +20,7 @@ The CoreApp keystone runtime — reads a `.core/view.yaml` manifest, runs the 7-
 
 > "The keystone spec. Every other RFC exists to make this work."
 
-**Module:** `dappco.re/go/app`
+**Module:** `github.com/dappcore/app/go`
 **Spec:** [`docs/RFC.md`](docs/RFC.md)
 
 ## The 7-step boot

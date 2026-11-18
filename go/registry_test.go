@@ -7,8 +7,8 @@ import (
 	"slices"
 	"testing"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
 )
 
 // TestRegistry_RegisterModule_Good — Registering, looking up and

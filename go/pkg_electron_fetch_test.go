@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"dappco.re/go/app"
-	coreio "dappco.re/go/io"
+	"github.com/dappcore/app/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // TestPkgElectronFetch_FetchElectronReleaseURL_Good plants a fake

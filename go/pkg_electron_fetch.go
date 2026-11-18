@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	core "dappco.re/go"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // electronReleaseTimeout caps the GitHub release HTTP call so a slow

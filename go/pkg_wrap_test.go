@@ -5,9 +5,9 @@ package app_test
 import (
 	"testing"
 
-	core "dappco.re/go"
-	"dappco.re/go/app"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/app/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 func TestPkgWrap_PWA_Good(t *testing.T) {

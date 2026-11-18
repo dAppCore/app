@@ -7,9 +7,9 @@ import (
 
 	"slices"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
+	coreio "github.com/dappcore/go-io/go"
 	"gopkg.in/yaml.v3" // Note: AX-6 — centralized YAML codec wrapper; manifest serialisation requires gopkg.in/yaml.v3 (no core.YAML primitive available yet)
 )
 

@@ -10,9 +10,9 @@ import (
 	"encoding/hex"
 	"sync"
 
-	core "dappco.re/go"
-	"dappco.re/go/io/sigil"
-	corestore "dappco.re/go/io/store"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/go-io/go/sigil"
+	corestore "github.com/dappcore/go-io/go/store"
 	"golang.org/x/crypto/argon2" // Note: AX-6 - password KDF primitive required to slow offline workspace-password attacks.
 )
 

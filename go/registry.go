@@ -6,8 +6,8 @@ import (
 	"context"
 	"sync"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
 )
 
 // ModuleFactory returns a CoreOption that wires a named module onto a

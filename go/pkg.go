@@ -6,9 +6,9 @@ import (
 	"context"
 	"slices"
 
-	core "dappco.re/go"
-	"dappco.re/go/config"
-	coreio "dappco.re/go/io"
+	core "github.com/dappcore/go"
+	"github.com/dappcore/config/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // AppsDirName is the component that follows `$DIR_HOME/.core/` for the

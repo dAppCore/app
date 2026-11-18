@@ -5,7 +5,7 @@ package app
 import (
 	"testing"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 )
 
 func TestCompileJson_CompiledManifest_MarshalJSON_Good(t *testing.T) {

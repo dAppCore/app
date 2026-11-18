@@ -5,10 +5,10 @@ package app
 import (
 	"testing"
 
-	core "dappco.re/go"
+	core "github.com/dappcore/go"
 
-	"dappco.re/go/config"
-	coreio "dappco.re/go/io"
+	"github.com/dappcore/config/go"
+	coreio "github.com/dappcore/go-io/go"
 )
 
 // TestYaml_yamlMarshalBytes_Good — marshalling a populated ViewManifest
